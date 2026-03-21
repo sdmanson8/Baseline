@@ -2,11 +2,12 @@
 	.SYNOPSIS
 	Provides tab completion for Win10_11Util functions and arguments.
 
-	.VERSION
-	1.0.0
+    .VERSION
+	2.0.0
 
 	.DATE
 	17.03.2026 - initial version
+	21.03.2026 - Added GUI
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026

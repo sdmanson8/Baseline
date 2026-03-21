@@ -2,11 +2,12 @@
     .SYNOPSIS
     Disables and removes Windows AI features such as Copilot, Recall, and related packages.
 
-	.VERSION
-	1.0.0
+    .VERSION
+	2.0.0
 
 	.DATE
 	17.03.2026 - initial version
+	21.03.2026 - Added GUI
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -50,7 +51,8 @@ param(
         'RemoveAIFiles',               
         'HideAIComponents',            
         'DisableRewrite',       
-        'RemoveRecallTasks')]
+        'RemoveRecallTasks',
+        'RemoveVoiceAccess')]
     [array]$Options,
     [switch]$AllOptions,
     [switch]$revertMode,
@@ -1208,46 +1210,6 @@ $backupPath = "$PSScriptRoot\RemoveWindowsAI\Backup"
         Write-ConsoleStatus -Status success
 }
 
-    #disabling and removing voice access, recently added ai powered
-    Reg.exe add 'HKCU\Software\Microsoft\VoiceAccess' /v 'RunningState' /t REG_DWORD /d @('0', '1')[$revert] /f >$null
-    Reg.exe add 'HKCU\Software\Microsoft\VoiceAccess' /v 'TextCorrection' /t REG_DWORD /d @('1', '2')[$revert] /f >$null
-    Reg.exe add 'HKCU\Software\Microsoft\Windows NT\CurrentVersion\AccessibilityTemp' /v @('0', '1')[$revert] /t REG_DWORD /d '0' /f >$null
-    $startMenu = "$env:appdata\Microsoft\Windows\Start Menu\Programs\Accessibility"
-    $voiceExe = "$env:windir\System32\voiceaccess.exe"
-    if ($backup) {
-        Write-Status -msg 'Backing up Voice Access - '
-        LogInfo 'Backing up Voice Access'
-        if (!(Test-Path $backupPath)) {
-            New-Item $backupPath -Force -ItemType Directory | Out-Null
-        }
-        Copy-Item $voiceExe -Destination $backupPath -Force -ErrorAction SilentlyContinue | Out-Null
-        Copy-Item "$startMenu\VoiceAccess.lnk" -Destination $backupPath -Force -ErrorAction SilentlyContinue | Out-Null
-        Write-ConsoleStatus -Status success
-}
-    
-    if ($revert) {
-        if ((Test-Path "$backupPath\VoiceAccess.exe") -and (Test-Path "$backupPath\VoiceAccess.lnk")) {
-            Write-Status -msg 'Restoring Voice Access - '
-           LogInfo 'Restoring Voice Access'
-            Move-Item "$backupPath\VoiceAccess.exe" -Destination "$env:windir\System32" -Force | Out-Null
-            Move-Item "$backupPath\VoiceAccess.lnk" -Destination $startMenu -Force | Out-Null
-            Write-ConsoleStatus -Status success
-}
-        else {
-           LogError 'Voice Access Backup NOT Found!' 
-        }
-        
-    }
-    else {
-        Write-Status -msg 'Removing Voice Access - '
-        LogInfo 'Removing Voice Access'
-        $command = "Remove-item -path $env:windir\System32\voiceaccess.exe -force -ErrorAction SilentlyContinue -Recurse | Out-Null"
-        RunTrusted -command $command -psversion $psversion -logFile $logFile
-        Start-Sleep 1
-        Remove-Item "$startMenu\VoiceAccess.lnk" -Force -ErrorAction SilentlyContinue
-        Write-ConsoleStatus -Status success
-}
-    
     $root = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture'
     $allFX = (Get-ChildItem $root -Recurse).Name | Where-Object { $_ -like '*FxProperties' }
     #search the fx props for VocalEffectPack and add {1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5 = 1
@@ -1379,6 +1341,47 @@ Windows Registry Editor Version 5.00
     #Write-Status -msg 'Applying Registry Changes'
     LogInfo "Applying Registry Changes"
     gpupdate /force /wait:0 >$null
+}
+
+function Remove-Voice-Access {
+    Reg.exe add 'HKCU\Software\Microsoft\VoiceAccess' /v 'RunningState' /t REG_DWORD /d @('0', '1')[$revert] /f >$null
+    Reg.exe add 'HKCU\Software\Microsoft\VoiceAccess' /v 'TextCorrection' /t REG_DWORD /d @('1', '2')[$revert] /f >$null
+    Reg.exe add 'HKCU\Software\Microsoft\Windows NT\CurrentVersion\AccessibilityTemp' /v @('0', '1')[$revert] /t REG_DWORD /d '0' /f >$null
+    $startMenu = "$env:appdata\Microsoft\Windows\Start Menu\Programs\Accessibility"
+    $voiceExe = "$env:windir\System32\voiceaccess.exe"
+
+    if ($backup) {
+        Write-Status -msg 'Backing up Voice Access - '
+        LogInfo 'Backing up Voice Access'
+        if (!(Test-Path $backupPath)) {
+            New-Item $backupPath -Force -ItemType Directory | Out-Null
+        }
+        Copy-Item $voiceExe -Destination $backupPath -Force -ErrorAction SilentlyContinue | Out-Null
+        Copy-Item "$startMenu\VoiceAccess.lnk" -Destination $backupPath -Force -ErrorAction SilentlyContinue | Out-Null
+        Write-ConsoleStatus -Status success
+    }
+
+    if ($revert) {
+        if ((Test-Path "$backupPath\VoiceAccess.exe") -and (Test-Path "$backupPath\VoiceAccess.lnk")) {
+            Write-Status -msg 'Restoring Voice Access - '
+            LogInfo 'Restoring Voice Access'
+            Move-Item "$backupPath\VoiceAccess.exe" -Destination "$env:windir\System32" -Force | Out-Null
+            Move-Item "$backupPath\VoiceAccess.lnk" -Destination $startMenu -Force | Out-Null
+            Write-ConsoleStatus -Status success
+        }
+        else {
+            LogError 'Voice Access Backup NOT Found!'
+        }
+    }
+    else {
+        Write-Status -msg 'Removing Voice Access - '
+        LogInfo 'Removing Voice Access'
+        $command = "Remove-item -path $env:windir\System32\voiceaccess.exe -force -ErrorAction SilentlyContinue -Recurse | Out-Null"
+        RunTrusted -command $command -psversion $psversion -logFile $logFile
+        Start-Sleep 1
+        Remove-Item "$startMenu\VoiceAccess.lnk" -Force -ErrorAction SilentlyContinue
+        Write-ConsoleStatus -Status success
+    }
 }
 
 # Install or remove a custom update package that blocks AI package reinstallation.
@@ -2878,6 +2881,7 @@ if ($nonInteractive) {
             'HideAIComponents' { Hide-AI-Components }
             'DisableRewrite' { Disable-Notepad-Rewrite }
             'RemoveRecallTasks' { Remove-Recall-Tasks }
+            'RemoveVoiceAccess' { Remove-Voice-Access }
         }
     }
 }
@@ -2898,6 +2902,7 @@ else {
         'Hide-AI-Components'             = 'Hides AI components in Windows Settings by modifying the SettingsPageVisibility policy to prevent user access to AI settings.'
         'Disable-Notepad-Rewrite'        = 'Disables the AI Rewrite feature in Windows Notepad through registry modifications and group policy settings.'
         'Remove-Recall-Tasks'            = 'Removes Recall-related scheduled tasks from the Windows Task Scheduler to prevent AI data collection processes from running.'
+        'Remove-Voice-Access'            = 'Backs up and removes Voice Access, or restores it again in revert mode. Left off by default because it can freeze on some systems.'
     }
 
     $window = New-Object System.Windows.Window
@@ -3034,7 +3039,8 @@ else {
         'Remove-AI-Files'               
         'Hide-AI-Components'            
         'Disable-Notepad-Rewrite'       
-        'Remove-Recall-Tasks'           
+        'Remove-Recall-Tasks'
+        'Remove-Voice-Access'
     )
 
     foreach ($func in $functions) {
@@ -3049,6 +3055,9 @@ else {
         $checkbox.Margin = '0,0,10,0'
         $checkbox.VerticalAlignment = 'Center'
         $checkbox.IsChecked = $true
+        if ($func -eq 'Remove-Voice-Access') {
+            $checkbox.IsChecked = $false
+        }
         [System.Windows.Controls.DockPanel]::SetDock($checkbox, 'Left')
         $checkboxes[$func] = $checkbox
     
@@ -3079,18 +3088,18 @@ else {
         $infoButton.Template = [System.Windows.Markup.XamlReader]::Parse($infoTemplate)
     
         $infoButton.Add_Click({
-                param($sender, $e)
+                param($eventSource, $e)
                 $funcName = $functions | Where-Object { $checkboxes[$_] -eq $optionContainer.Children[0] }
                 if (!$funcName) {
                     # Find the function name by looking at the parent container
-                    $parentContainer = $sender.Parent
+                    $parentContainer = $eventSource.Parent
                     $checkboxInContainer = $parentContainer.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] }
                     $funcName = $functions | Where-Object { ($checkboxes[$_].Content -replace ' ', '-') -eq ($checkboxInContainer.Content -replace ' ', '-') }
                 }
         
                 # Find the correct function name
                 foreach ($f in $functions) {
-                    if ($checkboxes[$f].Parent -eq $sender.Parent) {
+                    if ($checkboxes[$f].Parent -eq $eventSource.Parent) {
                         $funcName = $f
                         break
                     }
@@ -3501,6 +3510,7 @@ $progressWindow = New-Object System.Windows.Window
                         'Hide-AI-Components' { Hide-AI-Components }
                         'Disable-Notepad-Rewrite' { Disable-Notepad-Rewrite }
                         'Remove-Recall-Tasks' { Remove-Recall-Tasks }
+                        'Remove-Voice-Access' { Remove-Voice-Access }
                     }
             
                     Start-Sleep -Milliseconds 500

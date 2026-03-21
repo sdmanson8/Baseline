@@ -2135,7 +2135,13 @@ function WindowsFeatures
 	[string[]]$UncheckedFeatures = @(
 		# Media Features
 		# If you want to leave "Multimedia settings" in the advanced settings of Power Options do not disable this feature
-		"MediaPlayback"
+		"MediaPlayback",
+
+		# Windows Sandbox
+		"Containers-DisposableClientVM",
+
+		# Windows Defender Application Guard
+		"Windows-Defender-ApplicationGuard"
 	)
 	#endregion Variables
 
@@ -2434,12 +2440,12 @@ function WindowsFeatures
 		# Show window, if minimized
 		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 
-		Start-Sleep -Seconds 1
+		Start-Sleep -Milliseconds 150
 
 		# Force move the console window to the foreground
 		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
 
-		Start-Sleep -Seconds 1
+		Start-Sleep -Milliseconds 150
 
 		# Emulate the Backspace key sending
 		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
@@ -2455,7 +2461,8 @@ function WindowsFeatures
 	$Window.Title = $Localization.WindowsFeaturesTitle
 
 	# Restore minimized dialogs and bring them to the foreground once when shown.
-	Initialize-WpfWindowForeground -Window $Form
+	$Form.Topmost = $true
+	$Form.Activate()
 	$Form.ShowDialog() | Out-Null
 }
 
@@ -2518,7 +2525,10 @@ function WindowsCapabilities
 
 		# Windows Media Player
 		# If you want to leave "Multimedia settings" element in the advanced settings of Power Options do not uninstall this feature
-		"Media.WindowsMediaPlayer*"
+		"Media.WindowsMediaPlayer*",
+
+		# Voice Access / related speech capability entries
+		"*VoiceAccess*"
 	)
 
 	# The following optional features will be excluded from the display
@@ -2894,12 +2904,12 @@ function WindowsCapabilities
 		# Show window, if minimized
 		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 
-		Start-Sleep -Seconds 1
+		Start-Sleep -Milliseconds 150
 
 		# Force move the console window to the foreground
 		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
 
-		Start-Sleep -Seconds 1
+		Start-Sleep -Milliseconds 150
 
 		# Emulate the Backspace key sending
 		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
@@ -2915,7 +2925,7 @@ function WindowsCapabilities
 	$Window.Title = $Localization.OptionalFeaturesTitle
 
 	# Restore minimized dialogs and bring them to the foreground once when shown.
-	Initialize-WpfWindowForeground -Window $Form
+	$Form.Topmost = $true
 	$Form.ShowDialog() | Out-Null
 }
 

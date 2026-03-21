@@ -3040,7 +3040,9 @@ function UnpinTaskbarShortcuts
 		($env:PROCESSOR_ARCHITEW6432 -eq "ARM64") -or
 		([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64)
 	$IsWindows10 = [System.Environment]::OSVersion.Version.Build -lt 22000
-	$NeedsDeferredUnpin = $IsARM64 -or $IsWindows10
+	# ARM64 and Windows 10 already needed the STA-runspace path (original condition).
+	# AMD64 Windows 11 also needs it — direct COM shell verb calls silently do nothing on Win11 x64.
+	$NeedsDeferredUnpin = $IsARM64 -or $IsWindows10 -or (-not $IsWindows10 -and -not $IsARM64)
 
 	function Get-TaskbarPinnedItems
 	{

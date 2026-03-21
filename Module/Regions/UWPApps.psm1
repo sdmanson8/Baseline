@@ -285,7 +285,7 @@ function UWPApps
 
             $Form = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $XAML))
 
-            if ($Form -eq $null)
+			if ($null -eq $Form)
             {
                 Write-Host "Failed to load XAML" -ForegroundColor Red
                 return
@@ -295,8 +295,8 @@ function UWPApps
                 Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
             }
 
-            $PanelContainer = $Form.FindName("PanelContainer")
-            if ($PanelContainer -eq $null)
+			$PanelContainer = $Form.FindName("PanelContainer")
+			if ($null -eq $PanelContainer)
             {
                 Write-Host "PanelContainer not found!" -ForegroundColor Red
                 return
@@ -729,6 +729,9 @@ function UWPApps
 				# Windows Camera
 				"Microsoft.WindowsCamera",
 
+				# Microsoft Teams
+				"MSTeams",
+
 				# Xbox Identity Provider
 				"Microsoft.XboxIdentityProvider",
 
@@ -972,6 +975,19 @@ function UWPApps
 				}
 			}
 
+			# Package names that can be reinstalled via the Install UWP Apps dialog.
+			# Apps NOT in this list get a warning label in the Uninstall picker.
+			$ReinstallablePackageNames = @(
+				'Microsoft.OutlookForWindows'
+				'Microsoft.WindowsCalculator'
+				'Microsoft.WindowsCamera'
+				'Microsoft.Windows.Photos'
+				'Microsoft.GamingServices'
+				'Microsoft.YourPhone'
+				'DolbyLaboratories.DolbyAccess'
+				'Microsoft.WindowsSoundRecorder'
+			)
+
 			function Add-Control
 			{
 				[CmdletBinding()]
@@ -1005,8 +1021,21 @@ function UWPApps
 						}
 
 						$StackPanel = New-Object -TypeName System.Windows.Controls.StackPanel
+						$StackPanel.Orientation = 'Horizontal'
 						$StackPanel.Children.Add($CheckBox) | Out-Null
 						$StackPanel.Children.Add($TextBlock) | Out-Null
+
+						# Warn if the app cannot be reinstalled via the Install dialog
+						if ($Package.Name -notin $ReinstallablePackageNames)
+						{
+							$warnTb = New-Object -TypeName System.Windows.Controls.TextBlock
+							$warnTb.Text       = "  (cannot reinstall from Store)"
+							$warnTb.Foreground  = [System.Windows.Media.Brushes]::IndianRed
+							$warnTb.FontSize    = 11
+							$warnTb.FontStyle   = [System.Windows.FontStyles]::Italic
+							$warnTb.VerticalAlignment = 'Center'
+							$StackPanel.Children.Add($warnTb) | Out-Null
+						}
 
 						$PanelContainer.Children.Add($StackPanel) | Out-Null
 
@@ -1043,8 +1072,14 @@ function UWPApps
 				# & "$env:SystemRoot\System32\msiexec.exe" --% /x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn
 				if ($PackagesToRemove -match "MSTeams")
 				{
-					$MSIProcess = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList "/x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
-					if ($MSIProcess.ExitCode -ne 0)
+					$MSIProcess = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList "/x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn" -PassThru -WindowStyle Hidden -ErrorAction Stop
+						$teamsRemovalFinished = $MSIProcess.WaitForExit(60000)
+						if (-not $teamsRemovalFinished)
+						{
+							LogError "msiexec timed out removing Teams Meeting Add-in - killing process"
+							$MSIProcess.Kill()
+						}
+					elseif ($MSIProcess.ExitCode -ne 0)
 					{
 						LogError "msiexec failed to remove the Teams Meeting Add-in with exit code $($MSIProcess.ExitCode)"
 					}
@@ -1706,16 +1741,17 @@ function RevertStartMenu
 			}
 			catch
 			{
-				if ($_.Exception.Message -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
-				{
-					LogWarning "$DownloadFailedMessage Error: $($_.Exception.Message)"
-					Write-Host "skipped!" -ForegroundColor Yellow
-				}
-				else
-				{
-					LogError "Failed to disable Revert Start Menu: $($_.Exception.Message)"
-					Write-ConsoleStatus -Status failed
-				}
+					$revertDisableError = $_.Exception.Message
+					if ($revertDisableError -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
+					{
+						LogWarning ("{0} Error: {1}" -f $DownloadFailedMessage, $revertDisableError)
+						Write-Host "skipped!" -ForegroundColor Yellow
+					}
+					else
+					{
+						LogError ("Failed to disable Revert Start Menu: {0}" -f $revertDisableError)
+						Write-ConsoleStatus -Status failed
+					}
 			}
 		}
 	}

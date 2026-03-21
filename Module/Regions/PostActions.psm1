@@ -146,8 +146,28 @@ public static void PostMessage()
 		}
 	}
 
-	# Open Startup page
-	[System.Diagnostics.Process]::Start("ms-settings:startupapps")
+	# Open Startup page — wait for the explorer shell to be fully running after the
+	# restart above, then use cmd /c start which correctly dispatches ms-settings:
+	# URIs from an elevated process without triggering the file-system error dialog.
+	try
+	{
+		$shellReady = $false
+		for ($w = 0; $w -lt 20; $w++)
+		{
+			if (Get-Process -Name explorer -ErrorAction SilentlyContinue)
+			{
+				$shellReady = $true
+				break
+			}
+			Start-Sleep -Milliseconds 500
+		}
+		if ($shellReady)
+		{
+			Start-Sleep -Milliseconds 500  # brief extra settle time
+			cmd /c "start ms-settings:startupapps" 2>$null | Out-Null
+		}
+	}
+	catch { }
 
 <#
 	# Checking whether any of scheduled tasks were created. Unless open Task Scheduler

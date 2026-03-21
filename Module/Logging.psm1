@@ -2,11 +2,12 @@
     .SYNOPSIS
     Logging module for Win10_11Util.
 
-	.VERSION
-	1.0.0
+    .VERSION
+	2.0.0
 
 	.DATE
 	17.03.2026 - initial version
+	21.03.2026 - Added GUI
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -23,6 +24,7 @@ $script:LogStatistics = @{
     Warning = 0
     Error = 0
 }
+$script:UILogHandler = $null
 
 function Reset-LogStatistics {
     $script:LogStatistics = @{
@@ -112,6 +114,17 @@ function Write-LogMessage {
         'INFO' { $script:LogStatistics.Info++ }
         'WARNING' { $script:LogStatistics.Warning++ }
         'ERROR' { $script:LogStatistics.Error++ }
+    }
+
+    if ($script:UILogHandler) {
+        try {
+            & $script:UILogHandler ([PSCustomObject]@{
+                Kind = 'Log'
+                Level = $Level
+                Message = $Message
+            })
+        }
+        catch { }
     }
     
     # Show log output in the console only when explicitly requested.
@@ -228,6 +241,18 @@ function Get-LogStatistics {
     }
 }
 
+function Set-UILogHandler {
+    param(
+        [Parameter(Mandatory=$true)]
+        [scriptblock]$Handler
+    )
+    $script:UILogHandler = $Handler
+}
+
+function Clear-UILogHandler {
+    $script:UILogHandler = $null
+}
+
 function Write-ConsoleStatus {
     [CmdletBinding()]
     param(
@@ -237,12 +262,25 @@ function Write-ConsoleStatus {
         [string]$Status
     )
 
+    $writeToHost = (-not $Global:GUIMode)
+
     if ([string]::IsNullOrWhiteSpace($Action) -and [string]::IsNullOrWhiteSpace($Status)) {
         throw "Write-ConsoleStatus requires -Action, -Status, or both."
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Action) -and [string]::IsNullOrWhiteSpace($Status)) {
-        Write-Host ("{0} - " -f $Action) -NoNewline
+        if ($script:UILogHandler) {
+            try {
+                & $script:UILogHandler ([PSCustomObject]@{
+                    Kind = 'ConsoleAction'
+                    Action = $Action
+                })
+            }
+            catch { }
+        }
+        if ($writeToHost) {
+            Write-Host ("{0} - " -f $Action) -NoNewline
+        }
         return
     }
 
@@ -254,13 +292,36 @@ function Write-ConsoleStatus {
     }
 
     if ([string]::IsNullOrWhiteSpace($Action)) {
-        Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
+        if ($script:UILogHandler) {
+            try {
+                & $script:UILogHandler ([PSCustomObject]@{
+                    Kind = 'ConsoleStatus'
+                    Status = $statusText
+                })
+            }
+            catch { }
+        }
+        if ($writeToHost) {
+            Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
+        }
         return
     }
 
-    Write-Host ("{0} - " -f $Action) -NoNewline
-    Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
+    if ($script:UILogHandler) {
+        try {
+            & $script:UILogHandler ([PSCustomObject]@{
+                Kind = 'ConsoleComplete'
+                Action = $Action
+                Status = $statusText
+            })
+        }
+        catch { }
+    }
+    if ($writeToHost) {
+        Write-Host ("{0} - " -f $Action) -NoNewline
+        Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
+    }
 }
 
 # Export the logging functions used by the loader and region modules.
-Export-ModuleMember -Function Set-LogFile, Reset-LogStatistics, Get-LogStatistics, LogInfo, LogWarning, LogError, Write-LogMessage, Write-ConsoleStatus
+Export-ModuleMember -Function Set-LogFile, Reset-LogStatistics, Get-LogStatistics, Set-UILogHandler, Clear-UILogHandler, LogInfo, LogWarning, LogError, Write-LogMessage, Write-ConsoleStatus

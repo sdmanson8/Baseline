@@ -32,8 +32,6 @@ function InitialActions
 	LogInfo "Starting WinUtil Script for $osName" -addGap
 
 	LogInfo "Beginning Initial Checks:"
-	Clear-Host
-	Write-Host "Please Wait...."
 
 	# Clear the $Error variable
 	$Global:Error.Clear()
@@ -796,6 +794,27 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 			}
 		}
 		until ($Choice -ne $Script:KeyboardArrows)
+	}
+
+	if ($Global:LoadingSplash -and $Global:LoadingSplash.IsAlive)
+	{
+		try
+		{
+			$Global:LoadingSplash.Dispatcher.Invoke([Action]{
+				try
+				{
+					$statusText = $Global:LoadingSplash.Window.FindName('StatusText')
+					if ($statusText)
+					{
+						$statusText.Text = 'Please wait — opening GUI...'
+					}
+				}
+				catch { $null = $_ }
+			})
+			# Do NOT close the splash here — Show-TweakGUI will close it once the
+			# main window is fully built and ready to display.
+		}
+		catch { $null = $_ }
 	}
 
 	LogInfo "Initial Checks finished, continuing with Main Script" -addGap

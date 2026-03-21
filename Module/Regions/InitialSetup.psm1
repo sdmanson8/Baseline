@@ -234,6 +234,71 @@ Function Update-Powershell
         ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
     }
 
+    function Invoke-DownloadFile
+    {
+        param
+        (
+            [Parameter(Mandatory = $true)]
+            [string]
+            $Uri,
+
+            [Parameter(Mandatory = $true)]
+            [string]
+            $OutFile,
+
+            [int]
+            $MaxAttempts = 3
+        )
+
+        try
+        {
+            [Net.ServicePointManager]::SecurityProtocol = `
+                [Net.SecurityProtocolType]::Tls12 -bor `
+                [Net.SecurityProtocolType]::Tls11 -bor `
+                [Net.SecurityProtocolType]::Tls
+        }
+        catch
+        {
+        }
+
+        $attemptErrors = [System.Collections.Generic.List[string]]::new()
+        for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)
+        {
+            try
+            {
+                Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+                if (Test-Path -LiteralPath $OutFile)
+                {
+                    return
+                }
+            }
+            catch
+            {
+                $attemptErrors.Add("attempt ${attempt}: $($_.Exception.Message)")
+                Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds ([Math]::Min($attempt * 2, 5))
+            }
+        }
+
+        try
+        {
+            $webClient = New-Object System.Net.WebClient
+            $webClient.Headers['User-Agent'] = 'Win10_11Util'
+            $webClient.DownloadFile($Uri, $OutFile)
+            if (Test-Path -LiteralPath $OutFile)
+            {
+                return
+            }
+        }
+        catch
+        {
+            $attemptErrors.Add("webclient fallback: $($_.Exception.Message)")
+            Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+        }
+
+        throw ("Failed to download '{0}'. {1}" -f $Uri, ($attemptErrors -join ' | '))
+    }
+
     function Install-PowerShellViaMsi
     {
         param
@@ -248,7 +313,7 @@ Function Update-Powershell
         $msiPath = Join-Path $env:TEMP "PowerShell-$normalizedVersion-win-x64.msi"
 
         LogInfo "Downloading PowerShell MSI from $msiUrl"
-        Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing -ErrorAction Stop
+        Invoke-DownloadFile -Uri $msiUrl -OutFile $msiPath
 
         try
         {
@@ -362,9 +427,8 @@ Function Update-Powershell
 					'--accept-source-agreements'
 				)
 
-				# Launch WinGet in its own elevated process so its output does not pollute the active console.
-				# Any native installer/progress UI remains visible in the spawned window.
-				$PowerShellInstallProcess = Start-Process -FilePath $wingetPath -ArgumentList $wingetArgs -Verb RunAs -Wait -PassThru -ErrorAction Stop
+				# Launch WinGet elevated without leaving a visible console host behind.
+				$PowerShellInstallProcess = Start-Process -FilePath $wingetPath -ArgumentList $wingetArgs -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
 				if ($PowerShellInstallProcess.ExitCode -ne 0)
 				{
 					$wingetExitCodeHex = ('0x{0:X8}' -f ($PowerShellInstallProcess.ExitCode -band 0xFFFFFFFF))
@@ -382,9 +446,9 @@ Function Update-Powershell
 						LogWarning "WinGet source certificate validation failed. Resetting sources and retrying once."
 						try
 						{
-							Start-Process -FilePath $wingetPath -ArgumentList @('source', 'reset', '--force') -Verb RunAs -Wait -PassThru -ErrorAction Stop | Out-Null
-							Start-Process -FilePath $wingetPath -ArgumentList @('source', 'update') -Verb RunAs -Wait -PassThru -ErrorAction Stop | Out-Null
-							$PowerShellInstallProcess = Start-Process -FilePath $wingetPath -ArgumentList $wingetArgs -Verb RunAs -Wait -PassThru -ErrorAction Stop
+							Start-Process -FilePath $wingetPath -ArgumentList @('source', 'reset', '--force') -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop | Out-Null
+							Start-Process -FilePath $wingetPath -ArgumentList @('source', 'update') -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop | Out-Null
+							$PowerShellInstallProcess = Start-Process -FilePath $wingetPath -ArgumentList $wingetArgs -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
 						}
 						catch
 						{

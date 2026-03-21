@@ -2,11 +2,12 @@
     .SYNOPSIS
     Loader module for Win10_11Util.
  
-	.VERSION
-	1.0.0
+    .VERSION
+	2.0.0
 
 	.DATE
 	17.03.2026 - initial version
+	21.03.2026 - Added GUI
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -75,7 +76,7 @@ function Restart-Script
 			$argList += $Functions
 		}
 
-		Start-Process -FilePath $powershell51 -ArgumentList $argList
+		Start-Process -FilePath $powershell51 -ArgumentList $argList -WindowStyle Hidden
 		[Environment]::Exit(0)
 	}
 }
@@ -97,7 +98,13 @@ $excludedRegionFiles = @(
 foreach ($core in $coreFiles) {
     $corePath = Join-Path $RegionDir $core
     if (Test-Path -LiteralPath $corePath) {
-        Import-Module -Name $corePath -Force -Global
+        try {
+            Import-Module -Name $corePath -Force -Global -ErrorAction Stop
+        }
+        catch {
+            LogError "Failed to import region module '$core': $($_.Exception.Message)"
+            throw
+        }
     }
 }
 
@@ -105,7 +112,13 @@ Get-ChildItem -Path $RegionDir -Filter '*.psm1' -File |
     Where-Object { $_.Name -notin $coreFiles -and $_.Name -notin $excludedRegionFiles } |
     Sort-Object Name |
     ForEach-Object {
-        Import-Module -Name $_.FullName -Force -Global
+        try {
+            Import-Module -Name $_.FullName -Force -Global -ErrorAction Stop
+        }
+        catch {
+            LogError "Failed to import region module '$($_.Name)': $($_.Exception.Message)"
+            throw
+        }
     }
 
 Export-ModuleMember -Function *
