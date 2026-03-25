@@ -1,1576 +1,178 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region System
 <#
-	.SYNOPSIS
-	Enable or disable the Windows lock screen
+.SYNOPSIS
+Create or remove the desktop shortcut that reboots into Advanced Startup.
 
-	.PARAMETER Enable
-	Enable the Windows lock screen (default value)
+.EXAMPLE
+AdvancedStartupShortcut -Enable
+
+.EXAMPLE
+AdvancedStartupShortcut -Disable
+
+.NOTES
+Current user
+#>
+function AdvancedStartupShortcut {
+    [CmdletBinding(DefaultParameterSetName = 'Enable')]
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+        [switch]$Enable,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+        [switch]$Disable
+    )
+
+    $desktopPath = Get-AdvancedStartupDesktopDirectory
+    if ([string]::IsNullOrWhiteSpace($desktopPath)) {
+        Write-ConsoleStatus -Action "Configuring Advanced Startup shortcut" -Status failed
+        LogError 'Unable to resolve the Desktop directory for the Advanced Startup shortcut'
+        return
+    }
+
+    $shortcutPath = Join-Path $desktopPath 'Advanced Startup (REBOOT).lnk'
+
+    if ($Disable) {
+        $hadIssue = $false
+        Write-ConsoleStatus -Action "Removing Advanced Startup shortcut"
+
+        foreach ($pathToRemove in @($shortcutPath, (Get-AdvancedStartupCommandPath))) {
+            try {
+                if (Test-Path -LiteralPath $pathToRemove) {
+                    Remove-Item -LiteralPath $pathToRemove -Force -ErrorAction Stop
+                    LogInfo "Removed Advanced Startup asset: $pathToRemove"
+                }
+            }
+            catch {
+                $hadIssue = $true
+                LogWarning "Failed to remove Advanced Startup asset $pathToRemove : $_"
+            }
+        }
+
+        if ($hadIssue) {
+            Write-ConsoleStatus -Status warning
+        }
+        else {
+            Write-ConsoleStatus -Status success
+        }
+
+        return
+    }
+
+    $hadIssue = $false
+    Write-ConsoleStatus -Action "Creating Advanced Startup shortcut"
+
+    try {
+        if (-not (Enable-AdvancedStartupWindowsRecoveryEnvironment)) {
+            $hadIssue = $true
+        }
+
+        $commandPath = Set-AdvancedStartupCommandFile
+        $downloadsPath = Get-AdvancedStartupDownloadsDirectory
+        $iconLocation = Get-AdvancedStartupIconLocation -DownloadsPath $downloadsPath
+
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut.TargetPath = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $shortcut.Arguments = Get-AdvancedStartupShortcutArguments -CommandPath $commandPath
+        $shortcut.WorkingDirectory = $env:WINDIR
+        $shortcut.Description = 'Reboot directly into Advanced Startup options.'
+
+        $iconPath = ($iconLocation -split ',', 2)[0].Trim()
+        if (-not [string]::IsNullOrWhiteSpace($iconPath) -and (Test-Path -LiteralPath $iconPath)) {
+            $shortcut.IconLocation = $iconLocation
+        }
+
+        $shortcut.Save()
+        LogInfo 'Created Advanced Startup desktop shortcut'
+    }
+    catch {
+        $hadIssue = $true
+        LogWarning "Failed to create Advanced Startup shortcut: $_"
+    }
+
+    if ($hadIssue) {
+        Write-ConsoleStatus -Status warning
+    }
+    else {
+        Write-ConsoleStatus -Status success
+    }
+}
+
+<#
+	.SYNOPSIS
+	Automatic installing suggested apps
 
 	.PARAMETER Disable
-	Disable the Windows lock screen
+	Turn off automatic installing suggested apps
+
+	.PARAMETER Enable
+	Turn on automatic installing suggested apps (default value)
 
 	.EXAMPLE
-	LockScreen -Enable
+	AppsSilentInstalling -Disable
 
 	.EXAMPLE
-	LockScreen -Disable
+	AppsSilentInstalling -Enable
 
 	.NOTES
 	Current user
 #>
-function LockScreen
+function AppsSilentInstalling
 {
 	param
 	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
 		[Parameter(
 			Mandatory = $true,
 			ParameterSetName = "Disable"
 		)]
 		[switch]
-		$Disable
-	)
+		$Disable,
 
-	$OS = (Get-CimInstance Win32_OperatingSystem).Caption
-
-	if ($OS -notlike "*Windows 11*")
-	{
-		#LogInfo "LockScreen skipped - Not Windows 11"
-		return
-	}
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling the Windows lockscreen"
-			LogInfo "Enabling the Windows lockscreen"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable the Windows lock screen: $($_.Exception.Message)"
-			}
-		}
-
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling the Windows lockscreen"
-			LogInfo "Disabling the Windows lockscreen"
-
-			try
-			{
-				if (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization"))
-				{
-					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable the Windows lock screen: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Enable or disable the Windows 10 RS1-style lock screen task workaround.
-
-	.DESCRIPTION
-	On supported Windows 10 systems, registers or removes the scheduled task
-	workaround used by this preset to keep the lock screen disabled.
-
-	.PARAMETER Enable
-	Enable the Windows lock screen on supported Windows 10 systems.
-
-	.PARAMETER Disable
-	Disable the Windows lock screen on supported Windows 10 systems.
-
-	.EXAMPLE
-	LockScreenRS1 -Enable
-
-	.EXAMPLE
-	LockScreenRS1 -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function LockScreenRS1
-{
-	param
-	(
-		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
-		[switch]$Enable,
-
-		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
-		[switch]$Disable
-	)
-
-	$OS = (Get-CimInstance Win32_OperatingSystem).Caption
-
-	if ($OS -notlike "*Windows 10*")
-	{
-		#LogInfo "LockScreenRS1 skipped - Not Windows 10"
-		return
-	}
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling the Windows lockscreen"
-			LogInfo "Enabling the Windows lockscreen"
-			try
-			{
-				$scheduledTask = Get-ScheduledTask -TaskName "Disable LockScreen" -ErrorAction Ignore
-				if ($null -ne $scheduledTask)
-				{
-					Unregister-ScheduledTask -TaskName "Disable LockScreen" -Confirm:$false -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable the Windows lock screen scheduled task workaround: $($_.Exception.Message)"
-			}
-		}
-
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling the Windows lockscreen"
-			LogInfo "Disabling the Windows lockscreen"
-
-			try
-			{
-				$service = New-Object -ComObject Schedule.Service
-				$service.Connect()
-
-				$task = $service.NewTask(0)
-				$task.Settings.DisallowStartIfOnBatteries = $false
-
-				$trigger = $task.Triggers.Create(9)
-				$trigger = $task.Triggers.Create(11)
-				$trigger.StateChange = 8
-
-				$action = $task.Actions.Create(0)
-				$action.Path = "reg.exe"
-				$action.Arguments = "add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\SessionData /t REG_DWORD /v AllowLockScreen /d 0 /f"
-
-				$service.GetFolder("\").RegisterTaskDefinition(
-					"Disable LockScreen",
-					$task,
-					6,
-					"NT AUTHORITY\SYSTEM",
-					$null,
-					4
-				) | Out-Null
-
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable the Windows lock screen scheduled task workaround: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Show or hide network options on the lock screen
-
-	.PARAMETER Enable
-	Allow network selection from the lock screen (default value)
-
-	.PARAMETER Disable
-	Prevent network selection from the lock screen
-
-	.EXAMPLE
-	NetworkFromLockScreen -Enable
-
-	.EXAMPLE
-	NetworkFromLockScreen -Disable
-
-	.NOTES
-	Current user
-#>
-# Network options from Lock Screen
-function NetworkFromLockScreen
-{
-	param
-	(
 		[Parameter(
 			Mandatory = $true,
 			ParameterSetName = "Enable"
 		)]
 		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling the Network options on the lockscreen"
-			LogInfo "Enabling the Network options on the lockscreen"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DontDisplayNetworkSelectionUI" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling the Network options on the lockscreen"
-			LogInfo "Disabling the Network options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DontDisplayNetworkSelectionUI" -Type DWord -Value 1 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Shutdown option on the lock screen
-
-	.PARAMETER Enable
-	Allow shutdown from the lock screen (default value)
-
-	.PARAMETER Disable
-	Do not allow shutdown from the lock screen
-
-	.EXAMPLE
-	ShutdownFromLockScreen -Enable
-
-	.EXAMPLE
-	ShutdownFromLockScreen -Disable
-
-	.NOTES
-	Current user
-#>
-# Shutdown options from Lock Screen
-function ShutdownFromLockScreen
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling the shutdown options on the lockscreen"
-			LogInfo "Enabling the shutdown options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ShutdownWithoutLogon" -Type DWord -Value 1 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling the shutdown options on the lockscreen"
-			LogInfo "Disabling the shutdown options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ShutdownWithoutLogon" -Type DWord -Value 0 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-    .SYNOPSIS
-    Lock screen blur effect
-
-    .PARAMETER Enable
-    Enable lock screen blur effect (default value)
-
-    .PARAMETER Disable
-    Disable lock screen blur effect
-
-    .EXAMPLE
-    LockScreenBlur -Enable
-
-    .EXAMPLE
-    LockScreenBlur -Disable
-
-    .NOTES
-    Current user
-#>
-# Lock screen Blur - Applicable since 1903
-function LockScreenBlur
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling blurring of the lockscreen"
-			LogInfo "Enabling blurring of the lockscreen"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DisableAcrylicBackgroundOnLogon" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Enabling blurring of the lockscreen"
-			LogInfo "Enabling blurring of the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DisableAcrylicBackgroundOnLogon" -Type DWord -Value 1 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Task Manager details view in Windows 10 and later
-
-	.PARAMETER Enable
-	Always show full details view in Task Manager
-
-	.PARAMETER Disable
-	Revert Task Manager to default summary view
-
-	.EXAMPLE
-	TaskManagerDetails -Enable
-
-	.EXAMPLE
-	TaskManagerDetails -Disable
-
-	.NOTES
-	Current user
-	Anniversary Update workaround. The GPO used in DisableTaskManagerDetails has been broken in 1607 and fixed again in 1803
-#>
-function TaskManagerDetails
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Task Manager detailed view"
-			LogInfo "Enabling Task Manager detailed view"
-			try
-			{
-				$taskmgr = Start-Process -WindowStyle Hidden -FilePath taskmgr.exe -PassThru -ErrorAction Stop
-				$timeout = 30000
-				$sleep = 100
-				Do {
-					Start-Sleep -Milliseconds $sleep
-					$timeout -= $sleep
-					$preferences = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -ErrorAction SilentlyContinue
-				} Until ($preferences -or $timeout -le 0)
-				Stop-Process $taskmgr -ErrorAction SilentlyContinue | Out-Null
-				If ($preferences) {
-					$preferences.Preferences[28] = 0
-					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -Type Binary -Value $preferences.Preferences -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable Task Manager detailed view: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Task Manager detailed view"
-			LogInfo "Disabling Task Manager detailed view"
-			try
-			{
-				$preferences = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -ErrorAction SilentlyContinue
-				If ($preferences) {
-					$preferences.Preferences[28] = 1
-					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -Type Binary -Value $preferences.Preferences -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable Task Manager detailed view: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	File operation progress details in File Explorer
-
-	.PARAMETER Enable
-	Show detailed file operation progress information
-
-	.PARAMETER Disable
-	Hide detailed file operation progress information
-
-	.EXAMPLE
-	FileOperationsDetails -Enable
-
-	.EXAMPLE
-	FileOperationsDetails -Disable
-
-	.NOTES
-	Current user
-#>
-function FileOperationsDetails
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling detailed file progress information"
-			LogInfo "Enabling detailed file progress information"
-			try
-			{
-				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager")) {
-					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name "EnthusiastMode" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable detailed file operation information: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling detailed file progress information"
-			LogInfo "Disabling detailed file progress information"
-			try
-			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name "EnthusiastMode" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name "EnthusiastMode" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable detailed file operation information: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	File delete confirmation dialog in File Explorer
-
-	.PARAMETER Enable
-	Show confirmation dialog when deleting files
-
-	.PARAMETER Disable
-	Do not show confirmation dialog when deleting files (default value)
-
-	.EXAMPLE
-	FileDeleteConfirm -Enable
-
-	.EXAMPLE
-	FileDeleteConfirm -Disable
-
-	.NOTES
-	Current user
-#>
-function FileDeleteConfirm
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling confirmation dialog when deleting files"
-			LogInfo "Enabling confirmation dialog when deleting files"
-			try
-			{
-				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
-					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "ConfirmFileDelete" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable file delete confirmation: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling confirmation dialog when deleting files"
-			LogInfo "Disabling confirmation dialog when deleting files"
-			try
-			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "ConfirmFileDelete" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "ConfirmFileDelete" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable file delete confirmation: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Notification area tray icons visibility in Windows
-
-	.PARAMETER Enable
-	Always show all notification area tray icons
-
-	.PARAMETER Disable
-	Allow Windows to hide inactive notification area tray icons (default value)
-
-	.EXAMPLE
-	TrayIcons -Enable
-
-	.EXAMPLE
-	TrayIcons -Disable
-
-	.NOTES
-	Current user
-#>
-function TrayIcons
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling all notification area tray icons"
-			LogInfo "Enabling all notification area tray icons"
-			try
-			{
-				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
-					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoAutoTrayNotify" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable all notification area tray icons: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling all notification area tray icons"
-			LogInfo "Disabling all notification area tray icons"
-			try
-			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoAutoTrayNotify" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoAutoTrayNotify" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable all notification area tray icons: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Search for apps in Microsoft Store from Open with dialog
-
-	.PARAMETER Enable
-	Allow searching for apps in Microsoft Store from Open with dialog
-
-	.PARAMETER Disable
-	Prevent searching for apps in Microsoft Store from Open with dialog
-
-	.EXAMPLE
-	SearchAppInStore -Enable
-
-	.EXAMPLE
-	SearchAppInStore -Disable
-
-	.NOTES
-	Current user
-#>
-function SearchAppInStore
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling searching for apps in Microsoft Store from Open with dialog"
-			LogInfo "Enabling searching for apps in Microsoft Store from Open with dialog"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable searching for apps in Microsoft Store from Open with dialog: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling searching for apps in Microsoft Store from Open with dialog"
-			LogInfo "Disabling searching for apps in Microsoft Store from Open with dialog"
-			try
-			{
-				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
-					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable searching for apps in Microsoft Store from Open with dialog: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	How do you want to open this file prompt in Windows
-
-	.PARAMETER Enable
-	Show How do you want to open this file prompt
-
-	.PARAMETER Disable
-	Do not show How do you want to open this file prompt
-
-	.EXAMPLE
-	NewAppPrompt -Enable
-
-	.EXAMPLE
-	NewAppPrompt -Disable
-
-	.NOTES
-	Current user
-#>
-function NewAppPrompt
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling 'How do you want to open this file?' prompt"
-			LogInfo "Enabling 'How do you want to open this file?' prompt"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable the 'How do you want to open this file?' prompt: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling 'How do you want to open this file?' prompt"
-			LogInfo "Disabling 'How do you want to open this file?' prompt"
-			try
-			{
-				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
-					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable the 'How do you want to open this file?' prompt: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Recently added apps list in Start Menu
-
-	.PARAMETER Enable
-	Show recently added apps list in Start Menu
-
-	.PARAMETER Disable
-	Hide recently added apps list in Start Menu
-
-	.EXAMPLE
-	RecentlyAddedApps -Enable
-
-	.EXAMPLE
-	RecentlyAddedApps -Disable
-
-	.NOTES
-	Current user
-#>
-function RecentlyAddedApps
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling recently added apps list in Start Menu"
-			LogInfo "Enabling recently added apps list in Start Menu"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable recently added apps in Start Menu: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling recently added apps list in Start Menu"
-			LogInfo "Disabling recently added apps list in Start Menu"
-			try
-			{
-				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
-					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable recently added apps in Start Menu: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Most used apps list in Start Menu
-
-	.PARAMETER Enable
-	Show most used apps list in Start Menu
-
-	.PARAMETER Disable
-	Hide most used apps list in Start Menu
-
-	.EXAMPLE
-	MostUsedApps -Enable
-
-	.EXAMPLE
-	MostUsedApps -Disable
-
-	.NOTES
-	Current user
-#>
-function MostUsedApps
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling most used apps list in Start Menu"
-			LogInfo "Enabling most used apps list in Start Menu"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable most used apps in Start Menu: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling most used apps list in Start Menu"
-			LogInfo "Disabling most used apps list in Start Menu"
-			try
-			{
-				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
-					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable most used apps in Start Menu: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Windows visual effects performance and appearance settings
-
-	.PARAMETER Performance
-	Adjust visual effects for best performance
-
-	.PARAMETER Appearance
-	Adjust visual effects for best appearance (default value)
-
-	.EXAMPLE
-	VisualFX -Performance
-
-	.EXAMPLE
-	VisualFX -Appearance
-
-	.NOTES
-	Current user
-#>
-function VisualFX
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Performance"
-		)]
-		[switch]
-		$Performance,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Appearance"
-		)]
-		[switch]
-		$Appearance
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Performance"
-		# Adjusts visual effects for performance - Disables animations, transparency etc. but leaves font smoothing and miniatures enabled
-		{
-			Write-ConsoleStatus -Action "Adjusting visual effects for performance"
-			LogInfo "Adjusting visual effects for performance"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "DragFullWindows" -Type String -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "MenuShowDelay" -Type String -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "UserPreferencesMask" -Type Binary -Value ([byte[]](144,18,3,128,16,0,0,0)) -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop\WindowMetrics" -Name "MinAnimate" -Type String -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Keyboard" -Name "KeyboardDelay" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ListviewAlphaSelect" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ListviewShadow" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAnimations" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Type DWord -Value 3 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "EnableAeroPeek" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to adjust visual effects for performance: $($_.Exception.Message)"
-			}
-		}
-		"Appearance"
-		# Adjusts visual effects for appearance
-		{
-			Write-ConsoleStatus -Action "Adjusting visual effects for appearance"
-			LogInfo "Adjusting visual effects for appearance"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "DragFullWindows" -Type String -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "MenuShowDelay" -Type String -Value 400 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "UserPreferencesMask" -Type Binary -Value ([byte[]](158,30,7,128,18,0,0,0)) -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Desktop\WindowMetrics" -Name "MinAnimate" -Type String -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Keyboard" -Name "KeyboardDelay" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ListviewAlphaSelect" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ListviewShadow" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAnimations" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Type DWord -Value 3 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "EnableAeroPeek" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to adjust visual effects for appearance: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Window title bar color adapts to the prevalent background color
-
-	.PARAMETER Enable
-	Enable title bar color to match prevalent background color
-
-	.PARAMETER Disable
-	Disable title bar color adaptation to background (default value)
-
-	.EXAMPLE
-	TitleBarColor -Enable
-
-	.EXAMPLE
-	TitleBarColor -Disable
-
-	.NOTES
-	Current user
-#>
-function TitleBarColor
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling title bar color adaptation to background"
-			LogInfo "Enabling title bar color adaptation to background"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "ColorPrevalence" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable title bar color adaptation: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling title bar color adaptation to background"
-			LogInfo "Disabling title bar color adaptation to background"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "ColorPrevalence" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable title bar color adaptation: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Enhanced pointer precision (mouse acceleration) settings
-
-	.PARAMETER Enable
-	Enable enhanced pointer precision
-
-	.PARAMETER Disable
-	Disable enhanced pointer precision (default value)
-
-	.EXAMPLE
-	EnhPointerPrecision -Enable
-
-	.EXAMPLE
-	EnhPointerPrecision -Disable
-
-	.NOTES
-	Current user
-#>
-function EnhPointerPrecision
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling enhanced pointer precision"
-			LogInfo "Enabling enhanced pointer precision"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Type String -Value "1" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Type String -Value "6" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Type String -Value "10" -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable enhanced pointer precision: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling enhanced pointer precision"
-			LogInfo "Disabling enhanced pointer precision"
-			try
-			{
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Type String -Value "0" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Type String -Value "0" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Type String -Value "0" -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable enhanced pointer precision: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Play or disable Windows startup sound
-
-	.PARAMETER Enable
-	Play Windows startup sound
-
-	.PARAMETER Disable
-	Do not play Windows startup sound (default value)
-
-	.EXAMPLE
-	StartupSound -Enable
-
-	.EXAMPLE
-	StartupSound -Disable
-
-	.NOTES
-	Current user
-#>
-function StartupSound
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Windows startup sound"
-			LogInfo "Enabling Windows startup sound"
-			try
-			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable Windows startup sound: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Windows startup sound"
-			LogInfo "Disabling Windows startup sound"
-			try
-			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable Windows startup sound: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Allow or prevent changing Windows sound scheme
-
-	.PARAMETER Enable
-	Allow changing Windows sound scheme (default value)
-
-	.PARAMETER Disable
-	Prevent changing Windows sound scheme
-
-	.EXAMPLE
-	ChangingSoundScheme -Enable
-
-	.EXAMPLE
-	ChangingSoundScheme -Disable
-
-	.NOTES
-	Current user
-#>
-function ChangingSoundScheme
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling changing Windows sound scheme"
-			LogInfo "Enabling changing Windows sound scheme"
-			try
-			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoChangingSoundScheme" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoChangingSoundScheme" -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable changing Windows sound scheme: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling changing Windows sound scheme"
-			LogInfo "Disabling changing Windows sound scheme"
-			try
-			{
-				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization")) {
-					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoChangingSoundScheme" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable changing Windows sound scheme: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Verbose startup and shutdown status messages
-
-	.PARAMETER Enable
-	Show detailed status messages during startup and shutdown
-
-	.PARAMETER Disable
-	Hide detailed status messages during startup and shutdown (default value)
-
-	.EXAMPLE
-	VerboseStatus -Enable
-
-	.EXAMPLE
-	VerboseStatus -Disable
-
-	.NOTES
-	Current user
-#>
-function VerboseStatus
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling verbose Shutdown/Startup status messages"
-			LogInfo "Enabling verbose Shutdown/Startup status messages"
-			try
-			{
-				If ((Get-CimInstance -Class "Win32_OperatingSystem").ProductType -eq 1) {
-					Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				} Else {
-					Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -ErrorAction SilentlyContinue | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable verbose startup and shutdown status messages: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling verbose Shutdown/Startup status messages"
-			LogInfo "Disabling verbose Shutdown/Startup status messages"
-			try
-			{
-				If ((Get-CimInstance -Class "Win32_OperatingSystem").ProductType -eq 1) {
-					Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -ErrorAction SilentlyContinue | Out-Null
-				} Else {
-					Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				}
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable verbose startup and shutdown status messages: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Storage Sense
-
-	.PARAMETER Enable
-	Turn on Storage Sense
-
-	.PARAMETER Disable
-	Turn off Storage Sense
-
-	.EXAMPLE
-	StorageSense -Enable
-
-	.EXAMPLE
-	StorageSense -Disable
-
-	.NOTES
-	Current user
-#>
-function StorageSense
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
+		$Enable
 	)
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\StorageSense -Name AllowStorageSenseGlobal -Force -ErrorAction Ignore | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\StorageSense -Name AllowStorageSenseGlobal -Type CLEAR | Out-Null
-
-	if (-not (Test-Path -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy))
-	{
-		New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -ItemType Directory -Force | Out-Null
-	}
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent -Name DisableWindowsConsumerFeatures -Force -ErrorAction Ignore | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\CloudContent -Name DisableWindowsConsumerFeatures -Type CLEAR | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Storage Sense"
-			LogInfo "Enabling Storage Sense"
-			try
-			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 01 -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 04 -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 2048 -PropertyType DWord -Value 30 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable Storage Sense: $($_.Exception.Message)"
-			}
-		}
 		"Disable"
 		{
-			Write-ConsoleStatus -Action "Disabling Storage Sense"
-			LogInfo "Disabling Storage Sense"
+			Write-ConsoleStatus -Action "Disabling Automatic installing of suggested apps"
+			LogInfo "Disabling Automatic installing of suggested apps"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 01 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 04 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 2048 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SilentInstalledAppsEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable Storage Sense: $($_.Exception.Message)"
+				LogError "Failed to disable automatic installing of suggested apps: $($_.Exception.Message)"
+			}
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Automatic installing of suggested apps"
+			LogInfo "Enabling Automatic installing of suggested apps"
+			try
+			{
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SilentInstalledAppsEnabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable automatic installing of suggested apps: $($_.Exception.Message)"
 			}
 		}
 	}
@@ -1578,224 +180,67 @@ function StorageSense
 
 <#
 	.SYNOPSIS
-	Hibernation
+	Active hours
 
-	.PARAMETER Disable
-	Disable hibernation
+	.PARAMETER Automatically
+	Automatically adjust active hours for me based on daily usage
 
-	.PARAMETER Enable
-	Enable hibernation (default value)
-
-	.EXAMPLE
-	Hibernation -Enable
+	.PARAMETER Manually
+	Manually adjust active hours for me based on daily usage (default value)
 
 	.EXAMPLE
-	Hibernation -Disable
-
-	.NOTES
-	It isn't recommended to turn off for laptops
-
-	.NOTES
-	Current user
-#>
-function Hibernation
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Hibernation"
-			LogInfo "Disabling Hibernation"
-			try
-			{
-				POWERCFG /HIBERNATE OFF 2>$null | Out-Null
-				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable hibernation: $($_.Exception.Message)"
-			}
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Hibernation"
-			LogInfo "Enabling Hibernation"
-			try
-			{
-				POWERCFG /HIBERNATE ON 2>$null | Out-Null
-				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable hibernation: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	The Windows 260 character path limit
-
-	.PARAMETER Disable
-	Disable the Windows 260 character path limit
-
-	.PARAMETER Enable
-	Enable the Windows 260 character path limit (default value)
+	ActiveHours -Automatically
 
 	.EXAMPLE
-	Win32LongPathLimit -Disable
-
-	.EXAMPLE
-	Win32LongPathLimit -Enable
+	ActiveHours -Manually
 
 	.NOTES
 	Machine-wide
 #>
-function Win32LongPathLimit
+function ActiveHours
 {
 	param
 	(
 		[Parameter(
 			Mandatory = $true,
-			ParameterSetName = "Disable"
+			ParameterSetName = "Automatically"
 		)]
 		[switch]
-		$Disable,
+		$Automatically,
 
 		[Parameter(
 			Mandatory = $true,
-			ParameterSetName = "Enable"
+			ParameterSetName = "Manually"
 		)]
 		[switch]
-		$Enable
+		$Manually
 	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoRebootWithLoggedOnUsers, AlwaysAutoRebootAtScheduledTime -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoRebootWithLoggedOnUsers -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AlwaysAutoRebootAtScheduledTime -Type CLEAR | Out-Null
+
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd, ActiveHoursStart, SetActiveHours -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursStart -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetActiveHours -Type CLEAR | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
-		"Disable"
+		"Automatically"
 		{
-			Write-ConsoleStatus -Action "Disabling Windows 260 character path limit"
-			LogInfo "Disabling Windows 260 character path limit"
-			try
-			{
-				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable the Windows 260 character path limit: $($_.Exception.Message)"
-			}
+			Write-ConsoleStatus -Action "Automatically adjusting active hours for me based on daily usage"
+			LogInfo "Automatically adjusting active hours for me based on daily usage"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name SmartActiveHoursState -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
 		}
-		"Enable"
+		"Manually"
 		{
-			Write-ConsoleStatus -Action "Enabling Windows 260 character path limit"
-			LogInfo "Enabling Windows 260 character path limit"
-			try
-			{
-				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable the Windows 260 character path limit: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Stop error code when BSoD occurs
-
-	.PARAMETER Enable
-	Display Stop error code when BSoD occurs
-
-	.PARAMETER Disable
-	Do not display stop error code when BSoD occurs (default value)
-
-	.EXAMPLE
-	BSoDStopError -Enable
-
-	.EXAMPLE
-	BSoDStopError -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function BSoDStopError
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling BSoD Stop Error"
-			LogInfo "Enabling BSoD Stop Error"
-			try
-			{
-				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl -Name DisplayParameters -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable BSoD stop error details: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling BSoD Stop Error"
-			LogInfo "Disabling BSoD Stop Error"
-			try
-			{
-				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl -Name DisplayParameters -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable BSoD stop error details: $($_.Exception.Message)"
-			}
+			Write-ConsoleStatus -Action "Manually adjusting active hours for me based on daily usage"
+			LogInfo "Manually adjusting active hours for me based on daily usage"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name SmartActiveHoursState -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
 		}
 	}
 }
@@ -1889,6 +334,472 @@ function AdminApprovalMode
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to set UAC to the default notification level: $($_.Exception.Message)"
 			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	AutoPlay for all media and devices
+
+	.PARAMETER Disable
+	Don't use AutoPlay for all media and devices
+
+	.PARAMETER Enable
+	Use AutoPlay for all media and devices (default value)
+
+	.EXAMPLE
+	Autoplay -Disable
+
+	.EXAMPLE
+	Autoplay -Enable
+
+	.NOTES
+	Current user
+#>
+function Autoplay
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Type CLEAR | Out-Null
+	Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Type CLEAR | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling AutoPlay for all media and devices"
+			LogInfo "Disabling AutoPlay for all media and devices"
+			New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers -Name DisableAutoplay -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling AutoPlay for all media and devices"
+			LogInfo "Enabling AutoPlay for all media and devices"
+			New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers -Name DisableAutoplay -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Stop error code when BSoD occurs
+
+	.PARAMETER Enable
+	Display Stop error code when BSoD occurs
+
+	.PARAMETER Disable
+	Do not display stop error code when BSoD occurs (default value)
+
+	.EXAMPLE
+	BSoDStopError -Enable
+
+	.EXAMPLE
+	BSoDStopError -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function BSoDStopError
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling BSoD Stop Error"
+			LogInfo "Enabling BSoD Stop Error"
+			try
+			{
+				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl -Name DisplayParameters -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable BSoD stop error details: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling BSoD Stop Error"
+			LogInfo "Disabling BSoD Stop Error"
+			try
+			{
+				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl -Name DisplayParameters -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable BSoD stop error details: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Caps Lock
+
+	.PARAMETER Disable
+	Disable Caps Lock
+
+	.PARAMETER Enable
+	Enable Caps Lock (default value)
+
+	.EXAMPLE
+	CapsLock -Disable
+
+	.EXAMPLE
+	CapsLock -Enable
+
+	.NOTES
+	Machine-wide
+#>
+function CapsLock
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	Remove-ItemProperty -Path "HKCU:\Keyboard Layout" -Name Attributes -Force -ErrorAction SilentlyContinue | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Caps Lock"
+			LogInfo "Disabling Caps Lock"
+			New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -PropertyType Binary -Value ([byte[]](0,0,0,0,0,0,0,0,2,0,0,0,0,0,58,0,0,0,0,0)) -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Caps Lock"
+			LogInfo "Enabling Caps Lock"
+			Remove-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Client for Microsoft Networks configuration on all network interfaces
+
+	.PARAMETER Enable
+	Enable Client for Microsoft Networks on all installed network interfaces (default value)
+
+	.PARAMETER Disable
+	Disable Client for Microsoft Networks on all installed network interfaces
+
+	.EXAMPLE
+	MSNetClient -Enable
+
+	.EXAMPLE
+	MSNetClient -Disable
+
+	.NOTES
+	Current user
+#>
+function MSNetClient
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Microsoft Network clients on all installed network interfaces"
+			LogInfo "Enabling Microsoft Network clients on all installed network interfaces"
+			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_msclient" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Microsoft Network clients on all installed network interfaces"
+			LogInfo "Disabling Microsoft Network clients on all installed network interfaces"
+			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_msclient" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Set current network profile category
+
+	.PARAMETER Private
+	Set current network profile to Private
+
+	.PARAMETER Public
+	Set current network profile to Public
+
+	.EXAMPLE
+	CurrentNetwork -Private
+
+	.EXAMPLE
+	CurrentNetwork -Public
+
+	.NOTES
+	Current user
+#>
+function CurrentNetwork
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Private"
+		)]
+		[switch]
+		$Private,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Public"
+		)]
+		[switch]
+		$Public
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Private"
+		{
+			Write-ConsoleStatus -Action "Setting current network profile to Private"
+			LogInfo "Setting current network profile to Private"
+			try
+			{
+				Set-NetConnectionProfile -NetworkCategory Private -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status warning
+				LogWarning "Failed to set network profile to Private: $($_.Exception.Message)"
+				Remove-HandledErrorRecord -ErrorRecord $_
+			}
+		}
+		"Public"
+		{
+			Write-ConsoleStatus -Action "Setting current network profile to Public"
+			LogInfo "Setting current network profile to Public"
+			try
+			{
+				Set-NetConnectionProfile -NetworkCategory Public -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status warning
+				LogWarning "Failed to set network profile to Public: $($_.Exception.Message)"
+				Remove-HandledErrorRecord -ErrorRecord $_
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Override for default input method
+
+	.PARAMETER English
+	Override for default input method: English
+
+	.PARAMETER Default
+	Override for default input method: use language list (default value)
+
+	.EXAMPLE
+	InputMethod -English
+
+	.EXAMPLE
+	InputMethod -Default
+
+	.NOTES
+	Current user
+#>
+function InputMethod
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "English"
+		)]
+		[switch]
+		$English,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Default"
+		)]
+		[switch]
+		$Default
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"English"
+		{
+			Write-ConsoleStatus -Action "Setting override for default input method to English"
+			LogInfo "Setting override for default input method to English"
+			Set-WinDefaultInputMethodOverride -InputTip "0409:00000409" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Default"
+		{
+			Write-ConsoleStatus -Action "Setting override for default input method to use language list"
+			LogInfo "Setting override for default input method to use language list"
+			Remove-ItemProperty -Path "HKCU:\Control Panel\International\User Profile" -Name InputMethodOverride -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Default terminal app
+
+	.PARAMETER WindowsTerminal
+	Set Windows Terminal as default terminal app to host the user interface for command-line applications
+
+	.PARAMETER ConsoleHost
+	Set Windows Console Host as default terminal app to host the user interface for command-line applications (default value)
+
+	.EXAMPLE
+	DefaultTerminalApp -WindowsTerminal
+
+	.EXAMPLE
+	DefaultTerminalApp -ConsoleHost
+
+	.NOTES
+	Current user
+#>
+function DefaultTerminalApp
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "WindowsTerminal"
+		)]
+		[switch]
+		$WindowsTerminal,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "ConsoleHost"
+		)]
+		[switch]
+		$ConsoleHost
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"WindowsTerminal"
+		{
+			if (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue)
+			{
+				Write-ConsoleStatus -Action "Setting Windows Terminal as default terminal app"
+				LogInfo "Setting Windows Terminal as default terminal app"
+				# Checking if the Terminal version supports such feature
+				$TerminalVersion = (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue).Version
+				if ([System.Version]$TerminalVersion -ge [System.Version]"1.11")
+				{
+					if (-not (Test-Path -Path "HKCU:\Console\%%Startup"))
+					{
+						New-Item -Path "HKCU:\Console\%%Startup" -Force -ErrorAction SilentlyContinue | Out-Null
+					}
+
+					# Find the current GUID of Windows Terminal
+					$PackageFullName = (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue).PackageFullName
+					Get-ChildItem -Path "HKLM:\SOFTWARE\Classes\PackagedCom\Package\$PackageFullName\Class" | ForEach-Object -Process {
+						if ((Get-ItemPropertyValue -Path $_.PSPath -Name ServerId) -eq 0)
+						{
+							New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationConsole -PropertyType String -Value $_.PSChildName -Force -ErrorAction SilentlyContinue | Out-Null
+						}
+
+						if ((Get-ItemPropertyValue -Path $_.PSPath -Name ServerId) -eq 1)
+						{
+							New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationTerminal -PropertyType String -Value $_.PSChildName -Force -ErrorAction SilentlyContinue | Out-Null
+						}
+					}
+				}
+				Write-ConsoleStatus -Status success
+			}
+		}
+		"ConsoleHost"
+		{
+			Write-ConsoleStatus -Action "Setting Windows Console Host as default terminal app"
+			LogInfo "Setting Windows Console Host as default terminal app"
+			New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationConsole -PropertyType String -Value "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" -Force -ErrorAction SilentlyContinue | Out-Null
+			New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationTerminal -PropertyType String -Value "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
 		}
 	}
 }
@@ -1993,24 +904,24 @@ function DeliveryOptimization
 
 <#
 	.SYNOPSIS
-	Windows manages my default printer
+	Help look up via F1
 
 	.PARAMETER Disable
-	Do not let Windows manage my default printer
+	Disable help lookup via F1
 
 	.PARAMETER Enable
-	Let Windows manage my default printer (default value)
+	Enable help lookup via F1 (default value)
 
 	.EXAMPLE
-	WindowsManageDefaultPrinter -Disable
+	F1HelpPage -Disable
 
 	.EXAMPLE
-	WindowsManageDefaultPrinter -Enable
+	F1HelpPage -Enable
 
 	.NOTES
 	Current user
 #>
-function WindowsManageDefaultPrinter
+function F1HelpPage
 {
 	param
 	(
@@ -2029,38 +940,226 @@ function WindowsManageDefaultPrinter
 		$Enable
 	)
 
-	Set-Policy -Scope User -Path "Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -Type CLEAR | Out-Null
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling help look up via F1"
+			LogInfo "Disabling help look up via F1"
+			if (-not (Test-Path -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64"))
+			{
+				New-Item -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64" -Force | Out-Null
+			}
+			New-ItemProperty -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64" -Name "(default)" -PropertyType String -Value "" -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling help look up via F1"
+			LogInfo "Enabling help look up via F1"
+			Remove-Item -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}" -Recurse -Force -ErrorAction Ignore | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	SMB Server file and printer sharing configuration
+
+	.PARAMETER Enable
+	Enable SMB Server file and printer sharing
+
+	.PARAMETER Disable
+	Disable SMB Server file and printer sharing
+
+	.EXAMPLE
+	SMBServer -Enable
+
+	.EXAMPLE
+	SMBServer -Disable
+
+	.NOTES
+	Current user
+	Disabling prevents file and printer sharing but allows client connections
+	Do not disable if using Docker with shared drives as it uses SMB internally
+#>
+function SMBServer
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling SMB Server file and printer sharing"
+			LogInfo "Enabling SMB Server file and printer sharing"
+			Set-SmbServerConfiguration -EnableSMB2Protocol $true -Force | Out-Null
+			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_server" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling SMB Server file and printer sharing"
+			LogInfo "Disabling SMB Server file and printer sharing"
+			Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force | Out-Null
+			Set-SmbServerConfiguration -EnableSMB2Protocol $false -Force | Out-Null
+			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_server" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Windows latest updates
+
+	.PARAMETER Disable
+	Do not get the latest updates as soon as they're available (default value)
+
+	.PARAMETER Enable
+	Get the latest updates as soon as they're available
+
+	.EXAMPLE
+	WindowsLatestUpdate -Disable
+
+	.EXAMPLE
+	WindowsLatestUpdate -Enable
+
+	.NOTES
+	Machine-wide
+#>
+function WindowsLatestUpdate
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name AllowOptionalContent, SetAllowOptionalContent -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name AllowOptionalContent -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAllowOptionalContent -Type CLEAR | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Disable"
 		{
-			Write-ConsoleStatus -Action "Disabling 'Let Windows manage my default printer'"
-			LogInfo "Disabling 'Let Windows manage my default printer'"
+			Write-ConsoleStatus -Action "Disabling getting the latest updates as soon as they're available"
+			LogInfo "Disabling getting the latest updates as soon as they're available"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsContinuousInnovationOptedIn -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling getting the latest updates as soon as they're available"
+			LogInfo "Enabling getting the latest updates as soon as they're available"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsContinuousInnovationOptedIn -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Hibernation
+
+	.PARAMETER Disable
+	Disable hibernation
+
+	.PARAMETER Enable
+	Enable hibernation (default value)
+
+	.EXAMPLE
+	Hibernation -Enable
+
+	.EXAMPLE
+	Hibernation -Disable
+
+	.NOTES
+	It isn't recommended to turn off for laptops
+
+	.NOTES
+	Current user
+#>
+function Hibernation
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Hibernation"
+			LogInfo "Disabling Hibernation"
 			try
 			{
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				POWERCFG /HIBERNATE OFF 2>$null | Out-Null
+				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
 				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable 'Let Windows manage my default printer': $($_.Exception.Message)"
+				LogError "Failed to disable hibernation: $($_.Exception.Message)"
 			}
 		}
 		"Enable"
 		{
-			Write-ConsoleStatus -Action "Enabling 'Let Windows manage my default printer'"
-			LogInfo "Enabling 'Let Windows manage my default printer'"
+			Write-ConsoleStatus -Action "Enabling Hibernation"
+			LogInfo "Enabling Hibernation"
 			try
 			{
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				POWERCFG /HIBERNATE ON 2>$null | Out-Null
+				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
 				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable 'Let Windows manage my default printer': $($_.Exception.Message)"
+				LogError "Failed to enable hibernation: $($_.Exception.Message)"
 			}
 		}
 	}
@@ -2068,27 +1167,403 @@ function WindowsManageDefaultPrinter
 
 <#
 	.SYNOPSIS
-	Windows features
-
-	.PARAMETER Disable
-	Disable Windows features
+	HomeGroup services configuration
 
 	.PARAMETER Enable
-	Enable Windows features
+	Enable HomeGroup services
+
+	.PARAMETER Disable
+	Disable HomeGroup services (default value)
 
 	.EXAMPLE
-	WindowsFeatures -Disable
+	HomeGroups -Enable
 
 	.EXAMPLE
-	WindowsFeatures -Enable
+	HomeGroups -Disable
 
 	.NOTES
-	A pop-up dialog box lets a user select features
+	Current user
+	Not applicable since 1803
+	Not applicable to Server
+#>
+function HomeGroups
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+    		Write-ConsoleStatus -Action "Enabling HomeGroup services"
+    		LogInfo "Enabling HomeGroup services"
+
+    		# Check if services exist before attempting to modify them
+    		$listenerExists = Get-Service "HomeGroupListener" -ErrorAction SilentlyContinue
+    		$providerExists = Get-Service "HomeGroupProvider" -ErrorAction SilentlyContinue
+
+    		if ($listenerExists) {
+       		 	Set-Service "HomeGroupListener" -StartupType Manual -ErrorAction SilentlyContinue 2>&1 | Out-Null
+    		}
+
+    		if ($providerExists) {
+        		Set-Service "HomeGroupProvider" -StartupType Manual -ErrorAction SilentlyContinue 2>&1 | Out-Null
+        		Start-Service "HomeGroupProvider" -ErrorAction SilentlyContinue 2>&1 | Out-Null
+    	}
+    		Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+    		Write-ConsoleStatus -Action "Disabling HomeGroup services"
+    		LogInfo "Disabling HomeGroup services"
+
+   	 		# Check if services exist before attempting to modify them
+    		$listenerExists = Get-Service "HomeGroupListener" -ErrorAction SilentlyContinue
+    		$providerExists = Get-Service "HomeGroupProvider" -ErrorAction SilentlyContinue
+
+    		If ($listenerExists) {
+        	Stop-Service "HomeGroupListener" -ErrorAction SilentlyContinue 2>&1 | Out-Null
+        	Set-Service "HomeGroupListener" -StartupType Disabled -ErrorAction SilentlyContinue 2>&1 | Out-Null
+    		}
+
+    		If ($providerExists) {
+        	Stop-Service "HomeGroupProvider" -ErrorAction SilentlyContinue 2>&1 | Out-Null
+        	Set-Service "HomeGroupProvider" -StartupType Disabled -ErrorAction SilentlyContinue 2>&1 | Out-Null
+    		}
+    		Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Internet Connection Sharing (ICS) configuration, e.g., mobile hotspot
+
+	.PARAMETER Enable
+	Allow Internet Connection Sharing
+
+	.PARAMETER Disable
+	Prevent Internet Connection Sharing (default value)
+
+	.EXAMPLE
+	ConnectionSharing -Enable
+
+	.EXAMPLE
+	ConnectionSharing -Disable
 
 	.NOTES
 	Current user
 #>
-function WindowsFeatures
+function ConnectionSharing
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Internet Connection Sharing (ICS)"
+			LogInfo "Enabling Internet Connection Sharing (ICS)"
+			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name "NC_ShowSharedAccessUI" -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Internet Connection Sharing (ICS)"
+			LogInfo "Disabling Internet Connection Sharing (ICS)"
+			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name "NC_ShowSharedAccessUI" -Type DWord -Value 0 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Use the latest installed .NET runtime for all apps usage
+
+	.PARAMETER Enable
+	Use the latest installed .NET runtime for all apps
+
+	.PARAMETER Disable
+	Do not use the latest installed .NET runtime for all apps (default value)
+
+	.EXAMPLE
+	LatestInstalled.NET -Enable
+
+	.EXAMPLE
+	LatestInstalled.NET -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function LatestInstalled.NET
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling the use of the latest installed .NET runtime for all apps"
+			LogInfo "Enabling the use of the latest installed .NET runtime for all apps"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\.NETFramework -Name OnlyUseLatestCLR -PropertyType DWord -Value 1 -Force | Out-Null
+			New-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework -Name OnlyUseLatestCLR -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-Host "Disabling the use of the latest installed .NET runtime for all apps -" -NoNewline
+			LogInfo "Disabling the use of the latest installed .NET runtime for all apps"
+			Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\.NETFramework -Name OnlyUseLatestCLR -Force -ErrorAction Ignore | Out-Null
+			Remove-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework -Name OnlyUseLatestCLR -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Link-Local Multicast Name Resolution (LLMNR) protocol configuration
+
+	.PARAMETER Enable
+	Enable LLMNR protocol (default value)
+
+	.PARAMETER Disable
+	Disable LLMNR protocol
+
+	.EXAMPLE
+	LLMNR -Enable
+
+	.EXAMPLE
+	LLMNR -Disable
+
+	.NOTES
+	Current user
+#>
+function LLMNR
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Link-Local Multicast Name Resolution (LLMNR) protocol"
+			LogInfo "Enabling Link-Local Multicast Name Resolution (LLMNR) protocol"
+			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name "EnableMulticast" -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Link-Local Multicast Name Resolution (LLMNR) protocol"
+			LogInfo "Disabling Link-Local Multicast Name Resolution (LLMNR) protocol"
+			If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient")) {
+				New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Force | Out-Null
+			}
+			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name "EnableMulticast" -Type DWord -Value 0 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Network Connectivity Status Indicator (NCSI) active probe configuration
+
+	.PARAMETER Enable
+	Enable NCSI active probe (default value)
+
+	.PARAMETER Disable
+	Disable NCSI active probe to reduce certain zero-click attack exposure
+
+	.EXAMPLE
+	NCSIProbe -Enable
+
+	.EXAMPLE
+	NCSIProbe -Disable
+
+	.NOTES
+	Current user
+	Disabling may reduce OS ability to detect internet connectivity
+	See https://github.com/Disassembler0/Win10-Initial-Setup-Script/pull/111 for details
+#>
+function NCSIProbe
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Network Connectivity Status Indicator (NCSI) active probe"
+			LogInfo "Enabling Network Connectivity Status Indicator (NCSI) active probe"
+			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\NetworkConnectivityStatusIndicator" -Name "NoActiveProbe" -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Network Connectivity Status Indicator (NCSI) active probe"
+			LogInfo "Disabling Network Connectivity Status Indicator (NCSI) active probe"
+			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\NetworkConnectivityStatusIndicator" -Name "NoActiveProbe" -Type DWord -Value 1 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	NetBIOS over TCP/IP configuration on installed network interfaces
+
+	.PARAMETER Enable
+	Enable NetBIOS over TCP/IP on all installed network interfaces
+
+	.PARAMETER Disable
+	Disable NetBIOS over TCP/IP on all installed network interfaces
+
+	.EXAMPLE
+	NetBIOS -Enable
+
+	.EXAMPLE
+	NetBIOS -Disable
+
+	.NOTES
+	Current user
+#>
+function NetBIOS
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling NetBIOS over TCP/IP"
+			LogInfo "Enabling NetBIOS over TCP/IP"
+			Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\NetBT\Parameters\Interfaces\Tcpip*" -Name "NetbiosOptions" -Type DWord -Value 0 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling NetBIOS over TCP/IP"
+			LogInfo "Disabling NetBIOS over TCP/IP"
+			Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\NetBT\Parameters\Interfaces\Tcpip*" -Name "NetbiosOptions" -Type DWord -Value 2 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Network adapters power management
+
+	.PARAMETER Disable
+	Do not allow the computer to turn off the network adapters to save power
+
+	.PARAMETER Enable
+	Allow the computer to turn off the network adapters to save power (default value)
+
+	.EXAMPLE
+	NetworkAdaptersSavePower -Disable
+
+	.EXAMPLE
+	NetworkAdaptersSavePower -Enable
+
+	.NOTES
+	It isn't recommended to turn off for laptops
+
+	.NOTES
+	Current user
+#>
+function NetworkAdaptersSavePower
 {
 	param
 	(
@@ -2107,363 +1582,1554 @@ function WindowsFeatures
 		$Enable
 	)
 
-	Add-Type -AssemblyName PresentationCore, PresentationFramework
+	# Checking whether there's an adapter that has AllowComputerToTurnOffDevice property to manage
+	$Adapters = Get-NetAdapter -Physical | Where-Object -FilterScript {$_.MacAddress} | Get-NetAdapterPowerManagement | Where-Object -FilterScript {$_.AllowComputerToTurnOffDevice -ne "Unsupported"}
+	if (-not $Adapters)
+	{
+		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
 
-	#region Variables
-	# Initialize an array list to store the selected Windows features
-	$SelectedFeatures = New-Object -TypeName System.Collections.ArrayList($null)
-	# The following Windows features will have their checkboxes checked
-	[string[]]$CheckedFeatures = @(
-		# Legacy Components
-		"LegacyComponents",
-
-		# PowerShell 2.0
-		"MicrosoftWindowsPowerShellV2",
-		"MicrosoftWindowsPowershellV2Root",
-
-		# Microsoft XPS Document Writer
-		"Printing-XPSServices-Features",
-
-		# Recall
-		"Recall"
-
-		# Work Folders Client
-		"WorkFolders-Client"
-	)
-
-	# The following Windows features will have their checkboxes unchecked
-	[string[]]$UncheckedFeatures = @(
-		# Media Features
-		# If you want to leave "Multimedia settings" in the advanced settings of Power Options do not disable this feature
-		"MediaPlayback",
-
-		# Windows Sandbox
-		"Containers-DisposableClientVM",
-
-		# Windows Defender Application Guard
-		"Windows-Defender-ApplicationGuard"
-	)
-	#endregion Variables
-
-	#region XAML Markup
-	# The section defines the design of the upcoming dialog box
-	[xml]$XAML = @"
-	<Window
-		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Name="Window"
-		MinHeight="450" MinWidth="400"
-		SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen"
-		TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
-		FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
-		Background="#F1F1F1" Foreground="#262626">
-		<Window.Resources>
-			<Style TargetType="StackPanel">
-				<Setter Property="Orientation" Value="Horizontal"/>
-				<Setter Property="VerticalAlignment" Value="Top"/>
-			</Style>
-			<Style TargetType="CheckBox">
-				<Setter Property="Margin" Value="10, 10, 5, 10"/>
-				<Setter Property="IsChecked" Value="True"/>
-			</Style>
-			<Style TargetType="TextBlock">
-				<Setter Property="Margin" Value="5, 10, 10, 10"/>
-			</Style>
-			<Style TargetType="Button">
-				<Setter Property="Margin" Value="20"/>
-				<Setter Property="Padding" Value="10"/>
-			</Style>
-			<Style TargetType="Border">
-				<Setter Property="Grid.Row" Value="1"/>
-				<Setter Property="CornerRadius" Value="0"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-			</Style>
-			<Style TargetType="ScrollViewer">
-				<Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-			</Style>
-		</Window.Resources>
-		<Grid>
-			<Grid.RowDefinitions>
-				<RowDefinition Height="Auto"/>
-				<RowDefinition Height="*"/>
-				<RowDefinition Height="Auto"/>
-			</Grid.RowDefinitions>
-			<ScrollViewer Name="Scroll" Grid.Row="0"
-				HorizontalScrollBarVisibility="Disabled"
-				VerticalScrollBarVisibility="Auto">
-				<StackPanel Name="PanelContainer" Orientation="Vertical"/>
-			</ScrollViewer>
-			<Button Name="Button" Grid.Row="2"/>
-		</Grid>
-	</Window>
-"@
-	#endregion XAML Markup
-
-	$Form = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $XAML))
-	$XAML.SelectNodes("//*[@*[contains(translate(name(.),'n','N'),'Name')]]") | ForEach-Object -Process {
-		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
+		return
 	}
 
-	#region Functions
+	$PhysicalAdaptersStatusUp = @(Get-NetAdapter -Physical | Where-Object -FilterScript {($_.Status -eq "Up") -and $_.MacAddress})
 
-	function Test-FeaturePatternMatch
+	# Checking whether PC is currently connected to a Wi-Fi network
+	# NetConnectionStatus 2 is Wi-Fi
+	$InterfaceIndex = (Get-CimInstance -ClassName Win32_NetworkAdapter -Namespace root/CIMV2 | Where-Object -FilterScript {$_.NetConnectionStatus -eq 2}).InterfaceIndex
+	if (Get-NetAdapter -Physical | Where-Object -FilterScript {($_.Status -eq "Up") -and ($_.PhysicalMediaType -eq "Native 802.11") -and ($_.InterfaceIndex -eq $InterfaceIndex)})
 	{
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			[string]
-			$FeatureName,
-
-			[string[]]
-			$Patterns
-		)
-
-		foreach ($Pattern in $Patterns)
-		{
-			if ($FeatureName -like $Pattern)
-			{
-				return $true
-			}
-		}
-
-		return $false
+		# Get currently connected Wi-Fi network SSID
+		$SSID = (Get-NetConnectionProfile).Name
 	}
 
-	function Get-CheckboxClicked
+	switch ($PSCmdlet.ParameterSetName)
 	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$CheckBox
-		)
-
-		$Feature = $CheckBox.Tag
-
-		if ($CheckBox.IsChecked)
+		"Disable"
 		{
-			if ($Feature -and ($Feature -notin $SelectedFeatures))
+			Write-ConsoleStatus -Action "Disabling 'allowing the computer to turn off the network adapters to save power'"
+			LogInfo "Disabling 'allowing the computer to turn off the network adapters to save power'"
+			foreach ($Adapter in $Adapters)
 			{
-				[void]$SelectedFeatures.Add($Feature)
-			}
-		}
-		else
-		{
-			if ($Feature)
-			{
-				[void]$SelectedFeatures.Remove($Feature)
-			}
-		}
-		if ($SelectedFeatures.Count -gt 0)
-		{
-			$Button.IsEnabled = $true
-		}
-		else
-		{
-			$Button.IsEnabled = $false
-		}
-	}
-
-	function DisableButton
-	{
-		try
-		{
-			Write-ConsoleStatus -Action "Disabling Windows features"
-			LogInfo "Disabling Windows features"
-			LogInfo "Windows features selected for disable: $($SelectedFeatures.Count)"
-
-			[void]$Window.Close()
-
-			if (-not $SelectedFeatures -or $SelectedFeatures.Count -eq 0)
-			{
-				throw "No Windows features were selected."
-			}
-
-			foreach ($Feature in @($SelectedFeatures))
-			{
-				LogInfo "Disabling Windows feature: $($Feature.FeatureName)"
-				Invoke-SilencedProgress {
-					Disable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				}
-				LogInfo "Disabled Windows feature: $($Feature.FeatureName)"
-			}
+				$Adapter.AllowComputerToTurnOffDevice = "Disabled"
+				$Adapter | Set-NetAdapterPowerManagement | Out-Null
 				Write-ConsoleStatus -Status success
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogError "Failed to disable Windows features: $($_.Exception.Message)"
-			Write-ConsoleStatus -Status failed
-		}
-	}
-
-	function EnableButton
-	{
-		try
-		{
-			Write-ConsoleStatus -Action "Enabling Windows features"
-			LogInfo "Enabling Windows features"
-			LogInfo "Windows features selected for enable: $($SelectedFeatures.Count)"
-
-			[void]$Window.Close()
-
-			if (-not $SelectedFeatures -or $SelectedFeatures.Count -eq 0)
-			{
-				throw "No Windows features were selected."
 			}
-
-			foreach ($Feature in @($SelectedFeatures))
+		}
+		"Enable"
+		{
+			foreach ($Adapter in $Adapters)
 			{
-				LogInfo "Enabling Windows feature: $($Feature.FeatureName)"
-				Invoke-SilencedProgress {
-					Enable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				}
-				LogInfo "Enabled Windows feature: $($Feature.FeatureName)"
-			}
+				Write-ConsoleStatus -Action "Enabling 'allowing the computer to turn off the network adapters to save power' for adapter '$($Adapter.Name)'"
+				LogInfo "Enabling 'allowing the computer to turn off the network adapters to save power' for adapter '$($Adapter.Name)'"
+				$Adapter.AllowComputerToTurnOffDevice = "Enabled"
+				$Adapter | Set-NetAdapterPowerManagement | Out-Null
 				Write-ConsoleStatus -Status success
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogError "Failed to enable Windows features: $($_.Exception.Message)"
-			Write-ConsoleStatus -Status failed
-		}
-	}
-
-	function Add-FeatureControl
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$Feature
-		)
-
-		process
-		{
-			$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
-			$CheckBox.Add_Click({Get-CheckboxClicked -CheckBox $_.Source})
-			$CheckBox.Tag = $Feature
-			$CheckBox.ToolTip = $Feature.Description
-
-			$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
-			$FeatureLabel = if ([string]::IsNullOrWhiteSpace($Feature.DisplayName)) { $Feature.FeatureName } else { $Feature.DisplayName }
-			$TextBlock.Text = $FeatureLabel
-			$TextBlock.ToolTip = $Feature.Description
-
-			$StackPanel = New-Object -TypeName System.Windows.Controls.StackPanel
-			[void]$StackPanel.Children.Add($CheckBox)
-			[void]$StackPanel.Children.Add($TextBlock)
-			[void]$PanelContainer.Children.Add($StackPanel)
-
-			$CheckBox.IsChecked = $false
-
-			# If feature checked add to the array list
-			if (Test-FeaturePatternMatch -FeatureName $Feature.FeatureName -Patterns $UncheckedFeatures)
-			{
-				$CheckBox.IsChecked = $false
-				#  function if item is not checked
-				return
 			}
-
-			$CheckBox.IsChecked = $true
-
-			# If feature checked add to the array list
-			[void]$SelectedFeatures.Add($Feature)
-			$Button.IsEnabled = $true
 		}
 	}
-	#endregion Functions
+
+	# All network adapters are turned into "Disconnected" for few seconds, so we need to wait a bit to let them up
+	# Otherwise functions below will indicate that there is no the Internet connection
+	if ($PhysicalAdaptersStatusUp)
+	{
+		# If Wi-Fi network was used
+		if ($SSID)
+		{
+			#Write-Verbose -Message $SSID -Verbose
+			# Connect to it
+			netsh wlan connect name="$SSID" 2>$null | Out-Null
+			if ($LASTEXITCODE -ne 0)
+			{
+				LogWarning "Failed to reconnect to Wi-Fi network '$SSID' after adapter changes. netsh exit code: $LASTEXITCODE"
+			}
+		}
+
+		while
+		(
+			Get-NetAdapter -Physical -Name $PhysicalAdaptersStatusUp.Name | Where-Object -FilterScript {($_.Status -eq "Disconnected") -and $_.MacAddress} | Out-Null
+		)
+		{
+			Start-Sleep -Seconds 2
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Automatic installation of network devices
+
+	.PARAMETER Enable
+	Allow automatic installation of network devices (default value)
+
+	.PARAMETER Disable
+	Prevent automatic installation of network devices
+
+	.EXAMPLE
+	NetDevicesAutoInst -Enable
+
+	.EXAMPLE
+	NetDevicesAutoInst -Disable
+
+	.NOTES
+	Current user
+#>
+function NetDevicesAutoInst
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Enable"
 		{
-			$State           = @("Disabled", "DisablePending")
-			$ButtonContent   = $Localization.Enable
-			$ButtonAdd_Click = {EnableButton}
+			Write-ConsoleStatus -Action "Enabling automatic installation of network devices"
+			LogInfo "Enabling automatic installation of network devices"
+			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Name "AutoSetup" -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
 		}
 		"Disable"
 		{
-			$State           = @("Enabled", "EnablePending")
-			$ButtonContent   = $Localization.Disable
-			$ButtonAdd_Click = {DisableButton}
+			Write-ConsoleStatus -Action "Disabling automatic installation of network devices"
+			LogInfo "Disabling automatic installation of network devices"
+			If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private")) {
+				New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Force | Out-Null
+			}
+			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Name "AutoSetup" -Type DWord -Value 0 | Out-Null
+			Write-ConsoleStatus -Status success
 		}
 	}
+}
 
-	# Getting list of all optional features according to the conditions
-	try
-	{
-		$Features = Get-WindowsOptionalFeature -Online -ErrorAction Stop |
-			Where-Object -FilterScript {
-				($_.State -in $State) -and
-				(
-					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $UncheckedFeatures) -or
-					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $CheckedFeatures)
-				)
-			} |
-			Sort-Object -Property DisplayName, FeatureName
-	}
-	catch
-	{
-		Remove-HandledErrorRecord -ErrorRecord $_
-		$Features = $null
-	}
+<#
+	.SYNOPSIS
+	Network Discovery File and Printers Sharing
 
-	if (-not $Features)
+	.PARAMETER Enable
+	Enable "Network Discovery" and "File and Printers Sharing" for workgroup networks
+
+	.PARAMETER Disable
+	Disable "Network Discovery" and "File and Printers Sharing" for workgroup networks (default value)
+
+	.EXAMPLE
+	NetworkDiscovery -Enable
+
+	.EXAMPLE
+	NetworkDiscovery -Disable
+
+	.NOTES
+	Current user
+#>
+function NetworkDiscovery
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$FirewallRules = @(
+		# File and printer sharing
+		"@FirewallAPI.dll,-32752",
+
+		# Network discovery
+		"@FirewallAPI.dll,-28502"
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
 	{
-		LogInfo "Windows Features:"
-		LogInfo "No preset-matched Windows features were found. Moving on."
-		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'Disabling Windows features' } else { 'Enabling Windows features' })" -Status success
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Network Discovery and File and Printers Sharing"
+			LogInfo "Enabling Network Discovery and File and Printers Sharing"
+			try
+			{
+				Set-NetFirewallRule -Group $FirewallRules -Profile Private -Enabled True -ErrorAction Stop | Out-Null
+				Set-NetFirewallRule -Profile Private -Name FPS-SMB-In-TCP -Enabled True -ErrorAction Stop | Out-Null
+				Set-NetConnectionProfile -NetworkCategory Private -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status warning
+				LogWarning "Failed to enable Network Discovery and File and Printers Sharing: $($_.Exception.Message)"
+				Remove-HandledErrorRecord -ErrorRecord $_
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Network Discovery and File and Printers Sharing"
+			LogInfo "Disabling Network Discovery and File and Printers Sharing"
+			Set-NetFirewallRule -Group $FirewallRules -Profile Private -Enabled False | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	How do you want to open this file prompt in Windows
+
+	.PARAMETER Enable
+	Show How do you want to open this file prompt
+
+	.PARAMETER Disable
+	Do not show How do you want to open this file prompt
+
+	.EXAMPLE
+	NewAppPrompt -Enable
+
+	.EXAMPLE
+	NewAppPrompt -Disable
+
+	.NOTES
+	Current user
+#>
+function NewAppPrompt
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling 'How do you want to open this file?' prompt"
+			LogInfo "Enabling 'How do you want to open this file?' prompt"
+			try
+			{
+				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -ErrorAction SilentlyContinue)
+				{
+					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -ErrorAction Stop | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable the 'How do you want to open this file?' prompt: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling 'How do you want to open this file?' prompt"
+			LogInfo "Disabling 'How do you want to open this file?' prompt"
+			try
+			{
+				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
+					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
+				}
+				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoNewAppAlert" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable the 'How do you want to open this file?' prompt: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Num Lock at startup
+
+	.PARAMETER Enable
+	Enable Num Lock at startup
+
+	.PARAMETER Disable
+	Disable Num Lock at startup (default value)
+
+	.EXAMPLE
+	NumLock -Enable
+
+	.EXAMPLE
+	NumLock -Disable
+
+	.NOTES
+	Current user
+#>
+function NumLock
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Num Lock at startup"
+			LogInfo "Enabling Num Lock at startup"
+			New-ItemProperty -Path "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -PropertyType String -Value 2147483650 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Num Lock at startup"
+			LogInfo "Disabling Num Lock at startup"
+			New-ItemProperty -Path "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -PropertyType String -Value 2147483648 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Power plan
+
+	.PARAMETER High
+	Set power plan on "High performance"
+
+	.PARAMETER Balanced
+	Set power plan on "Balanced" (default value)
+
+	.EXAMPLE
+	PowerPlan -High
+
+	.EXAMPLE
+	PowerPlan -Balanced
+
+	.NOTES
+	It isn't recommended to turn on for laptops
+
+	.NOTES
+	Current user
+#>
+function PowerPlan
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "High"
+		)]
+		[switch]
+		$High,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Balanced"
+		)]
+		[switch]
+		$Balanced
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Type CLEAR | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"High"
+		{
+			Write-ConsoleStatus -Action "Setting power plan to High performance"
+			LogInfo "Setting power plan to High performance"
+			POWERCFG /SETACTIVE SCHEME_MIN | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Balanced"
+		{
+			Write-ConsoleStatus -Action "Setting power plan to Balanced"
+			LogInfo "Setting power plan to Balanced"
+			POWERCFG /SETACTIVE SCHEME_BALANCED | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Desktop shortcut creation upon Microsoft Edge update
+
+	.PARAMETER Channels
+	List Microsoft Edge channels to prevent desktop shortcut creation upon its update
+
+	.PARAMETER Disable
+	Do not prevent desktop shortcut creation upon Microsoft Edge update (default value)
+
+	.EXAMPLE
+	PreventEdgeShortcutCreation -Channels Stable, Beta, Dev, Canary
+
+	.EXAMPLE
+	PreventEdgeShortcutCreation -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function PreventEdgeShortcutCreation
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(
+			Mandatory = $false,
+			ParameterSetName = "Channels"
+		)]
+		[ValidateSet("Stable", "Beta", "Dev", "Canary")]
+		[string[]]
+		$Channels,
+
+		[Parameter(
+			Mandatory = $false,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	if (-not (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction Ignore -WarningAction SilentlyContinue))
+	{
+		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
 		return
 	}
 
-	#region Sendkey function
-	# Emulate the Backspace key sending to prevent the console window to freeze
-	Start-Sleep -Milliseconds 500
-
-	Add-Type -AssemblyName System.Windows.Forms
-
-	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
-		# Show window, if minimized
-		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
-
-		Start-Sleep -Milliseconds 150
-
-		# Force move the console window to the foreground
-		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
-
-		Start-Sleep -Milliseconds 150
-
-		# Emulate the Backspace key sending
-		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
+	if (-not (Test-Path -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate))
+	{
+		New-Item -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Force | Out-Null
 	}
-	#endregion Sendkey function
-	$Button.IsEnabled = $false
-	$Window.Add_Loaded({$Features | Add-FeatureControl})
-	$Button.Content = $ButtonContent
-	$Button.Add_Click({
-		& $ButtonAdd_Click
-	})
 
-	$Window.Title = $Localization.WindowsFeaturesTitle
+	foreach ($Channel in $Channels)
+	{
+		switch ($Channel)
+		{
+			Stable
+			{
+				Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Stable Channel"
+				LogInfo "Preventing desktop shortcut creation for Microsoft Edge Stable Channel"
+				if (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+				{
+					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -PropertyType DWord -Value 0 -Force | Out-Null
+					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -Type DWORD -Value 3 | Out-Null
+					Write-ConsoleStatus -Status success
+				}
+			}
+			Beta
+			{
+				if (Get-Package -Name "Microsoft Edge Beta" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+				{
+					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Beta Channel"
+					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Beta Channel"
+					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -PropertyType DWord -Value 0 -Force | Out-Null
+					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -Type DWORD -Value 3 | Out-Null
+					Write-ConsoleStatus -Status success
+				}
+			}
+			Dev
+			{
+				if (Get-Package -Name "Microsoft Edge Dev" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+				{
+					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Dev Channel"
+					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Dev Channel"
+					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -PropertyType DWord -Value 0 -Force | Out-Null
+					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -Type DWORD -Value 3 | Out-Null
+					Write-ConsoleStatus -Status success
+				}
+			}
+			Canary
+			{
+				if (Get-Package -Name "Microsoft Edge Canary" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
+				{
+					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Canary Channel"
+					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Canary Channel"
+					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -PropertyType DWord -Value 0 -Force | Out-Null
+					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -Type DWORD -Value 3 | Out-Null
+					Write-ConsoleStatus -Status success
+				}
+			}
+		}
+	}
 
-	# Restore minimized dialogs and bring them to the foreground once when shown.
-	$Form.Topmost = $true
-	$Form.Activate()
-	$Form.ShowDialog() | Out-Null
+	if ($Disable)
+	{
+		$Names = @(
+			"CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}",
+			"CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}",
+			"CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}",
+			"CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}"
+		)
+		Write-ConsoleStatus -Action "Allowing desktop shortcut creation for Microsoft Edge upon update"
+		LogInfo "Allowing desktop shortcut creation for Microsoft Edge upon update"
+		Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name $Names -Force -ErrorAction Ignore | Out-Null
+
+		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -Type CLEAR | Out-Null
+		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -Type CLEAR | Out-Null
+		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -Type CLEAR | Out-Null
+		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -Type CLEAR | Out-Null
+		Write-ConsoleStatus -Status success
+	}
+}
+
+<#
+	.SYNOPSIS
+	Quality of Service (QoS) packet scheduler configuration on all network interfaces
+
+	.PARAMETER Enable
+	Enable QoS packet scheduler on all installed network interfaces (default value)
+
+	.PARAMETER Disable
+	Disable QoS packet scheduler on all installed network interfaces
+
+	.EXAMPLE
+	QoS -Enable
+
+	.EXAMPLE
+	QoS -Disable
+
+	.NOTES
+	Current user
+#>
+function QoS
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Quality of Service (QoS)"
+			LogInfo "Enabling Quality of Service (QoS)"
+			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_pacer" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Quality of Service (QoS)"
+			LogInfo "Disabling Quality of Service (QoS)"
+			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_pacer" | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Recommended troubleshooter preferences
+
+	.PARAMETER Automatically
+	Run troubleshooter automatically, then notify me
+
+	.PARAMETER Default
+	Ask me before running troubleshooter (default value)
+
+	.EXAMPLE
+	RecommendedTroubleshooting -Automatically
+
+	.EXAMPLE
+	RecommendedTroubleshooting -Default
+
+	.NOTES
+	In order this feature to work Windows level of diagnostic data gathering will be set to "Optional diagnostic data" and the error reporting feature will be turned on
+
+	.NOTES
+	Machine-wide
+#>
+function RecommendedTroubleshooting
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Automatically"
+		)]
+		[switch]
+		$Automatically,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Default"
+		)]
+		[switch]
+		$Default
+	)
+
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -Force -ErrorAction SilentlyContinue | Out-Null
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -Force -ErrorAction SilentlyContinue | Out-Null
+	Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack -Name ShowedToastAtLevel -Force -ErrorAction SilentlyContinue | Out-Null
+
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -Type CLEAR | Out-Null
+
+	# Turn on Windows Error Reporting
+	Get-ScheduledTask -TaskName QueueReporting -ErrorAction SilentlyContinue | Enable-ScheduledTask | Out-Null
+	Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Force -ErrorAction SilentlyContinue | Out-Null
+
+	Get-Service -Name WerSvc | Set-Service -StartupType Manual | Out-Null
+	Get-Service -Name WerSvc | Start-Service | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Automatically"
+		{
+			Write-ConsoleStatus -Action "Setting troubleshooter preferences to automatically run"
+			LogInfo "Setting troubleshooter preferences to automatically run"
+			if (-not (Test-Path -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation))
+			{
+				New-Item -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Force | Out-Null
+			}
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Name UserPreference -PropertyType DWord -Value 3 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Default"
+		{
+			Write-ConsoleStatus -Action "Setting troubleshooter preferences to ask before running"
+			LogInfo "Setting troubleshooter preferences to ask before running"
+			if (-not (Test-Path -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation))
+			{
+				New-Item -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Force | Out-Null
+			}
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Name UserPreference -PropertyType DWord -Value 2 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Back up the system registry to %SystemRoot%\System32\config\RegBack folder when PC restarts and create a RegIdleBackup in the Task Scheduler task to manage subsequent backups
+
+	.PARAMETER Enable
+	Back up the system registry to %SystemRoot%\System32\config\RegBack folder
+
+	.PARAMETER Disable
+	Do not back up the system registry to %SystemRoot%\System32\config\RegBack folder (default value)
+
+	.EXAMPLE
+	RegistryBackup -Enable
+
+	.EXAMPLE
+	RegistryBackup -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function RegistryBackup
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
+			LogInfo "Enabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
+			New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -Type DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
+			LogInfo "Disabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
+			Remove-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -Force -ErrorAction Ignore | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Reserved storage
+
+	.PARAMETER Disable
+	Disable and delete reserved storage after the next update installation
+
+	.PARAMETER Enable
+	Enable reserved storage after the next update installation
+
+	.EXAMPLE
+	ReservedStorage -Disable
+
+	.EXAMPLE
+	ReservedStorage -Enable
+
+	.NOTES
+	Current user
+#>
+function ReservedStorage
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			try
+			{
+				Write-ConsoleStatus -Action "Disabling reserved storage"
+				LogInfo "Disabling reserved storage"
+				if (-not (Get-Command -Name Set-WindowsReservedStorageState -ErrorAction Ignore))
+				{
+					LogWarning "Reserved storage cmdlet is not available on this OS. Skipping."
+					Write-ConsoleStatus -Status success
+					return
+				}
+				Set-WindowsReservedStorageState -State Disabled -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch [System.Runtime.InteropServices.COMException]
+			{
+				LogError ($Localization.ReservedStorageIsInUse -f $MyInvocation.Line.Trim())
+				Write-ConsoleStatus -Status failed
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable reserved storage: $($_.Exception.Message)"
+			}
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling reserved storage"
+			LogInfo "Enabling reserved storage"
+			if (-not (Get-Command -Name Set-WindowsReservedStorageState -ErrorAction Ignore))
+			{
+				LogWarning "Reserved storage cmdlet is not available on this OS. Skipping."
+				Write-ConsoleStatus -Status success
+				return
+			}
+			try
+			{
+				Set-WindowsReservedStorageState -State Enabled -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable reserved storage: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Restart as soon as possible to finish updating
+
+	.PARAMETER Enable
+	Restart as soon as possible to finish updating
+
+	.PARAMETER Disable
+	Don't restart as soon as possible to finish updating (default value)
+
+	.EXAMPLE
+	DeviceRestartAfterUpdate -Enable
+
+	.EXAMPLE
+	DeviceRestartAfterUpdate -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function RestartDeviceAfterUpdate
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd, ActiveHoursStart, SetActiveHours -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursStart -Type CLEAR | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetActiveHours -Type CLEAR | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling restart as soon as possible to finish updating"
+			LogInfo "Enabling restart as soon as possible to finish updating"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsExpedited -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling restart as soon as possible to finish updating"
+			LogInfo "Disabling restart as soon as possible to finish updating"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsExpedited -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Notification when your PC requires a restart to finish updating
+
+	.PARAMETER Show
+	Notify me when a restart is required to finish updating
+
+	.PARAMETER Hide
+	Do not notify me when a restart is required to finish updating (default value)
+
+	.EXAMPLE
+	RestartNotification -Show
+
+	.EXAMPLE
+	RestartNotification -Hide
+
+	.NOTES
+	Machine-wide
+#>
+function RestartNotification
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Show"
+		)]
+		[switch]
+		$Show,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Hide"
+		)]
+		[switch]
+		$Hide
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAutoRestartNotificationDisable -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAutoRestartNotificationDisable -Type CLEAR | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Show"
+		{
+			Write-ConsoleStatus -Action "Showing notification when your PC requires a restart to finish updating"
+			LogInfo "Showing notification when your PC requires a restart to finish updating"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name RestartNotificationsAllowed2 -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Hide"
+		{
+			Write-ConsoleStatus -Action "Hiding notification when your PC requires a restart to finish updating"
+			LogInfo "Hiding notification when your PC requires a restart to finish updating"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name RestartNotificationsAllowed2 -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Restart apps after signing in
+
+	.PARAMETER Enable
+	Automatically saving my restartable apps and restart them when I sign back in
+
+	.PARAMETER Disable
+	Turn off automatically saving my restartable apps and restart them when I sign back in (default value)
+
+	.EXAMPLE
+	SaveRestartableApps -Enable
+
+	.EXAMPLE
+	SaveRestartableApps -Disable
+
+	.NOTES
+	Current user
+#>
+function SaveRestartableApps
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling saving restartable apps and restarting them after signing in"
+			LogInfo "Enabling saving restartable apps and restarting them after signing in"
+			New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling saving restartable apps and restarting them after signing in"
+			LogInfo "Disabling saving restartable apps and restarting them after signing in"
+			New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -PropertyType DWord -Value 0 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Search for apps in Microsoft Store from Open with dialog
+
+	.PARAMETER Enable
+	Allow searching for apps in Microsoft Store from Open with dialog
+
+	.PARAMETER Disable
+	Prevent searching for apps in Microsoft Store from Open with dialog
+
+	.EXAMPLE
+	SearchAppInStore -Enable
+
+	.EXAMPLE
+	SearchAppInStore -Disable
+
+	.NOTES
+	Current user
+#>
+function SearchAppInStore
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling searching for apps in Microsoft Store from Open with dialog"
+			LogInfo "Enabling searching for apps in Microsoft Store from Open with dialog"
+			try
+			{
+				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -ErrorAction SilentlyContinue)
+				{
+					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -ErrorAction Stop | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable searching for apps in Microsoft Store from Open with dialog: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling searching for apps in Microsoft Store from Open with dialog"
+			LogInfo "Disabling searching for apps in Microsoft Store from Open with dialog"
+			try
+			{
+				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
+					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
+				}
+				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "NoUseStoreOpenWith" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable searching for apps in Microsoft Store from Open with dialog: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	SMB 1.0 protocol configuration
+
+	.PARAMETER Enable
+	Enable SMB 1.0 protocol
+
+	.PARAMETER Disable
+	Disable SMB 1.0 protocol (default value)
+
+	.EXAMPLE
+	SMB1 -Enable
+
+	.EXAMPLE
+	SMB1 -Disable
+
+	.NOTES
+	Current user
+#>
+function SMB1
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling SMB 1.0 protocol"
+			LogInfo "Enabling SMB 1.0 protocol"
+			$null = Set-SmbServerConfiguration -EnableSMB1Protocol $true -Force -ErrorAction SilentlyContinue 2>&1
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling SMB 1.0 protocol"
+			LogInfo "Disabling SMB 1.0 protocol"
+			$null = Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -ErrorAction SilentlyContinue 2>&1
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	The shortcut to start Sticky Keys
+
+	.PARAMETER Disable
+	Turn off Sticky keys by pressing the Shift key 5 times
+
+	.PARAMETER Enable
+	Turn on Sticky keys by pressing the Shift key 5 times (default value)
+
+	.EXAMPLE
+	StickyShift -Disable
+
+	.EXAMPLE
+	StickyShift -Enable
+
+	.NOTES
+	Current user
+#>
+function StickyShift
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Sticky Shift"
+			LogInfo "Disabling Sticky Shift"
+			New-ItemProperty -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -PropertyType String -Value 506 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Sticky Shift"
+			LogInfo "Enabling Sticky Shift"
+			New-ItemProperty -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -PropertyType String -Value 510 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Storage Sense
+
+	.PARAMETER Enable
+	Turn on Storage Sense
+
+	.PARAMETER Disable
+	Turn off Storage Sense
+
+	.EXAMPLE
+	StorageSense -Enable
+
+	.EXAMPLE
+	StorageSense -Disable
+
+	.NOTES
+	Current user
+#>
+function StorageSense
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\StorageSense -Name AllowStorageSenseGlobal -Force -ErrorAction Ignore | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\StorageSense -Name AllowStorageSenseGlobal -Type CLEAR | Out-Null
+
+	if (-not (Test-Path -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy))
+	{
+		New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -ItemType Directory -Force | Out-Null
+	}
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Storage Sense"
+			LogInfo "Enabling Storage Sense"
+			try
+			{
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 01 -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 04 -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 2048 -PropertyType DWord -Value 30 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Storage Sense: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Storage Sense"
+			LogInfo "Disabling Storage Sense"
+			try
+			{
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 01 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 04 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy -Name 2048 -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Storage Sense: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Set network category for unidentified networks
+
+	.PARAMETER Private
+	Set unidentified networks to Private profile
+
+	.PARAMETER Public
+	Set unidentified networks to Public profile (default value)
+
+	.EXAMPLE
+	UnknownNetworks -Private
+
+	.EXAMPLE
+	UnknownNetworks -Public
+
+	.NOTES
+	Current user
+#>
+function UnknownNetworks
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Private"
+		)]
+		[switch]
+		$Private,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Public"
+		)]
+		[switch]
+		$Public
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Private"
+		{
+			Write-ConsoleStatus -Action "Setting unidentified networks to Private profile"
+			LogInfo "Setting unidentified networks to Private profile"
+			If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24")) {
+				New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Force | Out-Null
+			}
+			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Name "Category" -Type DWord -Value 1 | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Public"
+		{
+			Write-ConsoleStatus -Action "Setting unidentified networks to Public profile"
+			LogInfo "Setting unidentified networks to Public profile"
+			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Name "Category" -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Receive updates for other Microsoft products
+
+	.PARAMETER Enable
+	Receive updates for other Microsoft products
+
+	.PARAMETER Disable
+	Do not receive updates for other Microsoft products (default value)
+
+	.EXAMPLE
+	UpdateMicrosoftProducts -Enable
+
+	.EXAMPLE
+	UpdateMicrosoftProducts -Disable
+
+	.NOTES
+	Current user
+#>
+function UpdateMicrosoftProducts
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	# Remove all policies in order to make changes visible in UI only if it's possible
+	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AllowMUUpdateService -Force -ErrorAction SilentlyContinue | Out-Null
+	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AllowMUUpdateService -Type CLEAR | Out-Null
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling receiving updates for other Microsoft products"
+			LogInfo "Enabling receiving updates for other Microsoft products"
+			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name AllowMUUpdateService -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling receiving updates for other Microsoft products"
+			LogInfo "Disabling receiving updates for other Microsoft products"
+			Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name AllowMUUpdateService -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Verbose startup and shutdown status messages
+
+	.PARAMETER Enable
+	Show detailed status messages during startup and shutdown
+
+	.PARAMETER Disable
+	Hide detailed status messages during startup and shutdown (default value)
+
+	.EXAMPLE
+	VerboseStatus -Enable
+
+	.EXAMPLE
+	VerboseStatus -Disable
+
+	.NOTES
+	Current user
+#>
+function VerboseStatus
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling verbose Shutdown/Startup status messages"
+			LogInfo "Enabling verbose Shutdown/Startup status messages"
+			try
+			{
+				If ((Get-CimInstance -Class "Win32_OperatingSystem").ProductType -eq 1) {
+					Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				} Else {
+					Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -ErrorAction SilentlyContinue | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable verbose startup and shutdown status messages: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling verbose Shutdown/Startup status messages"
+			LogInfo "Disabling verbose Shutdown/Startup status messages"
+			try
+			{
+				If ((Get-CimInstance -Class "Win32_OperatingSystem").ProductType -eq 1) {
+					Remove-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -ErrorAction SilentlyContinue | Out-Null
+				} Else {
+					Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name "VerboseStatus" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable verbose startup and shutdown status messages: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	The Windows 260 character path limit
+
+	.PARAMETER Disable
+	Disable the Windows 260 character path limit
+
+	.PARAMETER Enable
+	Enable the Windows 260 character path limit (default value)
+
+	.EXAMPLE
+	Win32LongPathLimit -Disable
+
+	.EXAMPLE
+	Win32LongPathLimit -Enable
+
+	.NOTES
+	Machine-wide
+#>
+function Win32LongPathLimit
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Windows 260 character path limit"
+			LogInfo "Disabling Windows 260 character path limit"
+			try
+			{
+				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable the Windows 260 character path limit: $($_.Exception.Message)"
+			}
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Windows 260 character path limit"
+			LogInfo "Enabling Windows 260 character path limit"
+			try
+			{
+				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable the Windows 260 character path limit: $($_.Exception.Message)"
+			}
+		}
+	}
 }
 
 <#
@@ -2931,1021 +3597,27 @@ function WindowsCapabilities
 
 <#
 	.SYNOPSIS
-	Set current network profile category
+	Windows features
 
-	.PARAMETER Private
-	Set current network profile to Private
+	.PARAMETER Disable
+	Disable Windows features
 
-	.PARAMETER Public
-	Set current network profile to Public
-
-	.EXAMPLE
-	CurrentNetwork -Private
+	.PARAMETER Enable
+	Enable Windows features
 
 	.EXAMPLE
-	CurrentNetwork -Public
+	WindowsFeatures -Disable
+
+	.EXAMPLE
+	WindowsFeatures -Enable
+
+	.NOTES
+	A pop-up dialog box lets a user select features
 
 	.NOTES
 	Current user
 #>
-function CurrentNetwork
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Private"
-		)]
-		[switch]
-		$Private,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Public"
-		)]
-		[switch]
-		$Public
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Private"
-		{
-			Write-ConsoleStatus -Action "Setting current network profile to Private"
-			LogInfo "Setting current network profile to Private"
-			try
-			{
-				Set-NetConnectionProfile -NetworkCategory Private -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status warning
-				LogWarning "Failed to set network profile to Private: $($_.Exception.Message)"
-				Remove-HandledErrorRecord -ErrorRecord $_
-			}
-		}
-		"Public"
-		{
-			Write-ConsoleStatus -Action "Setting current network profile to Public"
-			LogInfo "Setting current network profile to Public"
-			try
-			{
-				Set-NetConnectionProfile -NetworkCategory Public -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status warning
-				LogWarning "Failed to set network profile to Public: $($_.Exception.Message)"
-				Remove-HandledErrorRecord -ErrorRecord $_
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Set network category for unidentified networks
-
-	.PARAMETER Private
-	Set unidentified networks to Private profile
-
-	.PARAMETER Public
-	Set unidentified networks to Public profile (default value)
-
-	.EXAMPLE
-	UnknownNetworks -Private
-
-	.EXAMPLE
-	UnknownNetworks -Public
-
-	.NOTES
-	Current user
-#>
-function UnknownNetworks
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Private"
-		)]
-		[switch]
-		$Private,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Public"
-		)]
-		[switch]
-		$Public
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Private"
-		{
-			Write-ConsoleStatus -Action "Setting unidentified networks to Private profile"
-			LogInfo "Setting unidentified networks to Private profile"
-			If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24")) {
-				New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Force | Out-Null
-			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Name "Category" -Type DWord -Value 1 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Public"
-		{
-			Write-ConsoleStatus -Action "Setting unidentified networks to Public profile"
-			LogInfo "Setting unidentified networks to Public profile"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\010103000F0000F0010000000F0000F0C967A3643C3AD745950DA7859209176EF5B87C875FA20DF21951640E807D7C24" -Name "Category" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Automatic installation of network devices
-
-	.PARAMETER Enable
-	Allow automatic installation of network devices (default value)
-
-	.PARAMETER Disable
-	Prevent automatic installation of network devices
-
-	.EXAMPLE
-	NetDevicesAutoInst -Enable
-
-	.EXAMPLE
-	NetDevicesAutoInst -Disable
-
-	.NOTES
-	Current user
-#>
-function NetDevicesAutoInst
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling automatic installation of network devices"
-			LogInfo "Enabling automatic installation of network devices"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Name "AutoSetup" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling automatic installation of network devices"
-			LogInfo "Disabling automatic installation of network devices"
-			If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private")) {
-				New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Force | Out-Null
-			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\NcdAutoSetup\Private" -Name "AutoSetup" -Type DWord -Value 0 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	HomeGroup services configuration
-
-	.PARAMETER Enable
-	Enable HomeGroup services
-
-	.PARAMETER Disable
-	Disable HomeGroup services (default value)
-
-	.EXAMPLE
-	HomeGroups -Enable
-
-	.EXAMPLE
-	HomeGroups -Disable
-
-	.NOTES
-	Current user
-	Not applicable since 1803
-	Not applicable to Server
-#>
-function HomeGroups
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-    		Write-ConsoleStatus -Action "Enabling HomeGroup services"
-    		LogInfo "Enabling HomeGroup services"
-
-    		# Check if services exist before attempting to modify them
-    		$listenerExists = Get-Service "HomeGroupListener" -ErrorAction SilentlyContinue
-    		$providerExists = Get-Service "HomeGroupProvider" -ErrorAction SilentlyContinue
-
-    		if ($listenerExists) {
-       		 	Set-Service "HomeGroupListener" -StartupType Manual -ErrorAction SilentlyContinue 2>&1 | Out-Null
-    		}
-
-    		if ($providerExists) {
-        		Set-Service "HomeGroupProvider" -StartupType Manual -ErrorAction SilentlyContinue 2>&1 | Out-Null
-        		Start-Service "HomeGroupProvider" -ErrorAction SilentlyContinue 2>&1 | Out-Null
-    	}
-    		Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-    		Write-ConsoleStatus -Action "Disabling HomeGroup services"
-    		LogInfo "Disabling HomeGroup services"
-
-   	 		# Check if services exist before attempting to modify them
-    		$listenerExists = Get-Service "HomeGroupListener" -ErrorAction SilentlyContinue
-    		$providerExists = Get-Service "HomeGroupProvider" -ErrorAction SilentlyContinue
-
-    		If ($listenerExists) {
-        	Stop-Service "HomeGroupListener" -ErrorAction SilentlyContinue 2>&1 | Out-Null
-        	Set-Service "HomeGroupListener" -StartupType Disabled -ErrorAction SilentlyContinue 2>&1 | Out-Null
-    		}
-
-    		If ($providerExists) {
-        	Stop-Service "HomeGroupProvider" -ErrorAction SilentlyContinue 2>&1 | Out-Null
-        	Set-Service "HomeGroupProvider" -StartupType Disabled -ErrorAction SilentlyContinue 2>&1 | Out-Null
-    		}
-    		Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	SMB 1.0 protocol configuration
-
-	.PARAMETER Enable
-	Enable SMB 1.0 protocol
-
-	.PARAMETER Disable
-	Disable SMB 1.0 protocol (default value)
-
-	.EXAMPLE
-	SMB1 -Enable
-
-	.EXAMPLE
-	SMB1 -Disable
-
-	.NOTES
-	Current user
-#>
-function SMB1
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling SMB 1.0 protocol"
-			LogInfo "Enabling SMB 1.0 protocol"
-			$null = Set-SmbServerConfiguration -EnableSMB1Protocol $true -Force -ErrorAction SilentlyContinue 2>&1
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling SMB 1.0 protocol"
-			LogInfo "Disabling SMB 1.0 protocol"
-			$null = Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -ErrorAction SilentlyContinue 2>&1
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	SMB Server file and printer sharing configuration
-
-	.PARAMETER Enable
-	Enable SMB Server file and printer sharing
-
-	.PARAMETER Disable
-	Disable SMB Server file and printer sharing
-
-	.EXAMPLE
-	SMBServer -Enable
-
-	.EXAMPLE
-	SMBServer -Disable
-
-	.NOTES
-	Current user
-	Disabling prevents file and printer sharing but allows client connections
-	Do not disable if using Docker with shared drives as it uses SMB internally
-#>
-function SMBServer
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling SMB Server file and printer sharing"
-			LogInfo "Enabling SMB Server file and printer sharing"
-			Set-SmbServerConfiguration -EnableSMB2Protocol $true -Force | Out-Null
-			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_server" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling SMB Server file and printer sharing"
-			LogInfo "Disabling SMB Server file and printer sharing"
-			Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force | Out-Null
-			Set-SmbServerConfiguration -EnableSMB2Protocol $false -Force | Out-Null
-			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_server" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	NetBIOS over TCP/IP configuration on installed network interfaces
-
-	.PARAMETER Enable
-	Enable NetBIOS over TCP/IP on all installed network interfaces
-
-	.PARAMETER Disable
-	Disable NetBIOS over TCP/IP on all installed network interfaces
-
-	.EXAMPLE
-	NetBIOS -Enable
-
-	.EXAMPLE
-	NetBIOS -Disable
-
-	.NOTES
-	Current user
-#>
-function NetBIOS
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling NetBIOS over TCP/IP"
-			LogInfo "Enabling NetBIOS over TCP/IP"
-			Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\NetBT\Parameters\Interfaces\Tcpip*" -Name "NetbiosOptions" -Type DWord -Value 0 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling NetBIOS over TCP/IP"
-			LogInfo "Disabling NetBIOS over TCP/IP"
-			Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\NetBT\Parameters\Interfaces\Tcpip*" -Name "NetbiosOptions" -Type DWord -Value 2 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Link-Local Multicast Name Resolution (LLMNR) protocol configuration
-
-	.PARAMETER Enable
-	Enable LLMNR protocol (default value)
-
-	.PARAMETER Disable
-	Disable LLMNR protocol
-
-	.EXAMPLE
-	LLMNR -Enable
-
-	.EXAMPLE
-	LLMNR -Disable
-
-	.NOTES
-	Current user
-#>
-function LLMNR
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Link-Local Multicast Name Resolution (LLMNR) protocol"
-			LogInfo "Enabling Link-Local Multicast Name Resolution (LLMNR) protocol"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name "EnableMulticast" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Link-Local Multicast Name Resolution (LLMNR) protocol"
-			LogInfo "Disabling Link-Local Multicast Name Resolution (LLMNR) protocol"
-			If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient")) {
-				New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Force | Out-Null
-			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name "EnableMulticast" -Type DWord -Value 0 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Client for Microsoft Networks configuration on all network interfaces
-
-	.PARAMETER Enable
-	Enable Client for Microsoft Networks on all installed network interfaces (default value)
-
-	.PARAMETER Disable
-	Disable Client for Microsoft Networks on all installed network interfaces
-
-	.EXAMPLE
-	MSNetClient -Enable
-
-	.EXAMPLE
-	MSNetClient -Disable
-
-	.NOTES
-	Current user
-#>
-function MSNetClient
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Microsoft Network clients on all installed network interfaces"
-			LogInfo "Enabling Microsoft Network clients on all installed network interfaces"
-			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_msclient" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Microsoft Network clients on all installed network interfaces"
-			LogInfo "Disabling Microsoft Network clients on all installed network interfaces"
-			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_msclient" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Quality of Service (QoS) packet scheduler configuration on all network interfaces
-
-	.PARAMETER Enable
-	Enable QoS packet scheduler on all installed network interfaces (default value)
-
-	.PARAMETER Disable
-	Disable QoS packet scheduler on all installed network interfaces
-
-	.EXAMPLE
-	QoS -Enable
-
-	.EXAMPLE
-	QoS -Disable
-
-	.NOTES
-	Current user
-#>
-function QoS
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Quality of Service (QoS)"
-			LogInfo "Enabling Quality of Service (QoS)"
-			Enable-NetAdapterBinding -Name "*" -ComponentID "ms_pacer" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Quality of Service (QoS)"
-			LogInfo "Disabling Quality of Service (QoS)"
-			Disable-NetAdapterBinding -Name "*" -ComponentID "ms_pacer" | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Network Connectivity Status Indicator (NCSI) active probe configuration
-
-	.PARAMETER Enable
-	Enable NCSI active probe (default value)
-
-	.PARAMETER Disable
-	Disable NCSI active probe to reduce certain zero-click attack exposure
-
-	.EXAMPLE
-	NCSIProbe -Enable
-
-	.EXAMPLE
-	NCSIProbe -Disable
-
-	.NOTES
-	Current user
-	Disabling may reduce OS ability to detect internet connectivity
-	See https://github.com/Disassembler0/Win10-Initial-Setup-Script/pull/111 for details
-#>
-function NCSIProbe
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Network Connectivity Status Indicator (NCSI) active probe"
-			LogInfo "Enabling Network Connectivity Status Indicator (NCSI) active probe"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\NetworkConnectivityStatusIndicator" -Name "NoActiveProbe" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Network Connectivity Status Indicator (NCSI) active probe"
-			LogInfo "Disabling Network Connectivity Status Indicator (NCSI) active probe"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\NetworkConnectivityStatusIndicator" -Name "NoActiveProbe" -Type DWord -Value 1 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Internet Connection Sharing (ICS) configuration, e.g., mobile hotspot
-
-	.PARAMETER Enable
-	Allow Internet Connection Sharing
-
-	.PARAMETER Disable
-	Prevent Internet Connection Sharing (default value)
-
-	.EXAMPLE
-	ConnectionSharing -Enable
-
-	.EXAMPLE
-	ConnectionSharing -Disable
-
-	.NOTES
-	Current user
-#>
-function ConnectionSharing
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Internet Connection Sharing (ICS)"
-			LogInfo "Enabling Internet Connection Sharing (ICS)"
-			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name "NC_ShowSharedAccessUI" -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Internet Connection Sharing (ICS)"
-			LogInfo "Disabling Internet Connection Sharing (ICS)"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name "NC_ShowSharedAccessUI" -Type DWord -Value 0 | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Receive updates for other Microsoft products
-
-	.PARAMETER Enable
-	Receive updates for other Microsoft products
-
-	.PARAMETER Disable
-	Do not receive updates for other Microsoft products (default value)
-
-	.EXAMPLE
-	UpdateMicrosoftProducts -Enable
-
-	.EXAMPLE
-	UpdateMicrosoftProducts -Disable
-
-	.NOTES
-	Current user
-#>
-function UpdateMicrosoftProducts
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AllowMUUpdateService -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AllowMUUpdateService -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling receiving updates for other Microsoft products"
-			LogInfo "Enabling receiving updates for other Microsoft products"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name AllowMUUpdateService -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling receiving updates for other Microsoft products"
-			LogInfo "Disabling receiving updates for other Microsoft products"
-			Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name AllowMUUpdateService -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Notification when your PC requires a restart to finish updating
-
-	.PARAMETER Show
-	Notify me when a restart is required to finish updating
-
-	.PARAMETER Hide
-	Do not notify me when a restart is required to finish updating (default value)
-
-	.EXAMPLE
-	RestartNotification -Show
-
-	.EXAMPLE
-	RestartNotification -Hide
-
-	.NOTES
-	Machine-wide
-#>
-function RestartNotification
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Show"
-		)]
-		[switch]
-		$Show,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Hide"
-		)]
-		[switch]
-		$Hide
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAutoRestartNotificationDisable -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAutoRestartNotificationDisable -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Show"
-		{
-			Write-ConsoleStatus -Action "Showing notification when your PC requires a restart to finish updating"
-			LogInfo "Showing notification when your PC requires a restart to finish updating"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name RestartNotificationsAllowed2 -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Hide"
-		{
-			Write-ConsoleStatus -Action "Hiding notification when your PC requires a restart to finish updating"
-			LogInfo "Hiding notification when your PC requires a restart to finish updating"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name RestartNotificationsAllowed2 -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Restart as soon as possible to finish updating
-
-	.PARAMETER Enable
-	Restart as soon as possible to finish updating
-
-	.PARAMETER Disable
-	Don't restart as soon as possible to finish updating (default value)
-
-	.EXAMPLE
-	DeviceRestartAfterUpdate -Enable
-
-	.EXAMPLE
-	DeviceRestartAfterUpdate -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function RestartDeviceAfterUpdate
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd, ActiveHoursStart, SetActiveHours -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursStart -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetActiveHours -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling restart as soon as possible to finish updating"
-			LogInfo "Enabling restart as soon as possible to finish updating"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsExpedited -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling restart as soon as possible to finish updating"
-			LogInfo "Disabling restart as soon as possible to finish updating"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsExpedited -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Active hours
-
-	.PARAMETER Automatically
-	Automatically adjust active hours for me based on daily usage
-
-	.PARAMETER Manually
-	Manually adjust active hours for me based on daily usage (default value)
-
-	.EXAMPLE
-	ActiveHours -Automatically
-
-	.EXAMPLE
-	ActiveHours -Manually
-
-	.NOTES
-	Machine-wide
-#>
-function ActiveHours
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Automatically"
-		)]
-		[switch]
-		$Automatically,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Manually"
-		)]
-		[switch]
-		$Manually
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoRebootWithLoggedOnUsers, AlwaysAutoRebootAtScheduledTime -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoRebootWithLoggedOnUsers -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AlwaysAutoRebootAtScheduledTime -Type CLEAR | Out-Null
-
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd, ActiveHoursStart, SetActiveHours -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursEnd -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name ActiveHoursStart -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetActiveHours -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Automatically"
-		{
-			Write-ConsoleStatus -Action "Automatically adjusting active hours for me based on daily usage"
-			LogInfo "Automatically adjusting active hours for me based on daily usage"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name SmartActiveHoursState -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Manually"
-		{
-			Write-ConsoleStatus -Action "Manually adjusting active hours for me based on daily usage"
-			LogInfo "Manually adjusting active hours for me based on daily usage"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name SmartActiveHoursState -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Windows latest updates
-
-	.PARAMETER Disable
-	Do not get the latest updates as soon as they're available (default value)
-
-	.PARAMETER Enable
-	Get the latest updates as soon as they're available
-
-	.EXAMPLE
-	WindowsLatestUpdate -Disable
-
-	.EXAMPLE
-	WindowsLatestUpdate -Enable
-
-	.NOTES
-	Machine-wide
-#>
-function WindowsLatestUpdate
+function WindowsFeatures
 {
 	param
 	(
@@ -3964,260 +3636,436 @@ function WindowsLatestUpdate
 		$Enable
 	)
 
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name AllowOptionalContent, SetAllowOptionalContent -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name AllowOptionalContent -Type CLEAR | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate -Name SetAllowOptionalContent -Type CLEAR | Out-Null
+	Add-Type -AssemblyName PresentationCore, PresentationFramework
+
+	#region Variables
+	# Initialize an array list to store the selected Windows features
+	$SelectedFeatures = New-Object -TypeName System.Collections.ArrayList($null)
+	# The following Windows features will have their checkboxes checked
+	[string[]]$CheckedFeatures = @(
+		# Legacy Components
+		"LegacyComponents",
+
+		# PowerShell 2.0
+		"MicrosoftWindowsPowerShellV2",
+		"MicrosoftWindowsPowershellV2Root",
+
+		# Microsoft XPS Document Writer
+		"Printing-XPSServices-Features",
+
+		# Recall
+		"Recall"
+
+		# Work Folders Client
+		"WorkFolders-Client"
+	)
+
+	# The following Windows features will have their checkboxes unchecked
+	[string[]]$UncheckedFeatures = @(
+		# Media Features
+		# If you want to leave "Multimedia settings" in the advanced settings of Power Options do not disable this feature
+		"MediaPlayback",
+
+		# Windows Sandbox
+		"Containers-DisposableClientVM",
+
+		# Windows Defender Application Guard
+		"Windows-Defender-ApplicationGuard"
+	)
+	#endregion Variables
+
+	#region XAML Markup
+	# The section defines the design of the upcoming dialog box
+	[xml]$XAML = @"
+	<Window
+		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		Name="Window"
+		MinHeight="450" MinWidth="400"
+		SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen"
+		TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
+		FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
+		Background="#F1F1F1" Foreground="#262626">
+		<Window.Resources>
+			<Style TargetType="StackPanel">
+				<Setter Property="Orientation" Value="Horizontal"/>
+				<Setter Property="VerticalAlignment" Value="Top"/>
+			</Style>
+			<Style TargetType="CheckBox">
+				<Setter Property="Margin" Value="10, 10, 5, 10"/>
+				<Setter Property="IsChecked" Value="True"/>
+			</Style>
+			<Style TargetType="TextBlock">
+				<Setter Property="Margin" Value="5, 10, 10, 10"/>
+			</Style>
+			<Style TargetType="Button">
+				<Setter Property="Margin" Value="20"/>
+				<Setter Property="Padding" Value="10"/>
+			</Style>
+			<Style TargetType="Border">
+				<Setter Property="Grid.Row" Value="1"/>
+				<Setter Property="CornerRadius" Value="0"/>
+				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
+				<Setter Property="BorderBrush" Value="#000000"/>
+			</Style>
+			<Style TargetType="ScrollViewer">
+				<Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+				<Setter Property="BorderBrush" Value="#000000"/>
+				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
+			</Style>
+		</Window.Resources>
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+				<RowDefinition Height="Auto"/>
+			</Grid.RowDefinitions>
+			<ScrollViewer Name="Scroll" Grid.Row="0"
+				HorizontalScrollBarVisibility="Disabled"
+				VerticalScrollBarVisibility="Auto">
+				<StackPanel Name="PanelContainer" Orientation="Vertical"/>
+			</ScrollViewer>
+			<Button Name="Button" Grid.Row="2"/>
+		</Grid>
+	</Window>
+"@
+	#endregion XAML Markup
+
+	$Form = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $XAML))
+	$XAML.SelectNodes("//*[@*[contains(translate(name(.),'n','N'),'Name')]]") | ForEach-Object -Process {
+		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
+	}
+
+	#region Functions
+
+	function Test-FeaturePatternMatch
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[string]
+			$FeatureName,
+
+			[string[]]
+			$Patterns
+		)
+
+		foreach ($Pattern in $Patterns)
+		{
+			if ($FeatureName -like $Pattern)
+			{
+				return $true
+			}
+		}
+
+		return $false
+	}
+
+	function Get-CheckboxClicked
+	{
+		[CmdletBinding()]
+		param
+		(
+			[Parameter(
+				Mandatory = $true,
+				ValueFromPipeline = $true
+			)]
+			[ValidateNotNull()]
+			$CheckBox
+		)
+
+		$Feature = $CheckBox.Tag
+
+		if ($CheckBox.IsChecked)
+		{
+			if ($Feature -and ($Feature -notin $SelectedFeatures))
+			{
+				[void]$SelectedFeatures.Add($Feature)
+			}
+		}
+		else
+		{
+			if ($Feature)
+			{
+				[void]$SelectedFeatures.Remove($Feature)
+			}
+		}
+		if ($SelectedFeatures.Count -gt 0)
+		{
+			$Button.IsEnabled = $true
+		}
+		else
+		{
+			$Button.IsEnabled = $false
+		}
+	}
+
+	function DisableButton
+	{
+		try
+		{
+			Write-ConsoleStatus -Action "Disabling Windows features"
+			LogInfo "Disabling Windows features"
+			LogInfo "Windows features selected for disable: $($SelectedFeatures.Count)"
+
+			[void]$Window.Close()
+
+			if (-not $SelectedFeatures -or $SelectedFeatures.Count -eq 0)
+			{
+				throw "No Windows features were selected."
+			}
+
+			foreach ($Feature in @($SelectedFeatures))
+			{
+				LogInfo "Disabling Windows feature: $($Feature.FeatureName)"
+				Invoke-SilencedProgress {
+					Disable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+				}
+				LogInfo "Disabled Windows feature: $($Feature.FeatureName)"
+			}
+				Write-ConsoleStatus -Status success
+		}
+		catch
+		{
+			Remove-HandledErrorRecord -ErrorRecord $_
+			LogError "Failed to disable Windows features: $($_.Exception.Message)"
+			Write-ConsoleStatus -Status failed
+		}
+	}
+
+	function EnableButton
+	{
+		try
+		{
+			Write-ConsoleStatus -Action "Enabling Windows features"
+			LogInfo "Enabling Windows features"
+			LogInfo "Windows features selected for enable: $($SelectedFeatures.Count)"
+
+			[void]$Window.Close()
+
+			if (-not $SelectedFeatures -or $SelectedFeatures.Count -eq 0)
+			{
+				throw "No Windows features were selected."
+			}
+
+			foreach ($Feature in @($SelectedFeatures))
+			{
+				LogInfo "Enabling Windows feature: $($Feature.FeatureName)"
+				Invoke-SilencedProgress {
+					Enable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+				}
+				LogInfo "Enabled Windows feature: $($Feature.FeatureName)"
+			}
+				Write-ConsoleStatus -Status success
+		}
+		catch
+		{
+			Remove-HandledErrorRecord -ErrorRecord $_
+			LogError "Failed to enable Windows features: $($_.Exception.Message)"
+			Write-ConsoleStatus -Status failed
+		}
+	}
+
+	function Add-FeatureControl
+	{
+		[CmdletBinding()]
+		param
+		(
+			[Parameter(
+				Mandatory = $true,
+				ValueFromPipeline = $true
+			)]
+			[ValidateNotNull()]
+			$Feature
+		)
+
+		process
+		{
+			$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
+			$CheckBox.Add_Click({Get-CheckboxClicked -CheckBox $_.Source})
+			$CheckBox.Tag = $Feature
+			$CheckBox.ToolTip = $Feature.Description
+
+			$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
+			$FeatureLabel = if ([string]::IsNullOrWhiteSpace($Feature.DisplayName)) { $Feature.FeatureName } else { $Feature.DisplayName }
+			$TextBlock.Text = $FeatureLabel
+			$TextBlock.ToolTip = $Feature.Description
+
+			$StackPanel = New-Object -TypeName System.Windows.Controls.StackPanel
+			[void]$StackPanel.Children.Add($CheckBox)
+			[void]$StackPanel.Children.Add($TextBlock)
+			[void]$PanelContainer.Children.Add($StackPanel)
+
+			$CheckBox.IsChecked = $false
+
+			# If feature checked add to the array list
+			if (Test-FeaturePatternMatch -FeatureName $Feature.FeatureName -Patterns $UncheckedFeatures)
+			{
+				$CheckBox.IsChecked = $false
+				#  function if item is not checked
+				return
+			}
+
+			$CheckBox.IsChecked = $true
+
+			# If feature checked add to the array list
+			[void]$SelectedFeatures.Add($Feature)
+			$Button.IsEnabled = $true
+		}
+	}
+	#endregion Functions
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling getting the latest updates as soon as they're available"
-			LogInfo "Disabling getting the latest updates as soon as they're available"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsContinuousInnovationOptedIn -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
 		"Enable"
 		{
-			Write-ConsoleStatus -Action "Enabling getting the latest updates as soon as they're available"
-			LogInfo "Enabling getting the latest updates as soon as they're available"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings -Name IsContinuousInnovationOptedIn -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
+			$State           = @("Disabled", "DisablePending")
+			$ButtonContent   = $Localization.Enable
+			$ButtonAdd_Click = {EnableButton}
+		}
+		"Disable"
+		{
+			$State           = @("Enabled", "EnablePending")
+			$ButtonContent   = $Localization.Disable
+			$ButtonAdd_Click = {DisableButton}
 		}
 	}
-}
 
-<#
-	.SYNOPSIS
-	Power plan
-
-	.PARAMETER High
-	Set power plan on "High performance"
-
-	.PARAMETER Balanced
-	Set power plan on "Balanced" (default value)
-
-	.EXAMPLE
-	PowerPlan -High
-
-	.EXAMPLE
-	PowerPlan -Balanced
-
-	.NOTES
-	It isn't recommended to turn on for laptops
-
-	.NOTES
-	Current user
-#>
-function PowerPlan
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "High"
-		)]
-		[switch]
-		$High,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Balanced"
-		)]
-		[switch]
-		$Balanced
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
+	# Getting list of all optional features according to the conditions
+	try
 	{
-		"High"
-		{
-			Write-ConsoleStatus -Action "Setting power plan to High performance"
-			LogInfo "Setting power plan to High performance"
-			POWERCFG /SETACTIVE SCHEME_MIN | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Balanced"
-		{
-			Write-ConsoleStatus -Action "Setting power plan to Balanced"
-			LogInfo "Setting power plan to Balanced"
-			POWERCFG /SETACTIVE SCHEME_BALANCED | Out-Null
-			Write-ConsoleStatus -Status success
-		}
+		$Features = Get-WindowsOptionalFeature -Online -ErrorAction Stop |
+			Where-Object -FilterScript {
+				($_.State -in $State) -and
+				(
+					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $UncheckedFeatures) -or
+					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $CheckedFeatures)
+				)
+			} |
+			Sort-Object -Property DisplayName, FeatureName
 	}
-}
-
-<#
-	.SYNOPSIS
-	Network adapters power management
-
-	.PARAMETER Disable
-	Do not allow the computer to turn off the network adapters to save power
-
-	.PARAMETER Enable
-	Allow the computer to turn off the network adapters to save power (default value)
-
-	.EXAMPLE
-	NetworkAdaptersSavePower -Disable
-
-	.EXAMPLE
-	NetworkAdaptersSavePower -Enable
-
-	.NOTES
-	It isn't recommended to turn off for laptops
-
-	.NOTES
-	Current user
-#>
-function NetworkAdaptersSavePower
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	# Checking whether there's an adapter that has AllowComputerToTurnOffDevice property to manage
-	$Adapters = Get-NetAdapter -Physical | Where-Object -FilterScript {$_.MacAddress} | Get-NetAdapterPowerManagement | Where-Object -FilterScript {$_.AllowComputerToTurnOffDevice -ne "Unsupported"}
-	if (-not $Adapters)
+	catch
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		Remove-HandledErrorRecord -ErrorRecord $_
+		$Features = $null
+	}
 
+	if (-not $Features)
+	{
+		LogInfo "Windows Features:"
+		LogInfo "No preset-matched Windows features were found. Moving on."
+		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'Disabling Windows features' } else { 'Enabling Windows features' })" -Status success
 		return
 	}
 
-	$PhysicalAdaptersStatusUp = @(Get-NetAdapter -Physical | Where-Object -FilterScript {($_.Status -eq "Up") -and $_.MacAddress})
+	#region Sendkey function
+	# Emulate the Backspace key sending to prevent the console window to freeze
+	Start-Sleep -Milliseconds 500
 
-	# Checking whether PC is currently connected to a Wi-Fi network
-	# NetConnectionStatus 2 is Wi-Fi
-	$InterfaceIndex = (Get-CimInstance -ClassName Win32_NetworkAdapter -Namespace root/CIMV2 | Where-Object -FilterScript {$_.NetConnectionStatus -eq 2}).InterfaceIndex
-	if (Get-NetAdapter -Physical | Where-Object -FilterScript {($_.Status -eq "Up") -and ($_.PhysicalMediaType -eq "Native 802.11") -and ($_.InterfaceIndex -eq $InterfaceIndex)})
-	{
-		# Get currently connected Wi-Fi network SSID
-		$SSID = (Get-NetConnectionProfile).Name
+	Add-Type -AssemblyName System.Windows.Forms
+
+	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
+	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
+		# Show window, if minimized
+		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
+
+		Start-Sleep -Milliseconds 150
+
+		# Force move the console window to the foreground
+		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
+
+		Start-Sleep -Milliseconds 150
+
+		# Emulate the Backspace key sending
+		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
 	}
+	#endregion Sendkey function
+	$Button.IsEnabled = $false
+	$Window.Add_Loaded({$Features | Add-FeatureControl})
+	$Button.Content = $ButtonContent
+	$Button.Add_Click({
+		& $ButtonAdd_Click
+	})
 
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling 'allowing the computer to turn off the network adapters to save power'"
-			LogInfo "Disabling 'allowing the computer to turn off the network adapters to save power'"
-			foreach ($Adapter in $Adapters)
-			{
-				$Adapter.AllowComputerToTurnOffDevice = "Disabled"
-				$Adapter | Set-NetAdapterPowerManagement | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-		}
-		"Enable"
-		{
-			foreach ($Adapter in $Adapters)
-			{
-				Write-ConsoleStatus -Action "Enabling 'allowing the computer to turn off the network adapters to save power' for adapter '$($Adapter.Name)'"
-				LogInfo "Enabling 'allowing the computer to turn off the network adapters to save power' for adapter '$($Adapter.Name)'"
-				$Adapter.AllowComputerToTurnOffDevice = "Enabled"
-				$Adapter | Set-NetAdapterPowerManagement | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-		}
-	}
+	$Window.Title = $Localization.WindowsFeaturesTitle
 
-	# All network adapters are turned into "Disconnected" for few seconds, so we need to wait a bit to let them up
-	# Otherwise functions below will indicate that there is no the Internet connection
-	if ($PhysicalAdaptersStatusUp)
-	{
-		# If Wi-Fi network was used
-		if ($SSID)
-		{
-			#Write-Verbose -Message $SSID -Verbose
-			# Connect to it
-			netsh wlan connect name="$SSID" 2>$null | Out-Null
-			if ($LASTEXITCODE -ne 0)
-			{
-				LogWarning "Failed to reconnect to Wi-Fi network '$SSID' after adapter changes. netsh exit code: $LASTEXITCODE"
-			}
-		}
-
-		while
-		(
-			Get-NetAdapter -Physical -Name $PhysicalAdaptersStatusUp.Name | Where-Object -FilterScript {($_.Status -eq "Disconnected") -and $_.MacAddress} | Out-Null
-		)
-		{
-			Start-Sleep -Seconds 2
-		}
-	}
+	# Restore minimized dialogs and bring them to the foreground once when shown.
+	$Form.Topmost = $true
+	$Form.Activate()
+	$Form.ShowDialog() | Out-Null
 }
 
 <#
 	.SYNOPSIS
-	Override for default input method
+	Windows manages my default printer
 
-	.PARAMETER English
-	Override for default input method: English
+	.PARAMETER Disable
+	Do not let Windows manage my default printer
 
-	.PARAMETER Default
-	Override for default input method: use language list (default value)
-
-	.EXAMPLE
-	InputMethod -English
+	.PARAMETER Enable
+	Let Windows manage my default printer (default value)
 
 	.EXAMPLE
-	InputMethod -Default
+	WindowsManageDefaultPrinter -Disable
+
+	.EXAMPLE
+	WindowsManageDefaultPrinter -Enable
 
 	.NOTES
 	Current user
 #>
-function InputMethod
+function WindowsManageDefaultPrinter
 {
 	param
 	(
 		[Parameter(
 			Mandatory = $true,
-			ParameterSetName = "English"
+			ParameterSetName = "Disable"
 		)]
 		[switch]
-		$English,
+		$Disable,
 
 		[Parameter(
 			Mandatory = $true,
-			ParameterSetName = "Default"
+			ParameterSetName = "Enable"
 		)]
 		[switch]
-		$Default
+		$Enable
 	)
+
+	Set-Policy -Scope User -Path "Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -Type CLEAR | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
-		"English"
+		"Disable"
 		{
-			Write-ConsoleStatus -Action "Setting override for default input method to English"
-			LogInfo "Setting override for default input method to English"
-			Set-WinDefaultInputMethodOverride -InputTip "0409:00000409" | Out-Null
-			Write-ConsoleStatus -Status success
+			Write-ConsoleStatus -Action "Disabling 'Let Windows manage my default printer'"
+			LogInfo "Disabling 'Let Windows manage my default printer'"
+			try
+			{
+				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable 'Let Windows manage my default printer': $($_.Exception.Message)"
+			}
 		}
-		"Default"
+		"Enable"
 		{
-			Write-ConsoleStatus -Action "Setting override for default input method to use language list"
-			LogInfo "Setting override for default input method to use language list"
-			Remove-ItemProperty -Path "HKCU:\Control Panel\International\User Profile" -Name InputMethodOverride -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
+			Write-ConsoleStatus -Action "Enabling 'Let Windows manage my default printer'"
+			LogInfo "Enabling 'Let Windows manage my default printer'"
+			try
+			{
+				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable 'Let Windows manage my default printer': $($_.Exception.Message)"
+			}
 		}
 	}
 }
@@ -5023,65 +4871,6 @@ public extern static int SHSetKnownFolderPath(ref Guid folderId, uint flags, Int
 
 <#
 	.SYNOPSIS
-	Use the latest installed .NET runtime for all apps usage
-
-	.PARAMETER Enable
-	Use the latest installed .NET runtime for all apps
-
-	.PARAMETER Disable
-	Do not use the latest installed .NET runtime for all apps (default value)
-
-	.EXAMPLE
-	LatestInstalled.NET -Enable
-
-	.EXAMPLE
-	LatestInstalled.NET -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function LatestInstalled.NET
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling the use of the latest installed .NET runtime for all apps"
-			LogInfo "Enabling the use of the latest installed .NET runtime for all apps"
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\.NETFramework -Name OnlyUseLatestCLR -PropertyType DWord -Value 1 -Force | Out-Null
-			New-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework -Name OnlyUseLatestCLR -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-Host "Disabling the use of the latest installed .NET runtime for all apps -" -NoNewline
-			LogInfo "Disabling the use of the latest installed .NET runtime for all apps"
-			Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\.NETFramework -Name OnlyUseLatestCLR -Force -ErrorAction Ignore | Out-Null
-			Remove-ItemProperty -Path HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NETFramework -Name OnlyUseLatestCLR -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
 	The location to save screenshots by pressing Win+PrtScr
 
 	.PARAMETER Desktop
@@ -5191,606 +4980,6 @@ function WinPrtScrFolder
 			Write-ConsoleStatus -Action "Setting the location to save screenshots by pressing Win+PrtScr to the default one"
 			LogInfo "Setting the location to save screenshots by pressing Win+PrtScr to the default one"
 			Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name "{B7BEDE81-DF94-4682-A7D8-57A52620B86F}" -Force -ErrorAction Ignore | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Recommended troubleshooter preferences
-
-	.PARAMETER Automatically
-	Run troubleshooter automatically, then notify me
-
-	.PARAMETER Default
-	Ask me before running troubleshooter (default value)
-
-	.EXAMPLE
-	RecommendedTroubleshooting -Automatically
-
-	.EXAMPLE
-	RecommendedTroubleshooting -Default
-
-	.NOTES
-	In order this feature to work Windows level of diagnostic data gathering will be set to "Optional diagnostic data" and the error reporting feature will be turned on
-
-	.NOTES
-	Machine-wide
-#>
-function RecommendedTroubleshooting
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Automatically"
-		)]
-		[switch]
-		$Automatically,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Default"
-		)]
-		[switch]
-		$Default
-	)
-
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -Force -ErrorAction SilentlyContinue | Out-Null
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -Force -ErrorAction SilentlyContinue | Out-Null
-	Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack -Name ShowedToastAtLevel -Force -ErrorAction SilentlyContinue | Out-Null
-
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -Type CLEAR | Out-Null
-
-	# Turn on Windows Error Reporting
-	Get-ScheduledTask -TaskName QueueReporting -ErrorAction SilentlyContinue | Enable-ScheduledTask | Out-Null
-	Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Force -ErrorAction SilentlyContinue | Out-Null
-
-	Get-Service -Name WerSvc | Set-Service -StartupType Manual | Out-Null
-	Get-Service -Name WerSvc | Start-Service | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Automatically"
-		{
-			Write-ConsoleStatus -Action "Setting troubleshooter preferences to automatically run"
-			LogInfo "Setting troubleshooter preferences to automatically run"
-			if (-not (Test-Path -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation))
-			{
-				New-Item -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Force | Out-Null
-			}
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Name UserPreference -PropertyType DWord -Value 3 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Default"
-		{
-			Write-ConsoleStatus -Action "Setting troubleshooter preferences to ask before running"
-			LogInfo "Setting troubleshooter preferences to ask before running"
-			if (-not (Test-Path -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation))
-			{
-				New-Item -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Force | Out-Null
-			}
-			New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\WindowsMitigation -Name UserPreference -PropertyType DWord -Value 2 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Reserved storage
-
-	.PARAMETER Disable
-	Disable and delete reserved storage after the next update installation
-
-	.PARAMETER Enable
-	Enable reserved storage after the next update installation
-
-	.EXAMPLE
-	ReservedStorage -Disable
-
-	.EXAMPLE
-	ReservedStorage -Enable
-
-	.NOTES
-	Current user
-#>
-function ReservedStorage
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			try
-			{
-				Write-ConsoleStatus -Action "Disabling reserved storage"
-				LogInfo "Disabling reserved storage"
-				if (-not (Get-Command -Name Set-WindowsReservedStorageState -ErrorAction Ignore))
-				{
-					LogWarning "Reserved storage cmdlet is not available on this OS. Skipping."
-					Write-ConsoleStatus -Status success
-					return
-				}
-				Set-WindowsReservedStorageState -State Disabled -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch [System.Runtime.InteropServices.COMException]
-			{
-				LogError ($Localization.ReservedStorageIsInUse -f $MyInvocation.Line.Trim())
-				Write-ConsoleStatus -Status failed
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable reserved storage: $($_.Exception.Message)"
-			}
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling reserved storage"
-			LogInfo "Enabling reserved storage"
-			if (-not (Get-Command -Name Set-WindowsReservedStorageState -ErrorAction Ignore))
-			{
-				LogWarning "Reserved storage cmdlet is not available on this OS. Skipping."
-				Write-ConsoleStatus -Status success
-				return
-			}
-			try
-			{
-				Set-WindowsReservedStorageState -State Enabled -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable reserved storage: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Help look up via F1
-
-	.PARAMETER Disable
-	Disable help lookup via F1
-
-	.PARAMETER Enable
-	Enable help lookup via F1 (default value)
-
-	.EXAMPLE
-	F1HelpPage -Disable
-
-	.EXAMPLE
-	F1HelpPage -Enable
-
-	.NOTES
-	Current user
-#>
-function F1HelpPage
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling help look up via F1"
-			LogInfo "Disabling help look up via F1"
-			if (-not (Test-Path -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64"))
-			{
-				New-Item -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64" -Force | Out-Null
-			}
-			New-ItemProperty -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}\1.0\0\win64" -Name "(default)" -PropertyType String -Value "" -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling help look up via F1"
-			LogInfo "Enabling help look up via F1"
-			Remove-Item -Path "HKCU:\Software\Classes\Typelib\{8cec5860-07a1-11d9-b15e-000d56bfe6ee}" -Recurse -Force -ErrorAction Ignore | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Num Lock at startup
-
-	.PARAMETER Enable
-	Enable Num Lock at startup
-
-	.PARAMETER Disable
-	Disable Num Lock at startup (default value)
-
-	.EXAMPLE
-	NumLock -Enable
-
-	.EXAMPLE
-	NumLock -Disable
-
-	.NOTES
-	Current user
-#>
-function NumLock
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Num Lock at startup"
-			LogInfo "Enabling Num Lock at startup"
-			New-ItemProperty -Path "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -PropertyType String -Value 2147483650 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Num Lock at startup"
-			LogInfo "Disabling Num Lock at startup"
-			New-ItemProperty -Path "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -PropertyType String -Value 2147483648 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Caps Lock
-
-	.PARAMETER Disable
-	Disable Caps Lock
-
-	.PARAMETER Enable
-	Enable Caps Lock (default value)
-
-	.EXAMPLE
-	CapsLock -Disable
-
-	.EXAMPLE
-	CapsLock -Enable
-
-	.NOTES
-	Machine-wide
-#>
-function CapsLock
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	Remove-ItemProperty -Path "HKCU:\Keyboard Layout" -Name Attributes -Force -ErrorAction SilentlyContinue | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Caps Lock"
-			LogInfo "Disabling Caps Lock"
-			New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -PropertyType Binary -Value ([byte[]](0,0,0,0,0,0,0,0,2,0,0,0,0,0,58,0,0,0,0,0)) -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Caps Lock"
-			LogInfo "Enabling Caps Lock"
-			Remove-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	The shortcut to start Sticky Keys
-
-	.PARAMETER Disable
-	Turn off Sticky keys by pressing the Shift key 5 times
-
-	.PARAMETER Enable
-	Turn on Sticky keys by pressing the Shift key 5 times (default value)
-
-	.EXAMPLE
-	StickyShift -Disable
-
-	.EXAMPLE
-	StickyShift -Enable
-
-	.NOTES
-	Current user
-#>
-function StickyShift
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Sticky Shift"
-			LogInfo "Disabling Sticky Shift"
-			New-ItemProperty -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -PropertyType String -Value 506 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Sticky Shift"
-			LogInfo "Enabling Sticky Shift"
-			New-ItemProperty -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -PropertyType String -Value 510 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	AutoPlay for all media and devices
-
-	.PARAMETER Disable
-	Don't use AutoPlay for all media and devices
-
-	.PARAMETER Enable
-	Use AutoPlay for all media and devices (default value)
-
-	.EXAMPLE
-	Autoplay -Disable
-
-	.EXAMPLE
-	Autoplay -Enable
-
-	.NOTES
-	Current user
-#>
-function Autoplay
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Type CLEAR | Out-Null
-	Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoDriveTypeAutoRun -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling AutoPlay for all media and devices"
-			LogInfo "Disabling AutoPlay for all media and devices"
-			New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers -Name DisableAutoplay -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling AutoPlay for all media and devices"
-			LogInfo "Enabling AutoPlay for all media and devices"
-			New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers -Name DisableAutoplay -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Restart apps after signing in
-
-	.PARAMETER Enable
-	Automatically saving my restartable apps and restart them when I sign back in
-
-	.PARAMETER Disable
-	Turn off automatically saving my restartable apps and restart them when I sign back in (default value)
-
-	.EXAMPLE
-	SaveRestartableApps -Enable
-
-	.EXAMPLE
-	SaveRestartableApps -Disable
-
-	.NOTES
-	Current user
-#>
-function SaveRestartableApps
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling saving restartable apps and restarting them after signing in"
-			LogInfo "Enabling saving restartable apps and restarting them after signing in"
-			New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling saving restartable apps and restarting them after signing in"
-			LogInfo "Disabling saving restartable apps and restarting them after signing in"
-			New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -PropertyType DWord -Value 0 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
-	Network Discovery File and Printers Sharing
-
-	.PARAMETER Enable
-	Enable "Network Discovery" and "File and Printers Sharing" for workgroup networks
-
-	.PARAMETER Disable
-	Disable "Network Discovery" and "File and Printers Sharing" for workgroup networks (default value)
-
-	.EXAMPLE
-	NetworkDiscovery -Enable
-
-	.EXAMPLE
-	NetworkDiscovery -Disable
-
-	.NOTES
-	Current user
-#>
-function NetworkDiscovery
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	$FirewallRules = @(
-		# File and printer sharing
-		"@FirewallAPI.dll,-32752",
-
-		# Network discovery
-		"@FirewallAPI.dll,-28502"
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Network Discovery and File and Printers Sharing"
-			LogInfo "Enabling Network Discovery and File and Printers Sharing"
-			try
-			{
-				Set-NetFirewallRule -Group $FirewallRules -Profile Private -Enabled True -ErrorAction Stop | Out-Null
-				Set-NetFirewallRule -Profile Private -Name FPS-SMB-In-TCP -Enabled True -ErrorAction Stop | Out-Null
-				Set-NetConnectionProfile -NetworkCategory Private -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status warning
-				LogWarning "Failed to enable Network Discovery and File and Printers Sharing: $($_.Exception.Message)"
-				Remove-HandledErrorRecord -ErrorRecord $_
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Network Discovery and File and Printers Sharing"
-			LogInfo "Disabling Network Discovery and File and Printers Sharing"
-			Set-NetFirewallRule -Group $FirewallRules -Profile Private -Enabled False | Out-Null
 			Write-ConsoleStatus -Status success
 		}
 	}
@@ -6997,89 +6186,6 @@ function Import-Associations
 
 <#
 	.SYNOPSIS
-	Default terminal app
-
-	.PARAMETER WindowsTerminal
-	Set Windows Terminal as default terminal app to host the user interface for command-line applications
-
-	.PARAMETER ConsoleHost
-	Set Windows Console Host as default terminal app to host the user interface for command-line applications (default value)
-
-	.EXAMPLE
-	DefaultTerminalApp -WindowsTerminal
-
-	.EXAMPLE
-	DefaultTerminalApp -ConsoleHost
-
-	.NOTES
-	Current user
-#>
-function DefaultTerminalApp
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "WindowsTerminal"
-		)]
-		[switch]
-		$WindowsTerminal,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "ConsoleHost"
-		)]
-		[switch]
-		$ConsoleHost
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"WindowsTerminal"
-		{
-			if (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue)
-			{
-				Write-ConsoleStatus -Action "Setting Windows Terminal as default terminal app"
-				LogInfo "Setting Windows Terminal as default terminal app"
-				# Checking if the Terminal version supports such feature
-				$TerminalVersion = (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue).Version
-				if ([System.Version]$TerminalVersion -ge [System.Version]"1.11")
-				{
-					if (-not (Test-Path -Path "HKCU:\Console\%%Startup"))
-					{
-						New-Item -Path "HKCU:\Console\%%Startup" -Force -ErrorAction SilentlyContinue | Out-Null
-					}
-
-					# Find the current GUID of Windows Terminal
-					$PackageFullName = (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue).PackageFullName
-					Get-ChildItem -Path "HKLM:\SOFTWARE\Classes\PackagedCom\Package\$PackageFullName\Class" | ForEach-Object -Process {
-						if ((Get-ItemPropertyValue -Path $_.PSPath -Name ServerId) -eq 0)
-						{
-							New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationConsole -PropertyType String -Value $_.PSChildName -Force -ErrorAction SilentlyContinue | Out-Null
-						}
-
-						if ((Get-ItemPropertyValue -Path $_.PSPath -Name ServerId) -eq 1)
-						{
-							New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationTerminal -PropertyType String -Value $_.PSChildName -Force -ErrorAction SilentlyContinue | Out-Null
-						}
-					}
-				}
-				Write-ConsoleStatus -Status success
-			}
-		}
-		"ConsoleHost"
-		{
-			Write-ConsoleStatus -Action "Setting Windows Console Host as default terminal app"
-			LogInfo "Setting Windows Console Host as default terminal app"
-			New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationConsole -PropertyType String -Value "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" -Force -ErrorAction SilentlyContinue | Out-Null
-			New-ItemProperty -Path "HKCU:\Console\%%Startup" -Name DelegationTerminal -PropertyType String -Value "{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}" -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-	.SYNOPSIS
 	Install the latest Microsoft Visual C++ Redistributable Packages 2015 - 2022 (x86/x64)
 
 	.EXAMPLE
@@ -7693,183 +6799,3 @@ function Install-DotNetRuntimes
 		}
 	}
 }
-
-<#
-	.SYNOPSIS
-	Desktop shortcut creation upon Microsoft Edge update
-
-	.PARAMETER Channels
-	List Microsoft Edge channels to prevent desktop shortcut creation upon its update
-
-	.PARAMETER Disable
-	Do not prevent desktop shortcut creation upon Microsoft Edge update (default value)
-
-	.EXAMPLE
-	PreventEdgeShortcutCreation -Channels Stable, Beta, Dev, Canary
-
-	.EXAMPLE
-	PreventEdgeShortcutCreation -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function PreventEdgeShortcutCreation
-{
-	[CmdletBinding()]
-	param
-	(
-		[Parameter(
-			Mandatory = $false,
-			ParameterSetName = "Channels"
-		)]
-		[ValidateSet("Stable", "Beta", "Dev", "Canary")]
-		[string[]]
-		$Channels,
-
-		[Parameter(
-			Mandatory = $false,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	if (-not (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction Ignore -WarningAction SilentlyContinue))
-	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
-		return
-	}
-
-	if (-not (Test-Path -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate))
-	{
-		New-Item -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Force | Out-Null
-	}
-
-	foreach ($Channel in $Channels)
-	{
-		switch ($Channel)
-		{
-			Stable
-			{
-				Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Stable Channel"
-				LogInfo "Preventing desktop shortcut creation for Microsoft Edge Stable Channel"
-				if (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
-				{
-					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -PropertyType DWord -Value 0 -Force | Out-Null
-					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -Type DWORD -Value 3 | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-			}
-			Beta
-			{
-				if (Get-Package -Name "Microsoft Edge Beta" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
-				{
-					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Beta Channel"
-					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Beta Channel"
-					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -PropertyType DWord -Value 0 -Force | Out-Null
-					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -Type DWORD -Value 3 | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-			}
-			Dev
-			{
-				if (Get-Package -Name "Microsoft Edge Dev" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
-				{
-					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Dev Channel"
-					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Dev Channel"
-					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -PropertyType DWord -Value 0 -Force | Out-Null
-					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -Type DWORD -Value 3 | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-			}
-			Canary
-			{
-				if (Get-Package -Name "Microsoft Edge Canary" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
-				{
-					Write-ConsoleStatus -Action "Preventing desktop shortcut creation for Microsoft Edge Canary Channel"
-					LogInfo "Preventing desktop shortcut creation for Microsoft Edge Canary Channel"
-					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -PropertyType DWord -Value 0 -Force | Out-Null
-					Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -Type DWORD -Value 3 | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-			}
-		}
-	}
-
-	if ($Disable)
-	{
-		$Names = @(
-			"CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}",
-			"CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}",
-			"CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}",
-			"CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}"
-		)
-		Write-ConsoleStatus -Action "Allowing desktop shortcut creation for Microsoft Edge upon update"
-		LogInfo "Allowing desktop shortcut creation for Microsoft Edge upon update"
-		Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate -Name $Names -Force -ErrorAction Ignore | Out-Null
-
-		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{56EB18F8-B008-4CBD-B6D2-8C97FE7E9062}" -Type CLEAR | Out-Null
-		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{2CD8A007-E189-409D-A2C8-9AF4EF3C72AA}" -Type CLEAR | Out-Null
-		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{0D50BFEC-CD6A-4F9A-964C-C7416E3ACB10}" -Type CLEAR | Out-Null
-		Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\EdgeUpdate -Name "CreateDesktopShortcut{65C35B14-6C1D-4122-AC46-7148CC9D6497}" -Type CLEAR | Out-Null
-		Write-ConsoleStatus -Status success
-	}
-}
-
-<#
-	.SYNOPSIS
-	Back up the system registry to %SystemRoot%\System32\config\RegBack folder when PC restarts and create a RegIdleBackup in the Task Scheduler task to manage subsequent backups
-
-	.PARAMETER Enable
-	Back up the system registry to %SystemRoot%\System32\config\RegBack folder
-
-	.PARAMETER Disable
-	Do not back up the system registry to %SystemRoot%\System32\config\RegBack folder (default value)
-
-	.EXAMPLE
-	RegistryBackup -Enable
-
-	.EXAMPLE
-	RegistryBackup -Disable
-
-	.NOTES
-	Machine-wide
-#>
-function RegistryBackup
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
-			LogInfo "Enabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
-			New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -Type DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
-			LogInfo "Disabling registry backup to RegBack folder 'C:\Windows\System32\config\RegBack'"
-			Remove-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -Force -ErrorAction Ignore | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-#endregion System

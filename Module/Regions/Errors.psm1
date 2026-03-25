@@ -1,5 +1,5 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region Errors
 <#
@@ -18,29 +18,7 @@ function Errors
 {
     if ($Global:Error)
     {
-        $FilteredErrors = $Global:Error | Where-Object {
-            $_.Exception.Message -notmatch (
-                'Property .* does not exist' +
-                '|Cannot find path' +
-                '|Cannot find a process with the name' +
-                '|The process \".*\" not found' +
-                '|The operation completed successfully\.' +
-                '|The system was unable to find the specified registry key or value\.' +
-                '|The registry key at the specified path does not exist\.' +
-                '|Cannot find any service with service name' +
-                '|No package found for ''Microsoft Edge' +
-                '|Function \".*\" skipped\.' +
-                '|No MSFT_ScheduledTask objects found with property ''TaskName'' equal to ''Disable LockScreen''' +
-                '|A key in this path already exists\.' +
-                '|Access is denied\.' +
-                '|You must specify an object for the Get-Member cmdlet' +
-                '|Cannot bind argument to parameter .InputObject. because it is null' +
-                '|The property .* cannot be found on this object' +
-                '|The parameter is incorrect' +
-                '|Security error\.' +
-                '|Unknown error \(0x'
-            )
-        }
+        $FilteredErrors = $Global:Error | Where-Object { -not (Test-IgnorableErrorRecord -ErrorRecord $_) }
 
         if ($FilteredErrors)
         {

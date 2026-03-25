@@ -1,6 +1,6 @@
 <#
 	.SYNOPSIS
-	Provides tab completion for Win10_11Util functions and arguments.
+	Bootstraps an interactive Win10_11Util session and provides tab completion for functions and arguments.
 
     .VERSION
 	2.0.0
@@ -13,7 +13,7 @@
 	sdmanson8 - Copyright (c) 2026
 
 	.DESCRIPTION
-	Dot source the script first: . .\Functions.ps1 (with a dot at the beginning)
+	Dot source the script first: . .\Completion\Interactive.ps1 (with a dot at the beginning)
 	Start typing any characters contained in the function's name or its arguments, and press the TAB button
 
 	.EXAMPLE
@@ -25,7 +25,7 @@
 	Use commas to separate functions and their arguments. If a function doesn't have arguments, just type its name. You can also use the TAB button to complete only the function name or only the argument name.
 
 	.LINK
-	https://github.com/sdmanson8/scripts
+	https://github.com/sdmanson8/Win10_11Util
 #>
 
 #Requires -RunAsAdministrator
@@ -64,16 +64,24 @@ Clear-Host
 $Host.UI.RawUI.WindowTitle = "WinUtil Script for Windows 10/11"
 
 # Import the Win10_11Util module and load the localization strings used by its functions.
+$Script:RepoRoot = Split-Path -Path $PSScriptRoot -Parent
+$Script:ModuleRoot = Join-Path $Script:RepoRoot 'Module'
+
+if (-not (Test-Path -LiteralPath $Script:ModuleRoot -PathType Container))
+{
+	throw "Module directory not found under: $Script:RepoRoot"
+}
+
 Remove-Module -Name Win10_11Util -Force -ErrorAction Ignore
-Import-Module -Name $PSScriptRoot\Manifest\Win10_11Util.psd1 -PassThru -Force
+Import-Module -Name (Join-Path $Script:ModuleRoot 'Win10_11Util.psd1') -PassThru -Force
 
 try
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $PSScriptRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
 }
 catch
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $PSScriptRoot\Localizations -FileName Win10_11Util
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util
 }
 
 # Run the mandatory startup checks before enabling tab completion.

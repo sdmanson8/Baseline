@@ -1,0 +1,40 @@
+{
+  "Tab": "Cursors",
+  "Entries": [
+    {
+      "Name": "Cursors",
+      "Function": "Install-Cursors",
+      "Type": "Choice",
+      "Options": [
+        "Default",
+        "Dark",
+        "Light"
+      ],
+      "DisplayOptions": null,
+      "Default": "Default",
+      "WinDefault": "Default",
+      "Description": "Cursor theme selection",
+      "Detail": null,
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": null,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Cursors",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "cursor"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Cursor theme selection",
+      "PresetTier": "Safe"
+    }
+  ]
+}

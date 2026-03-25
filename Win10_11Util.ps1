@@ -52,139 +52,62 @@ param
 
 Clear-Host
 
-function Show-BootstrapLoadingSplash
-{
-	[CmdletBinding()]
-	[OutputType([System.Object])]
-	param ()
-
-	try
-	{
-		Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase -ErrorAction Stop
-
-		# Run the splash window in a separate STA thread so it has its own
-		# WPF dispatcher message loop and stays alive/responsive while the
-		# main thread is busy loading modules and running startup checks.
-		$syncHash = [hashtable]::Synchronized(@{
-			Window     = $null
-			Dispatcher = $null
-			IsReady    = $false
-			IsAlive    = $true
-		})
-
-		$runspace = [runspacefactory]::CreateRunspace()
-		$runspace.ApartmentState = 'STA'
-		$runspace.ThreadOptions  = 'ReuseThread'
-		$runspace.Open()
-		$runspace.SessionStateProxy.SetVariable('syncHash', $syncHash)
-
-		$ps = [powershell]::Create()
-		$ps.Runspace = $runspace
-		[void]$ps.AddScript({
-			try
-			{
-				Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase
-
-				[xml]$xaml = @"
-<Window
-	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	Title="WinUtil Script"
-	Width="520" Height="260"
-	ResizeMode="CanMinimize"
-	WindowStartupLocation="CenterScreen"
-	Background="#1E1E2E"
-	Foreground="#CDD6F4"
-	FontFamily="Segoe UI"
-	ShowInTaskbar="True"
-	Topmost="True">
-	<Grid>
-		<Grid.RowDefinitions>
-			<RowDefinition Height="*"/>
-			<RowDefinition Height="Auto"/>
-		</Grid.RowDefinitions>
-		<StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-			<TextBlock Text="WinUtil Script" FontSize="22" FontWeight="Bold"
-				Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-			<TextBlock Text="Windows Optimization &amp; Hardening"
-				FontSize="13" Foreground="#A6ADC8"
-				HorizontalAlignment="Center" Margin="0,0,0,24"/>
-			<TextBlock Name="StatusText" Text="Please wait..."
-				FontSize="14" Foreground="#89B4FA"
-				HorizontalAlignment="Center"/>
-		</StackPanel>
-		<Border Grid.Row="1" Background="#181825" Padding="12,8">
-			<TextBlock FontSize="11" Foreground="#6C7086" HorizontalAlignment="Center"
-				Text="This window will close automatically when ready."/>
-		</Border>
-	</Grid>
-</Window>
-"@
-				$splash = [Windows.Markup.XamlReader]::Load(
-					(New-Object System.Xml.XmlNodeReader $xaml)
-				)
-
-				$syncHash.Window     = $splash
-				$syncHash.Dispatcher = $splash.Dispatcher
-
-				$splash.Add_ContentRendered({ $syncHash.IsReady = $true })
-				$splash.Add_Closed({
-					$syncHash.IsAlive = $false
-					$splash.Dispatcher.InvokeShutdown()
-				})
-
-				# ShowDialog() runs the dispatcher message loop on this thread,
-				# keeping the splash window alive and responsive.
-				$splash.ShowDialog() | Out-Null
-			}
-			catch
-			{
-				$syncHash.IsReady = $true
-				$syncHash.IsAlive = $false
-			}
-		})
-
-		$asyncResult = $ps.BeginInvoke()
-
-		# Wait for the splash window to finish rendering (with timeout)
-		$deadline = [datetime]::Now.AddSeconds(10)
-		while (-not $syncHash.IsReady -and [datetime]::Now -lt $deadline)
-		{
-			Start-Sleep -Milliseconds 50
-		}
-
-		if (-not $syncHash.IsAlive) { return $null }
-
-		# Stash cleanup handles inside the hashtable
-		$syncHash._PowerShell   = $ps
-		$syncHash._AsyncResult  = $asyncResult
-		$syncHash._Runspace     = $runspace
-
-		return $syncHash
-	}
-	catch
-	{
-		return $null
-	}
-}
-
-$Script:BootstrapSplash = Show-BootstrapLoadingSplash
+$Script:BootstrapSplash = $null
 
 #region InitialActions
+$Script:RepoRoot = $PSScriptRoot
+$Script:ModuleRoot = Join-Path $Script:RepoRoot 'Module'
+$Script:ModuleRootExists = Test-Path -LiteralPath $Script:ModuleRoot -PathType Container
+$Script:RegionsRoot = Join-Path $Script:ModuleRoot 'Regions'
+
 $RequiredFiles = @(
-    "$PSScriptRoot\Localizations\Win10_11Util.psd1",
-    "$PSScriptRoot\Module\Helpers.psm1",
-    "$PSScriptRoot\Module\Win10_11Util.psm1",
-    "$PSScriptRoot\Manifest\Win10_11Util.psd1"
+    (Join-Path (Join-Path $Script:RepoRoot 'Localizations') 'Win10_11Util.psd1')
 )
 
-$MissingRequired = $RequiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) }
-$RegionFiles = Get-ChildItem -Path "$PSScriptRoot\Module\Regions" -Filter '*.psm1' -File -ErrorAction SilentlyContinue
+$RequiredFiles += if ($Script:ModuleRootExists)
+{
+	@(
+		(Join-Path $Script:ModuleRoot 'SharedHelpers.psm1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'ErrorHandling.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'Registry.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'Environment.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'Manifest.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'PackageManagement.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'AdvancedStartup.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'Taskbar.Helpers.ps1')
+		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'SystemMaintenance.Helpers.ps1')
+		(Join-Path $Script:ModuleRoot 'Win10_11Util.psm1')
+		(Join-Path $Script:ModuleRoot 'Win10_11Util.psd1')
+		(Join-Path $Script:RegionsRoot 'GUI.psm1')
+		(Join-Path $Script:ModuleRoot 'Logging.psm1')
+		(Join-Path $Script:ModuleRoot 'GUICommon.psm1')
+		(Join-Path $Script:ModuleRoot 'GUIExecution.psm1')
+	)
+}
+else
+{
+	@()
+}
 
-if ($MissingRequired -or -not $RegionFiles) {
+$MissingRequired = $RequiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) }
+$RegionFiles = if ($Script:ModuleRootExists)
+{
+	Get-ChildItem -LiteralPath $Script:RegionsRoot -Filter '*.psm1' -File -ErrorAction SilentlyContinue
+}
+else
+{
+	@()
+}
+
+if (-not $Script:ModuleRootExists -or $MissingRequired -or -not $RegionFiles) {
     Write-Host ""
     Write-Warning "There are missing files in the script folder. Please re-download the archive."
     Write-Host ""
+
+    if (-not $Script:ModuleRootExists)
+    {
+        Write-Warning ("Could not find the module folder: '{0}'" -f (Join-Path $Script:RepoRoot 'Module'))
+    }
 
     if ($MissingRequired) {
         Write-Warning "Missing required files:"
@@ -192,20 +115,48 @@ if ($MissingRequired -or -not $RegionFiles) {
     }
 
     if (-not $RegionFiles) {
-        Write-Warning "No region files found in: $PSScriptRoot\Module\Regions"
+        Write-Warning "No region files found in: $Script:RegionsRoot"
     }
 
     exit
 }
 
-Import-Module -Name $PSScriptRoot\Module\Helpers.psm1 -Force -ErrorAction Stop
+Import-Module -Name (Join-Path $Script:ModuleRoot 'SharedHelpers.psm1') -Force -ErrorAction Stop
+$Script:BootstrapSplash = Show-BootstrapLoadingSplash
 $osName = (Get-OSInfo).OSName
 $Host.UI.RawUI.WindowTitle = "WinUtil Script for $osName"
+
+function Get-ErrorDetailText
+{
+	param(
+		[Parameter(Mandatory = $true)]
+		[System.Management.Automation.ErrorRecord]
+		$ErrorRecord
+	)
+
+	$detailParts = @()
+	if (-not [string]::IsNullOrWhiteSpace($ErrorRecord.Exception.Message))
+	{
+		$detailParts += $ErrorRecord.Exception.Message
+	}
+
+	if ($ErrorRecord.InvocationInfo -and -not [string]::IsNullOrWhiteSpace($ErrorRecord.InvocationInfo.PositionMessage))
+	{
+		$detailParts += $ErrorRecord.InvocationInfo.PositionMessage.Trim()
+	}
+
+	if (-not [string]::IsNullOrWhiteSpace($ErrorRecord.ScriptStackTrace))
+	{
+		$detailParts += "Stack:`n$($ErrorRecord.ScriptStackTrace.Trim())"
+	}
+
+	return ($detailParts -join "`n`n")
+}
 
 if ($Script:BootstrapSplash -and $Script:BootstrapSplash.IsAlive)
 {
 	try {
-		$Script:BootstrapSplash.Dispatcher.Invoke([Action]{
+		$Script:BootstrapSplash.Dispatcher.Invoke([System.Action]{
 			$Script:BootstrapSplash.Window.Title = "WinUtil Script for $osName"
 		})
 	} catch { $null = $_ }
@@ -214,17 +165,17 @@ if ($Script:BootstrapSplash -and $Script:BootstrapSplash.IsAlive)
 Remove-Module -Name Win10_11Util -Force -ErrorAction Ignore
 try
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $PSScriptRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
 }
 catch
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $PSScriptRoot\Localizations -FileName Win10_11Util
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util
 }
 
 # Checking whether script is the correct PowerShell version
 try
 {
-	Import-Module -Name $PSScriptRoot\Manifest\Win10_11Util.psd1 -Force -ErrorAction Stop
+	Import-Module -Name (Join-Path $Script:ModuleRoot 'Win10_11Util.psd1') -Force -ErrorAction Stop
 }
 catch [System.InvalidOperationException]
 {
@@ -256,42 +207,112 @@ $Global:GUIMode = $true
 
 # Hide the console window before anything else runs — the splash is the only
 # visible window during startup. The console reappears only when Run Tweaks fires.
-# Use GetConsoleWindow() (kernel32) to get the actual console HWND — using
-# Process.MainWindowHandle is wrong here because when the console starts hidden
-# Windows returns the splash window's handle instead, causing ShowWindowAsync to
-# hide the splash rather than the console.
-$_hwndType = @'
-using System;
-using System.Runtime.InteropServices;
-public static class ConsoleHelper {
-	[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-	[DllImport("user32.dll")]   public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-}
-'@
-if (-not ('ConsoleHelper' -as [type])) { Add-Type -TypeDefinition $_hwndType }
-$_consoleHwnd = [ConsoleHelper]::GetConsoleWindow()
-if ($_consoleHwnd -ne [IntPtr]::Zero)
-{
-	[ConsoleHelper]::ShowWindowAsync($_consoleHwnd, 0) | Out-Null
-}
-Remove-Variable _consoleHwnd -ErrorAction SilentlyContinue
+Hide-ConsoleWindow
 
 # Show a WPF loading splash while startup checks run
-# Reuse the bootstrap splash (which runs in its own thread) if available
-$Script:LoadingSplash = if ($Script:BootstrapSplash -and $Script:BootstrapSplash.IsAlive) {
-	$Script:BootstrapSplash
-}
-else {
-	Show-LoadingSplash
-}
+$Script:LoadingSplash = $Script:BootstrapSplash
 $Global:LoadingSplash = $Script:LoadingSplash
 
 # Run mandatory startup checks (no menu prompt)
-InitialActions
-$Global:LoadingSplash = $null
+try
+{
+	InitialActions
+}
+catch
+{
+	$startupError = $_
+	$null = Close-LoadingSplashWindow -Splash $Script:LoadingSplash -DisposeResources
+	$Script:LoadingSplash = $null
+	$Global:LoadingSplash = $null
+	Show-ConsoleWindow
+
+	$startupErrorMessage = Get-ErrorDetailText -ErrorRecord $startupError
+	LogError "GUI startup failed before the main window opened: $startupErrorMessage"
+	Write-Error -ErrorRecord $startupError
+
+	try
+	{
+		Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+		[System.Windows.MessageBox]::Show(
+			"WinUtil failed to open the GUI.`n`n$startupErrorMessage`n`nLog file:`n$Global:LogFilePath",
+			'WinUtil Startup Error',
+			[System.Windows.MessageBoxButton]::OK,
+			[System.Windows.MessageBoxImage]::Error
+		) | Out-Null
+	}
+	catch
+	{
+		Write-Warning "WinUtil failed to open the GUI. See the log file: $Global:LogFilePath"
+	}
+
+	throw
+}
 #endregion InitialActions
 
 #region GUI
+# Ensure GUI module and dependencies are imported
+try
+{
+	Import-Module -Name (Join-Path $Script:ModuleRoot 'Logging.psm1') -Force -ErrorAction Stop
+	Import-Module -Name (Join-Path $Script:ModuleRoot 'GUICommon.psm1') -Force -ErrorAction Stop
+	Import-Module -Name (Join-Path $Script:ModuleRoot 'GUIExecution.psm1') -Force -ErrorAction Stop
+	Import-Module -Name (Join-Path $Script:RegionsRoot 'GUI.psm1') -Force -ErrorAction Stop
+}
+catch
+{
+	$importError = $_
+	if ($Script:LoadingSplash)
+	{
+		$null = Close-LoadingSplashWindow -Splash $Script:LoadingSplash -DisposeResources
+		$Script:LoadingSplash = $null
+		$Global:LoadingSplash = $null
+	}
+	Show-ConsoleWindow
+	LogError "Failed to import GUI modules: $($importError.Exception.Message)"
+	throw
+}
+
 # Launch the WPF tweak-selection GUI — replaces the old preset file
-Show-TweakGUI -StartupSplash $Script:LoadingSplash
+try
+{
+	Show-TweakGUI
+	if ($Script:LoadingSplash)
+	{
+		$null = Close-LoadingSplashWindow -Splash $Script:LoadingSplash -DisposeResources
+		$Script:LoadingSplash = $null
+		$Global:LoadingSplash = $null
+	}
+}
+catch
+{
+	$guiError = $_
+	if ($Script:LoadingSplash)
+	{
+		$null = Close-LoadingSplashWindow -Splash $Script:LoadingSplash -DisposeResources
+		$Script:LoadingSplash = $null
+		$Global:LoadingSplash = $null
+	}
+	Show-ConsoleWindow
+
+	$guiErrorMessage = Get-ErrorDetailText -ErrorRecord $guiError
+	LogError "GUI construction failed: $guiErrorMessage"
+	Write-Error -ErrorRecord $guiError
+
+	try
+	{
+		Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+		[System.Windows.MessageBox]::Show(
+			"WinUtil failed while opening the GUI.`n`n$guiErrorMessage`n`nLog file:`n$Global:LogFilePath",
+			'WinUtil GUI Error',
+			[System.Windows.MessageBoxButton]::OK,
+			[System.Windows.MessageBoxImage]::Error
+		) | Out-Null
+	}
+	catch
+	{
+		Write-Warning "WinUtil failed while opening the GUI. See the log file: $Global:LogFilePath"
+	}
+
+	throw
+}
 #endregion GUI

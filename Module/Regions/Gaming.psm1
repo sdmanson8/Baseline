@@ -1,7 +1,99 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region Gaming
+
+<#
+	.SYNOPSIS
+	Hardware-accelerated GPU scheduling
+
+	.PARAMETER Enable
+	Enable hardware-accelerated GPU scheduling
+
+	.PARAMETER Disable
+	Disable hardware-accelerated GPU scheduling (default value)
+
+	.EXAMPLE
+	GPUScheduling -Enable
+
+	.EXAMPLE
+	GPUScheduling -Disable
+
+	.NOTES
+	Only with a dedicated GPU and WDDM verion is 2.7 or higher. Restart needed
+
+	.NOTES
+	Current user
+#>
+function GPUScheduling
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling hardware-accelerated GPU scheduling"
+			LogInfo "Enabling hardware-accelerated GPU scheduling"
+			# Determining whether PC has an external graphics card
+			$AdapterDACType = Get-CimInstance -ClassName CIM_VideoController | Where-Object -FilterScript {($_.AdapterDACType -ne "Internal") -and ($null -ne $_.AdapterDACType)}
+			# Determining whether an OS is not installed on a virtual machine
+			$ComputerSystemModel = (Get-CimInstance -ClassName CIM_ComputerSystem).Model -notmatch "Virtual"
+			# Checking whether a WDDM verion is 2.7 or higher
+			$WddmVersion_Min = [Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\FeatureSetUsage", "WddmVersion_Min", $null)
+
+			if ($AdapterDACType -and ($ComputerSystemModel -notmatch "Virtual") -and ($WddmVersion_Min -ge 2700))
+			{
+				try
+				{
+					New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers -Name HwSchMode -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
+					Write-ConsoleStatus -Status success
+				}
+				catch
+				{
+					Write-ConsoleStatus -Status failed
+					LogError "Failed to enable hardware-accelerated GPU scheduling: $($_.Exception.Message)"
+				}
+			}
+			else
+			{
+				Write-ConsoleStatus -Status success
+				LogWarning "Hardware-accelerated GPU scheduling is not supported on this system. Skipping."
+			}
+		}
+		"Disable"
+		{
+			try
+			{
+				Write-ConsoleStatus -Action "Disabling hardware-accelerated GPU scheduling"
+				LogInfo "Disabling hardware-accelerated GPU scheduling"
+				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers -Name HwSchMode -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable hardware-accelerated GPU scheduling: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
 <#
 	.SYNOPSIS
 	Xbox Game Bar
@@ -181,6 +273,132 @@ function XboxGameTips
 }
 
 <#
+.SYNOPSIS
+Enable or disable Fullscreen Optimizations
+
+.PARAMETER Enable
+Enable Fullscreen Optimizations (default value)
+
+.PARAMETER Disable
+Disable Fullscreen Optimizations
+
+.EXAMPLE
+FullscreenOptimizations -Enable
+
+.EXAMPLE
+FullscreenOptimizations -Disable
+
+.NOTES
+Current user
+#>
+function FullscreenOptimizations
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Fullscreen Optimizations"
+			LogInfo "Enabling Fullscreen Optimizations"
+			Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Fullscreen Optimizations"
+			LogInfo "Disabling Fullscreen Optimizations"
+			Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Multiplane Overlay
+
+.PARAMETER Enable
+Enable Multiplane Overlay (default value)
+
+.PARAMETER Disable
+Disable Multiplane Overlay
+
+.EXAMPLE
+MultiplaneOverlay -Enable
+
+.EXAMPLE
+MultiplaneOverlay -Disable
+
+.NOTES
+Current user
+#>
+function MultiplaneOverlay
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Multiplane Overlay"
+			LogInfo "Enabling Multiplane Overlay"
+			try
+			{
+				if ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -ErrorAction SilentlyContinue))
+				{
+					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -Force -ErrorAction Stop | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Multiplane Overlay: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Multiplane Overlay"
+			LogInfo "Disabling Multiplane Overlay"
+			try
+			{
+				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -Type DWord -Value 5 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Multiplane Overlay: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
 	.SYNOPSIS
 	Choose an app and set the "High performance" graphics performance for it
 
@@ -237,95 +455,3 @@ function Set-AppGraphicsPerformance
 		Write-ConsoleStatus -Status success
 	}
 }
-
-<#
-	.SYNOPSIS
-	Hardware-accelerated GPU scheduling
-
-	.PARAMETER Enable
-	Enable hardware-accelerated GPU scheduling
-
-	.PARAMETER Disable
-	Disable hardware-accelerated GPU scheduling (default value)
-
-	.EXAMPLE
-	GPUScheduling -Enable
-
-	.EXAMPLE
-	GPUScheduling -Disable
-
-	.NOTES
-	Only with a dedicated GPU and WDDM verion is 2.7 or higher. Restart needed
-
-	.NOTES
-	Current user
-#>
-function GPUScheduling
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling hardware-accelerated GPU scheduling"
-			LogInfo "Enabling hardware-accelerated GPU scheduling"
-			# Determining whether PC has an external graphics card
-			$AdapterDACType = Get-CimInstance -ClassName CIM_VideoController | Where-Object -FilterScript {($_.AdapterDACType -ne "Internal") -and ($null -ne $_.AdapterDACType)}
-			# Determining whether an OS is not installed on a virtual machine
-			$ComputerSystemModel = (Get-CimInstance -ClassName CIM_ComputerSystem).Model -notmatch "Virtual"
-			# Checking whether a WDDM verion is 2.7 or higher
-			$WddmVersion_Min = [Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\FeatureSetUsage", "WddmVersion_Min", $null)
-
-			if ($AdapterDACType -and ($ComputerSystemModel -notmatch "Virtual") -and ($WddmVersion_Min -ge 2700))
-			{
-				try
-				{
-					New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers -Name HwSchMode -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-				catch
-				{
-					Write-ConsoleStatus -Status failed
-					LogError "Failed to enable hardware-accelerated GPU scheduling: $($_.Exception.Message)"
-				}
-			}
-			else
-			{
-				Write-ConsoleStatus -Status success
-				LogWarning "Hardware-accelerated GPU scheduling is not supported on this system. Skipping."
-			}
-		}
-		"Disable"
-		{
-			try
-			{
-				Write-ConsoleStatus -Action "Disabling hardware-accelerated GPU scheduling"
-				LogInfo "Disabling hardware-accelerated GPU scheduling"
-				New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers -Name HwSchMode -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable hardware-accelerated GPU scheduling: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-#endregion Gaming

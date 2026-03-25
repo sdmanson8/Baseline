@@ -1,7 +1,58 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region UWP apps
+
+<#
+.SYNOPSIS
+Enable or disable Background Apps
+
+.PARAMETER Enable
+Enable Background Apps (default value)
+
+.PARAMETER Disable
+Disable Background Apps
+
+.EXAMPLE
+BackgroundApps -Enable
+
+.EXAMPLE
+BackgroundApps -Disable
+
+.NOTES
+Current user
+#>
+function BackgroundApps
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Background Apps"
+			LogInfo "Enabling Background Apps"
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Background Apps"
+			LogInfo "Disabling Background Apps"
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
 <#
 	.SYNOPSIS
 	Install or uninstall Microsoft Copilot and related Windows AI components.
@@ -63,7 +114,7 @@ function Copilot
 			LogInfo "Installing Microsoft Copilot and other AI features:"
 			# store in environment for child processes
 			[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
-			& "$PSScriptRoot\..\..\files\RemoveWindowsAI.ps1" -nonInteractive -revertMode -AllOptions
+			& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -revertMode -AllOptions
 			Start-Sleep -Seconds 2
 			winget install -s msstore -e --silent --accept-source-agreements --accept-package-agreements --id 9NHT9RB2F4HD 2>$null | Out-Null
 			if ($LASTEXITCODE -ne 0)
@@ -77,7 +128,487 @@ function Copilot
 			LogInfo "Uninstalling Microsoft Copilot and other AI features:"
 			# store in environment for child processes
 			[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
-			& "$PSScriptRoot\..\..\files\RemoveWindowsAI.ps1" -nonInteractive -AllOptions
+			& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -AllOptions
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Cortana autostarting
+
+	.PARAMETER Disable
+	Disable Cortana autostarting
+
+	.PARAMETER Enable
+	Enable Cortana autostarting
+
+	.EXAMPLE
+	CortanaAutostart -Disable
+
+	.EXAMPLE
+	CortanaAutostart -Enable
+
+	.NOTES
+	Current user
+#>
+function CortanaAutostart
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable
+	)
+
+	if (-not (Get-AppxPackage -Name Microsoft.549981C3F5F10 -WarningAction SilentlyContinue))
+	{
+		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		return
+	}
+
+	if (-not (Test-Path -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId"))
+	{
+		New-Item -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Force | Out-Null
+	}
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Cortana autostarting"
+			LogInfo "Disabling Cortana autostarting"
+			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 1 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Cortana autostarting"
+			LogInfo "Enabling Cortana autostarting"
+			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 2 -Force | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Edge Debloat
+
+.PARAMETER Enable
+Enable Edge Debloat
+
+.PARAMETER Disable
+Disable Edge Debloat (default value)
+
+.EXAMPLE
+EdgeDebloat -Enable
+
+.EXAMPLE
+EdgeDebloat -Disable
+
+.NOTES
+Current user
+
+.CAUTION
+This will enforce multiple Group Policy settings on Microsoft Edge.
+Telemetry, personalization reporting, and diagnostic data will be disabled.
+Shopping assistant, collections, rewards, and feedback features will be removed.
+The Copilot sidebar extension will be blocked via extension blocklist.
+First run experience and insider promotions will be hidden.
+These changes apply system-wide and may affect all Edge user profiles.
+#>
+function EdgeDebloat
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$EdgePath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+	$EdgeUpdatePath = "HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate"
+	$EdgeBlocklistPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist"
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Edge Debloat"
+			LogInfo "Enabling Edge Debloat"
+			
+			# Create paths if they don't exist
+			if (-not (Test-Path $EdgeUpdatePath))
+			{
+				New-Item -Path $EdgeUpdatePath -Force -ErrorAction SilentlyContinue | Out-Null
+			}
+			if (-not (Test-Path $EdgePath))
+			{
+				New-Item -Path $EdgePath -Force -ErrorAction SilentlyContinue | Out-Null
+			}
+			if (-not (Test-Path $EdgeBlocklistPath))
+			{
+				New-Item -Path $EdgeBlocklistPath -Force -ErrorAction SilentlyContinue | Out-Null
+			}
+			
+			Set-ItemProperty -Path $EdgeUpdatePath -Name "CreateDesktopShortcutDefault" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "PersonalizationReportingEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgeBlocklistPath -Name "1" -Type String -Value "ofefcgjbeghpigppfmkologfjadafddi" -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "ShowRecommendationsEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "HideFirstRunExperience" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "UserFeedbackAllowed" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "ConfigureDoNotTrack" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "AlternateErrorPagesEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "EdgeCollectionsEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "EdgeShoppingAssistantEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "MicrosoftEdgeInsiderPromotionEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "ShowMicrosoftRewards" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "WebWidgetAllowed" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "DiagnosticData" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "EdgeAssetDeliveryServiceEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path $EdgePath -Name "WalletDonationEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			
+			LogInfo "Edge debloat policies applied"
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Edge Debloat"
+			LogInfo "Disabling Edge Debloat"
+			
+			Remove-ItemProperty -Path $EdgeUpdatePath -Name "CreateDesktopShortcutDefault" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "PersonalizationReportingEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgeBlocklistPath -Name "1" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "ShowRecommendationsEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "HideFirstRunExperience" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "UserFeedbackAllowed" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "ConfigureDoNotTrack" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "AlternateErrorPagesEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "EdgeCollectionsEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "EdgeShoppingAssistantEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "MicrosoftEdgeInsiderPromotionEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "ShowMicrosoftRewards" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "WebWidgetAllowed" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "DiagnosticData" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "EdgeAssetDeliveryServiceEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path $EdgePath -Name "WalletDonationEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
+			
+			LogInfo "Edge debloat policies removed"
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable New Outlook
+
+.PARAMETER Enable
+Enable New Outlook
+
+.PARAMETER Disable
+Disable New Outlook
+
+.EXAMPLE
+NewOutlook -Enable
+
+.EXAMPLE
+NewOutlook -Disable
+
+.NOTES
+Current user
+#>
+function NewOutlook
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling New Outlook"
+			LogInfo "Enabling New Outlook"
+			Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Preferences" -Name "UseNewOutlook" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Office\16.0\Outlook\Options\General" -Name "HideNewOutlookToggle" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Options\General" -Name "DoNewOutlookAutoMigration" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Preferences" -Name "NewOutlookMigrationUserSetting" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling New Outlook"
+			LogInfo "Disabling New Outlook"
+			Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Preferences" -Name "UseNewOutlook" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Office\16.0\Outlook\Options\General" -Name "HideNewOutlookToggle" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Options\General" -Name "DoNewOutlookAutoMigration" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Remove-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Preferences" -Name "NewOutlookMigrationUserSetting" -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Notification Tray/Calendar
+
+.PARAMETER Enable
+Enable Notification Tray/Calendar (default value)
+
+.PARAMETER Disable
+Disable Notification Tray/Calendar
+
+.EXAMPLE
+Notifications -Enable
+
+.EXAMPLE
+Notifications -Disable
+
+.NOTES
+Current user
+
+.CAUTION
+This will completely disable Windows notifications.
+You will not receive app alerts, system warnings, reminders, or calendar events.
+The notification tray and calendar flyout will not function.
+#>
+function Notifications
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Notification Tray/Calendar"
+			LogInfo "Enabling Notification Tray/Calendar"
+			Remove-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableNotificationCenter" -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name "ToastEnabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Notification Tray/Calendar"
+			LogInfo "Disabling Notification Tray/Calendar"
+			if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer"))
+			{
+				New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Force -ErrorAction SilentlyContinue | Out-Null
+			}
+			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableNotificationCenter" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name "ToastEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Write-ConsoleStatus -Status success
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Revert Start Menu
+
+.PARAMETER Enable
+Revert to the original Start Menu from 24H2
+
+.PARAMETER Disable
+Restore the new Start Menu (default value)
+
+.EXAMPLE
+RevertStartMenu -Enable
+
+.EXAMPLE
+RevertStartMenu -Disable
+
+.NOTES
+Current user
+
+.CAUTION
+Reverting the Start Menu may break future Windows updates that depend on the new layout.
+#>
+function RevertStartMenu
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$viveToolUrl = "https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip"
+	$featureId = "47205210"
+	$tempDir = "$env:TEMP\ViVeTool"
+	$SupportedMessage = "Revert Start Menu is only supported on Windows 11 24H2 build 26100.7019+ or 26H1 build 28000.1575+ and newer. Skipping."
+	$DownloadFailedMessage = "Unable to download ViVeTool from GitHub. Skipping Revert Start Menu."
+	$IsRevertStartMenuSupported = Test-Windows11FeatureBranchSupport -Thresholds @(
+		@{ DisplayVersion = "24H2"; Build = 26100; UBR = 7019 },
+		@{ DisplayVersion = "26H1"; Build = 28000; UBR = 1575 }
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Revert Start Menu"
+			LogInfo "Enabling Revert Start Menu"
+
+			if (-not $IsRevertStartMenuSupported)
+			{
+				Write-ConsoleStatus -Status success
+				LogWarning $SupportedMessage
+				return
+			}
+
+			try
+			{
+				# Create temp directory
+				if (Test-Path $tempDir)
+				{
+					Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				}
+				New-Item -Path $tempDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+				
+				# Download ViVeTool
+				$zipPath = "$tempDir\ViVeTool.zip"
+				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
+				LogInfo "Downloaded ViVeTool"
+				
+				# Extract
+				Expand-Archive $zipPath -DestinationPath $tempDir -Force -ErrorAction Stop | Out-Null
+				LogInfo "Extracted ViVeTool"
+				
+				# Run ViVeTool
+				$viveExe = "$tempDir\ViVeTool.exe"
+				if (-not (Test-Path $viveExe))
+				{
+					throw "ViVeTool.exe was not found after extraction"
+				}
+				$ViVeProcess = Start-Process $viveExe -ArgumentList "/disable /id:$featureId" -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop
+				if ($ViVeProcess.ExitCode -ne 0)
+				{
+					throw "ViVeTool returned exit code $($ViVeProcess.ExitCode)"
+				}
+				LogInfo "Applied ViVeTool setting to disable feature $featureId"
+				
+				# Cleanup
+				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				LogInfo "Cleaned up temporary files"
+				LogInfo "Please restart your computer to apply the changes."
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				if ($_.Exception.Message -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
+				{
+					LogWarning "$DownloadFailedMessage Error: $($_.Exception.Message)"
+					Write-Host "skipped!" -ForegroundColor Yellow
+				}
+				else
+				{
+					LogError "Failed to enable Revert Start Menu: $($_.Exception.Message)"
+					Write-ConsoleStatus -Status failed
+				}
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Revert Start Menu"
+			LogInfo "Disabling Revert Start Menu"
+
+			if (-not $IsRevertStartMenuSupported)
+			{
+				Write-ConsoleStatus -Status success
+				LogWarning $SupportedMessage
+				return
+			}
+
+			try
+			{
+				# Create temp directory
+				if (Test-Path $tempDir)
+				{
+					Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				}
+				New-Item -Path $tempDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+				
+				# Download ViVeTool
+				$zipPath = "$tempDir\ViVeTool.zip"
+				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
+				LogInfo "Downloaded ViVeTool"
+				
+				# Extract
+				Expand-Archive $zipPath -DestinationPath $tempDir -Force -ErrorAction Stop | Out-Null
+				LogInfo "Extracted ViVeTool"
+				
+				# Run ViVeTool
+				$viveExe = "$tempDir\ViVeTool.exe"
+				if (-not (Test-Path $viveExe))
+				{
+					throw "ViVeTool.exe was not found after extraction"
+				}
+				$ViVeProcess = Start-Process $viveExe -ArgumentList "/enable /id:$featureId" -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop
+				if ($ViVeProcess.ExitCode -ne 0)
+				{
+					throw "ViVeTool returned exit code $($ViVeProcess.ExitCode)"
+				}
+				LogInfo "Applied ViVeTool setting to enable feature $featureId"
+				
+				# Cleanup
+				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				LogInfo "Cleaned up temporary files"
+				LogInfo "Please restart your computer to apply the changes."
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+					$revertDisableError = $_.Exception.Message
+					if ($revertDisableError -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
+					{
+						LogWarning ("{0} Error: {1}" -f $DownloadFailedMessage, $revertDisableError)
+						Write-Host "skipped!" -ForegroundColor Yellow
+					}
+					else
+					{
+						LogError ("Failed to disable Revert Start Menu: {0}" -f $revertDisableError)
+						Write-ConsoleStatus -Status failed
+					}
+			}
 		}
 	}
 }
@@ -1226,534 +1757,4 @@ function UWPApps
 	}
 }
 
-<#
-	.SYNOPSIS
-	Cortana autostarting
-
-	.PARAMETER Disable
-	Disable Cortana autostarting
-
-	.PARAMETER Enable
-	Enable Cortana autostarting
-
-	.EXAMPLE
-	CortanaAutostart -Disable
-
-	.EXAMPLE
-	CortanaAutostart -Enable
-
-	.NOTES
-	Current user
-#>
-function CortanaAutostart
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable
-	)
-
-	if (-not (Get-AppxPackage -Name Microsoft.549981C3F5F10 -WarningAction SilentlyContinue))
-	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
-		return
-	}
-
-	if (-not (Test-Path -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId"))
-	{
-		New-Item -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Force | Out-Null
-	}
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Cortana autostarting"
-			LogInfo "Disabling Cortana autostarting"
-			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Cortana autostarting"
-			LogInfo "Enabling Cortana autostarting"
-			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 2 -Force | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-
-<#
-.SYNOPSIS
-Enable or disable New Outlook
-
-.PARAMETER Enable
-Enable New Outlook
-
-.PARAMETER Disable
-Disable New Outlook
-
-.EXAMPLE
-NewOutlook -Enable
-
-.EXAMPLE
-NewOutlook -Disable
-
-.NOTES
-Current user
-#>
-function NewOutlook
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling New Outlook"
-			LogInfo "Enabling New Outlook"
-			Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Preferences" -Name "UseNewOutlook" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Office\16.0\Outlook\Options\General" -Name "HideNewOutlookToggle" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Options\General" -Name "DoNewOutlookAutoMigration" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Preferences" -Name "NewOutlookMigrationUserSetting" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling New Outlook"
-			LogInfo "Disabling New Outlook"
-			Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Preferences" -Name "UseNewOutlook" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Office\16.0\Outlook\Options\General" -Name "HideNewOutlookToggle" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Options\General" -Name "DoNewOutlookAutoMigration" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Outlook\Preferences" -Name "NewOutlookMigrationUserSetting" -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-.SYNOPSIS
-Enable or disable Background Apps
-
-.PARAMETER Enable
-Enable Background Apps (default value)
-
-.PARAMETER Disable
-Disable Background Apps
-
-.EXAMPLE
-BackgroundApps -Enable
-
-.EXAMPLE
-BackgroundApps -Disable
-
-.NOTES
-Current user
-#>
-function BackgroundApps
-{
-	[CmdletBinding()]
-	param
-	(
-		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
-		[switch]$Enable,
-
-		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
-		[switch]$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Background Apps"
-			LogInfo "Enabling Background Apps"
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Background Apps"
-			LogInfo "Disabling Background Apps"
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-.SYNOPSIS
-Enable or disable Notification Tray/Calendar
-
-.PARAMETER Enable
-Enable Notification Tray/Calendar (default value)
-
-.PARAMETER Disable
-Disable Notification Tray/Calendar
-
-.EXAMPLE
-Notifications -Enable
-
-.EXAMPLE
-Notifications -Disable
-
-.NOTES
-Current user
-
-.CAUTION
-This will completely disable Windows notifications.
-You will not receive app alerts, system warnings, reminders, or calendar events.
-The notification tray and calendar flyout will not function.
-#>
-function Notifications
-{
-	[CmdletBinding()]
-	param
-	(
-		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
-		[switch]$Enable,
-
-		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
-		[switch]$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Notification Tray/Calendar"
-			LogInfo "Enabling Notification Tray/Calendar"
-			Remove-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableNotificationCenter" -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name "ToastEnabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Notification Tray/Calendar"
-			LogInfo "Disabling Notification Tray/Calendar"
-			if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer"))
-			{
-				New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Force -ErrorAction SilentlyContinue | Out-Null
-			}
-			Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name "DisableNotificationCenter" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" -Name "ToastEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-.SYNOPSIS
-Enable or disable Edge Debloat
-
-.PARAMETER Enable
-Enable Edge Debloat
-
-.PARAMETER Disable
-Disable Edge Debloat (default value)
-
-.EXAMPLE
-EdgeDebloat -Enable
-
-.EXAMPLE
-EdgeDebloat -Disable
-
-.NOTES
-Current user
-
-.CAUTION
-This will enforce multiple Group Policy settings on Microsoft Edge.
-Telemetry, personalization reporting, and diagnostic data will be disabled.
-Shopping assistant, collections, rewards, and feedback features will be removed.
-The Copilot sidebar extension will be blocked via extension blocklist.
-First run experience and insider promotions will be hidden.
-These changes apply system-wide and may affect all Edge user profiles.
-#>
-function EdgeDebloat
-{
-	[CmdletBinding()]
-	param
-	(
-		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
-		[switch]$Enable,
-
-		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
-		[switch]$Disable
-	)
-
-	$EdgePath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
-	$EdgeUpdatePath = "HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate"
-	$EdgeBlocklistPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallBlocklist"
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Edge Debloat"
-			LogInfo "Enabling Edge Debloat"
-			
-			# Create paths if they don't exist
-			if (-not (Test-Path $EdgeUpdatePath))
-			{
-				New-Item -Path $EdgeUpdatePath -Force -ErrorAction SilentlyContinue | Out-Null
-			}
-			if (-not (Test-Path $EdgePath))
-			{
-				New-Item -Path $EdgePath -Force -ErrorAction SilentlyContinue | Out-Null
-			}
-			if (-not (Test-Path $EdgeBlocklistPath))
-			{
-				New-Item -Path $EdgeBlocklistPath -Force -ErrorAction SilentlyContinue | Out-Null
-			}
-			
-			Set-ItemProperty -Path $EdgeUpdatePath -Name "CreateDesktopShortcutDefault" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "PersonalizationReportingEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgeBlocklistPath -Name "1" -Type String -Value "ofefcgjbeghpigppfmkologfjadafddi" -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "ShowRecommendationsEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "HideFirstRunExperience" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "UserFeedbackAllowed" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "ConfigureDoNotTrack" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "AlternateErrorPagesEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "EdgeCollectionsEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "EdgeShoppingAssistantEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "MicrosoftEdgeInsiderPromotionEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "ShowMicrosoftRewards" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "WebWidgetAllowed" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "DiagnosticData" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "EdgeAssetDeliveryServiceEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $EdgePath -Name "WalletDonationEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			
-			LogInfo "Edge debloat policies applied"
-			Write-ConsoleStatus -Status success
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Edge Debloat"
-			LogInfo "Disabling Edge Debloat"
-			
-			Remove-ItemProperty -Path $EdgeUpdatePath -Name "CreateDesktopShortcutDefault" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "PersonalizationReportingEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgeBlocklistPath -Name "1" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "ShowRecommendationsEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "HideFirstRunExperience" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "UserFeedbackAllowed" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "ConfigureDoNotTrack" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "AlternateErrorPagesEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "EdgeCollectionsEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "EdgeShoppingAssistantEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "MicrosoftEdgeInsiderPromotionEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "ShowMicrosoftRewards" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "WebWidgetAllowed" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "DiagnosticData" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "EdgeAssetDeliveryServiceEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			Remove-ItemProperty -Path $EdgePath -Name "WalletDonationEnabled" -Force -ErrorAction SilentlyContinue | Out-Null
-			
-			LogInfo "Edge debloat policies removed"
-			Write-ConsoleStatus -Status success
-		}
-	}
-}
-
-<#
-.SYNOPSIS
-Enable or disable Revert Start Menu
-
-.PARAMETER Enable
-Revert to the original Start Menu from 24H2
-
-.PARAMETER Disable
-Restore the new Start Menu (default value)
-
-.EXAMPLE
-RevertStartMenu -Enable
-
-.EXAMPLE
-RevertStartMenu -Disable
-
-.NOTES
-Current user
-
-.CAUTION
-Reverting the Start Menu may break future Windows updates that depend on the new layout.
-#>
-function RevertStartMenu
-{
-	[CmdletBinding()]
-	param
-	(
-		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
-		[switch]$Enable,
-
-		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
-		[switch]$Disable
-	)
-
-	$viveToolUrl = "https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip"
-	$featureId = "47205210"
-	$tempDir = "$env:TEMP\ViVeTool"
-	$SupportedMessage = "Revert Start Menu is only supported on Windows 11 24H2 build 26100.7019+ or 26H1 build 28000.1575+ and newer. Skipping."
-	$DownloadFailedMessage = "Unable to download ViVeTool from GitHub. Skipping Revert Start Menu."
-	$IsRevertStartMenuSupported = Test-Windows11FeatureBranchSupport -Thresholds @(
-		@{ DisplayVersion = "24H2"; Build = 26100; UBR = 7019 },
-		@{ DisplayVersion = "26H1"; Build = 28000; UBR = 1575 }
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling Revert Start Menu"
-			LogInfo "Enabling Revert Start Menu"
-
-			if (-not $IsRevertStartMenuSupported)
-			{
-				Write-ConsoleStatus -Status success
-				LogWarning $SupportedMessage
-				return
-			}
-
-			try
-			{
-				# Create temp directory
-				if (Test-Path $tempDir)
-				{
-					Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-				}
-				New-Item -Path $tempDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-				
-				# Download ViVeTool
-				$zipPath = "$tempDir\ViVeTool.zip"
-				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
-				LogInfo "Downloaded ViVeTool"
-				
-				# Extract
-				Expand-Archive $zipPath -DestinationPath $tempDir -Force -ErrorAction Stop | Out-Null
-				LogInfo "Extracted ViVeTool"
-				
-				# Run ViVeTool
-				$viveExe = "$tempDir\ViVeTool.exe"
-				if (-not (Test-Path $viveExe))
-				{
-					throw "ViVeTool.exe was not found after extraction"
-				}
-				$ViVeProcess = Start-Process $viveExe -ArgumentList "/disable /id:$featureId" -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop
-				if ($ViVeProcess.ExitCode -ne 0)
-				{
-					throw "ViVeTool returned exit code $($ViVeProcess.ExitCode)"
-				}
-				LogInfo "Applied ViVeTool setting to disable feature $featureId"
-				
-				# Cleanup
-				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-				LogInfo "Cleaned up temporary files"
-				LogInfo "Please restart your computer to apply the changes."
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				if ($_.Exception.Message -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
-				{
-					LogWarning "$DownloadFailedMessage Error: $($_.Exception.Message)"
-					Write-Host "skipped!" -ForegroundColor Yellow
-				}
-				else
-				{
-					LogError "Failed to enable Revert Start Menu: $($_.Exception.Message)"
-					Write-ConsoleStatus -Status failed
-				}
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling Revert Start Menu"
-			LogInfo "Disabling Revert Start Menu"
-
-			if (-not $IsRevertStartMenuSupported)
-			{
-				Write-ConsoleStatus -Status success
-				LogWarning $SupportedMessage
-				return
-			}
-
-			try
-			{
-				# Create temp directory
-				if (Test-Path $tempDir)
-				{
-					Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-				}
-				New-Item -Path $tempDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-				
-				# Download ViVeTool
-				$zipPath = "$tempDir\ViVeTool.zip"
-				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
-				LogInfo "Downloaded ViVeTool"
-				
-				# Extract
-				Expand-Archive $zipPath -DestinationPath $tempDir -Force -ErrorAction Stop | Out-Null
-				LogInfo "Extracted ViVeTool"
-				
-				# Run ViVeTool
-				$viveExe = "$tempDir\ViVeTool.exe"
-				if (-not (Test-Path $viveExe))
-				{
-					throw "ViVeTool.exe was not found after extraction"
-				}
-				$ViVeProcess = Start-Process $viveExe -ArgumentList "/enable /id:$featureId" -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop
-				if ($ViVeProcess.ExitCode -ne 0)
-				{
-					throw "ViVeTool returned exit code $($ViVeProcess.ExitCode)"
-				}
-				LogInfo "Applied ViVeTool setting to enable feature $featureId"
-				
-				# Cleanup
-				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-				LogInfo "Cleaned up temporary files"
-				LogInfo "Please restart your computer to apply the changes."
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-					$revertDisableError = $_.Exception.Message
-					if ($revertDisableError -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
-					{
-						LogWarning ("{0} Error: {1}" -f $DownloadFailedMessage, $revertDisableError)
-						Write-Host "skipped!" -ForegroundColor Yellow
-					}
-					else
-					{
-						LogError ("Failed to disable Revert Start Menu: {0}" -f $revertDisableError)
-						Write-ConsoleStatus -Status failed
-					}
-			}
-		}
-	}
-}
 #endregion UWP apps

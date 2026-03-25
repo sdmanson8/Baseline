@@ -1,5 +1,5 @@
 ﻿using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region InitialActions
 <#
@@ -230,11 +230,6 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	# https://wpd.app
 	LogInfo "Remove firewalled IP addresses that block Microsoft recourses added by harmful tweakers"
 	Get-NetFirewallRule -DisplayName "Blocker MicrosoftTelemetry*", "Blocker MicrosoftExtra*", "windowsSpyBlocker*" -ErrorAction Ignore | Remove-NetFirewallRule | Out-Null
-
-	#LogInfo -MessageData "" -InformationAction Continue
-	# Extract the localized "Please wait..." string from shell32.dll
-	#Write-Verbose -Message ([WinAPI.GetStrings]::GetString(12612)) -Verbose
-	#LogInfo -MessageData "" -InformationAction Continue
 
 	# Remove IP addresses from hosts file that block Microsoft resources added by WindowsSpyBlocker
 	# https://github.com/crazy-max/WindowsSpyBlocker
@@ -590,11 +585,11 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	}
 	#endregion Defender checks
 
-	# Checking whether LGPO.exe exists in the files folder
-	LogInfo "Checking whether LGPO.exe exists in the files folder"
-	if (-not (Test-Path -Path "$PSScriptRoot\..\..\files\LGPO.exe"))
+	# Checking whether LGPO.exe exists in the Assets folder
+	LogInfo "Checking whether LGPO.exe exists in the Assets folder"
+	if (-not (Test-Path -Path "$PSScriptRoot\..\..\Assets\LGPO.exe"))
 	{
-		LogWarning ($Localization.Bin -f [IO.Path]::GetFullPath("$PSScriptRoot\..\..\files"))
+		LogWarning ($Localization.Bin -f [IO.Path]::GetFullPath("$PSScriptRoot\..\..\Assets"))
 	}
 
 	# Enable back the SysMain service if it was disabled by harmful tweakers
@@ -629,127 +624,14 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	{
 		$Script:OpenedFolders = @()
 	}
-	<#
-		.SYNOPSIS
-		The "Show menu" function with the up/down arrow keys and enter key to make a selection
-
-		.PARAMETER Menu
-		Array of items to choose from
-
-		.PARAMETER Default
-		Default selected item in array
-
-		.PARAMETER AddSkip
-		Add localized extracted "Skip" string from shell32.dll
-
-		.EXAMPLE
-		Show-Menu -Menu $Items -Default 1
-
-		.LINK
-		https://qna.habr.com/answer?answer_id=1522379
-	#>
 	Clear-Host
-	function Show-Menu
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			[array]
-			$Menu,
-
-			[Parameter(Mandatory = $true)]
-			[int]
-			$Default,
-
-			[Parameter(Mandatory = $false)]
-			[switch]
-			$AddSkip
-		)
-
-		# Keep menu as array
-		$Menu = @($Menu)
-
-		# Add "Please use the arrow keys ↑ and ↓ on your keyboard to select your answer" to menu
-		if ($Localization -and $Localization.KeyboardArrows)
-		{
-			$Menu += ($Localization.KeyboardArrows -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193))
-		}
-		else
-		{
-			$Menu += ("Please use the arrow keys {0} and {1} on your keyboard to select your answer" -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193))
-		}
-
-		if ($AddSkip)
-		{
-			# Extract the localized "Skip" string from shell32.dll
-			$Menu += [WinAPI.GetStrings]::GetString(16956)
-		}
-
-		# Checking whether current terminal is Windows Terminal
-		if ($env:WT_SESSION)
-		{
-			# https://github.com/microsoft/terminal/issues/14992
-			[System.Console]::BufferHeight += $Menu.Count
-		}
-
-		$minY = [Console]::CursorTop
-
-		# Default is passed in as 1-based selection
-		$y = [Math]::Max([Math]::Min(($Default - 1), ($Menu.Count - 1)), 0)
-
-		do
-		{
-			[Console]::CursorTop = $minY
-			[Console]::CursorLeft = 0
-			$i = 0
-
-			foreach ($item in $Menu)
-			{
-				if ($i -ne $y)
-				{
-					Write-Host ('  {0}  ' -f $item)
-				}
-				else
-				{
-					Write-Host ('[ {0} ]' -f $item)
-				}
-
-				$i++
-			}
-
-			$k = [Console]::ReadKey($true)
-			switch ($k.Key)
-			{
-				"UpArrow"
-				{
-					if ($y -gt 0)
-					{
-						$y--
-					}
-				}
-				"DownArrow"
-				{
-					if ($y -lt ($Menu.Count - 1))
-					{
-						$y++
-					}
-				}
-				"Enter"
-				{
-					return $Menu[$y]
-				}
-			}
-		}
-		while ($k.Key -notin ([ConsoleKey]::Escape, [ConsoleKey]::Enter))
-	}
 
 	# Extract the localized "Browse" string from shell32.dll
-	$Script:Browse = [WinAPI.GetStrings]::GetString(9015)
+	$Script:Browse = Get-LocalizedShellString -ResourceId 9015 -Fallback 'Browse'
 	# Extract the localized "&No" string from shell32.dll
-	$Script:No = [WinAPI.GetStrings]::GetString(33232).Replace("&", "")
+	$Script:No = Get-LocalizedShellString -ResourceId 33232 -Fallback 'No' -StripAccelerators
 	# Extract the localized "&Yes" string from shell32.dll
-	$Script:Yes = [WinAPI.GetStrings]::GetString(33224).Replace("&", "")
+	$Script:Yes = Get-LocalizedShellString -ResourceId 33224 -Fallback 'Yes' -StripAccelerators
 	$Script:KeyboardArrows = if ($Localization -and $Localization.KeyboardArrows)
 	{
 		$Localization.KeyboardArrows -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193)
@@ -759,7 +641,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 		"Please use the arrow keys {0} and {1} on your keyboard to select your answer" -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193)
 	}
 	# Extract the localized "Skip" string from shell32.dll
-	$Script:Skip = [WinAPI.GetStrings]::GetString(16956)
+	$Script:Skip = Get-LocalizedShellString -ResourceId 16956 -Fallback 'Skip'
 
 	Write-Information -MessageData "┏┓   •     ┏      ┓ ┏•   ┓ 		" -InformationAction Continue
 	Write-Information -MessageData "┗┓┏┏┓┓┏┓╋  ╋┏┓┏┓  ┃┃┃┓┏┓┏┫┏┓┓┏┏┏" -InformationAction Continue
@@ -800,7 +682,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	{
 		try
 		{
-			$Global:LoadingSplash.Dispatcher.Invoke([Action]{
+			$Global:LoadingSplash.Dispatcher.Invoke([System.Action]{
 				try
 				{
 					$statusText = $Global:LoadingSplash.Window.FindName('StatusText')
@@ -811,8 +693,8 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 				}
 				catch { $null = $_ }
 			})
-			# Do NOT close the splash here — Show-TweakGUI will close it once the
-			# main window is fully built and ready to display.
+			# The launcher closes the splash immediately after InitialActions
+			# returns, once startup checks are done and before the GUI builds.
 		}
 		catch { $null = $_ }
 	}

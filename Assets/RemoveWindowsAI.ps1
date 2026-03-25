@@ -25,19 +25,19 @@
     deletion. Some actions use elevated or TrustedInstaller-level operations.
 
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\RemoveWindowsAI.ps1
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1
 
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\RemoveWindowsAI.ps1 -revertMode
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -revertMode
     
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\RemoveWindowsAI.ps1 -nonInteractive -AllOptions
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -AllOptions
 
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\RemoveWindowsAI.ps1 -nonInteractive -AllOptions -backupMode
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -AllOptions -backupMode
 
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\RemoveWindowsAI.ps1 -nonInteractive -Options RemoveAIFiles,RemoveRecallTasks
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -Options RemoveAIFiles,RemoveRecallTasks
 #>
 
 param(
@@ -71,9 +71,17 @@ $Host.UI.RawUI.WindowTitle = "Remove Windows AI - Win10_11Util"
 
 # Resolve the local files this script depends on before any removal work begins.
 $LocalizationRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Localizations"))
-$HelpersModulePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Module\Helpers.psm1"))
-$ModulePath       = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Module\Win10_11Util.psm1"))
-$ManifestPath     = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Manifest\Win10_11Util.psd1"))
+$RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$ModuleRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "Module"))
+
+if (-not (Test-Path -LiteralPath $ModuleRoot -PathType Container))
+{
+    throw "Module directory not found under: $RepoRoot"
+}
+
+$HelpersModulePath = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "SharedHelpers.psm1"))
+$ModulePath       = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Win10_11Util.psm1"))
+$ManifestPath     = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Win10_11Util.psd1"))
 
 $ScriptFiles = @(
 	$HelpersModulePath,
@@ -153,10 +161,13 @@ if ($psversion -ge 7) {
     exit 1
 }
 
+$RemoteRemoveWindowsAIScriptUrl = 'https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Assets/RemoveWindowsAI.ps1'
+$RemoteRemoveWindowsAIPackageBaseUrl = 'https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Assets/RemoveWindowsAIPackage'
+
 # Relaunch as administrator before making system changes.
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
     #leave out the trailing " to add supplied params first 
-    $arglist = "-NoProfile -ExecutionPolicy Bypass -C `"& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/sdmanson8/scripts/refs/heads/main/Script_Files/Win10-11OptimizeHardenDebloat/Win11/RemoveWindowsAI.ps1')))"
+    $arglist = "-NoProfile -ExecutionPolicy Bypass -C `"& ([scriptblock]::Create((irm '$RemoteRemoveWindowsAIScriptUrl')))"
     #pass the correct params if supplied
     if ($nonInteractive) {
         $arglist = $arglist + ' -nonInteractive'
@@ -311,7 +322,7 @@ function RunTrusted {
     # lean & mean snippet by AveYo; refined by RapidOS [haslate]
 
     $psexe = 'PowerShell.exe'
-    $loggingModulePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Module\Logging.psm1"))
+    $loggingModulePath = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Logging.psm1"))
 
     # If log file not provided, use current
     if (!$logFile -and (Get-LogFilePath)) {
@@ -404,7 +415,7 @@ function Write-Status {
 }
 
 # Import the shared logging module and choose the active log file path.
-$LoggingModulePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Module\Logging.psm1"))
+$LoggingModulePath = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Logging.psm1"))
 Import-Module -Name $LoggingModulePath -Force
 
 # Track the active log path locally so standalone runs do not inherit WinUtil's
@@ -727,7 +738,7 @@ if (`$LASTEXITCODE -eq 0) {
 }
 
 # Apply RemoveWindowsAI-specific access denied handling on top of the shared
-# safe registry setter from Helpers.psm1.
+# safe registry setter from SharedHelpers.psm1.
 function Set-RemoveWindowsAIRegistryValue {
     param(
         [Parameter(Mandatory)]
@@ -1434,11 +1445,12 @@ function Install-NOAIPackage {
                 LogInfo "Downloading RemoveWindowsAI Package From Github"
 
                 $ProgressPreference = 'SilentlyContinue'
+                $packageDownloadUrl = "$RemoteRemoveWindowsAIPackageBaseUrl/$arch/SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab"
                 try {
-                    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/sdmanson8/scripts/main/Script_Files/Win10-11OptimizeHardenDebloat/RemoveWindowsAIPackage/$arch/SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" -OutFile "$($tempDir)SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" -UseBasicParsing -ErrorAction Stop | Out-Null
+                    Invoke-WebRequest -Uri $packageDownloadUrl -OutFile "$($tempDir)SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" -UseBasicParsing -ErrorAction Stop | Out-Null
                 }
                 catch {
-                    LogError "Unable to Download Package at: https://raw.githubusercontent.com/sdmanson8/scripts/main/Script_Files/Win10-11OptimizeHardenDebloat/RemoveWindowsAIPackage/$arch/SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" 
+                    LogError "Unable to Download Package at: $packageDownloadUrl" 
                     return
                 }
 
@@ -1723,9 +1735,9 @@ function DownloadAppxPackage {
     }
       
     # download packages
-    $latestPackages | ForEach-Object {
-        $url = $_.url
-        $filename = $_.filename
+    foreach ($package in $latestPackages) {
+        $url = $package.url
+        $filename = $package.filename
         # TODO: may need to include detection in the future of expired package download URLs - .. in the case that downloads take over 10 minutes to complete
       
         $downloadFile = Join-Path $downloadFolder $filename
@@ -1760,7 +1772,7 @@ function DownloadAppxPackage {
                 $errorMsg = 'An error occurred: ' + $_
                 LogError $errorMsg
                 $errored = $true
-                break $false
+                break
             }
             $ProgressPreference = $PreviousProgressPreference # return ProgressPreference back to normal
             if ($fileDownloaded) { $DownloadedFiles += $downloadFile }
@@ -3021,7 +3033,7 @@ else {
 '@
 
     $reader = New-Object System.Xml.XmlNodeReader([xml]$scrollViewerStyle)
-    $scrollViewer.Style = [Windows.Markup.XamlReader]::Load($reader)
+    $scrollViewer.Style = [System.Windows.Markup.XamlReader]::Load($reader)
 
 
     $stackPanel = New-Object System.Windows.Controls.StackPanel
@@ -3219,7 +3231,7 @@ else {
 '@
                 
         $reader = New-Object System.Xml.XmlNodeReader([xml]$styleXaml)
-        $resourceDict = [Windows.Markup.XamlReader]::Load($reader)
+        $resourceDict = [System.Windows.Markup.XamlReader]::Load($reader)
                 
         $toggleButton = New-Object System.Windows.Controls.Primitives.ToggleButton
         $toggleButton.Name = $Name

@@ -1,5 +1,5 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region Post Actions
 <#

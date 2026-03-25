@@ -1,0 +1,69 @@
+{
+  "Tab": "Taskbar Clock",
+  "Entries": [
+    {
+      "Name": "Clock in Notification Center",
+      "Function": "ClockInNotificationCenter",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Time in Notification Center",
+      "Detail": null,
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": null,
+      "OnParam": "Show",
+      "OffParam": "Hide",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "TaskbarClock",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar",
+        "clock"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Time in Notification Center",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "Seconds on Taskbar Clock",
+      "Function": "SecondsInSystemClock",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": false,
+      "Description": "Seconds on the taskbar clock",
+      "Detail": null,
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": null,
+      "OnParam": "Show",
+      "OffParam": "Hide",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "TaskbarClock",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar",
+        "clock"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Seconds on the taskbar clock",
+      "PresetTier": "Safe"
+    }
+  ]
+}

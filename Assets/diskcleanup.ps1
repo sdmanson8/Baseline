@@ -22,11 +22,18 @@
     provided, it falls back to a temporary log file.
 
     .EXAMPLE
-    powershell.exe -ExecutionPolicy Bypass -File .\files\diskcleanup.ps1
+    powershell.exe -ExecutionPolicy Bypass -File .\Assets\diskcleanup.ps1
 #>
 
 # Import the shared logging module used by Win10_11Util child scripts.
-Import-Module -Name "$PSScriptRoot\..\Module\Logging.psm1" -Force
+$script:RepoRoot = Split-Path -Path $PSScriptRoot -Parent
+$script:ModuleRoot = Join-Path $script:RepoRoot 'Module'
+
+if (-not (Test-Path -LiteralPath $script:ModuleRoot -PathType Container)) {
+    throw "Module directory not found under: $script:RepoRoot"
+}
+
+Import-Module -Name (Join-Path $script:ModuleRoot 'Logging.psm1') -Force
 
 # Select the log file in this order: explicit parameter, environment variable,
 # existing global log path, then a temporary fallback file.

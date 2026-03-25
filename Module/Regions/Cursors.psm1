@@ -1,7 +1,8 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region Cursors
+
 <#
 	.SYNOPSIS
 	Free "Windows 11 Cursors Concept" cursors from Jepri Creations
@@ -287,4 +288,5 @@ public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint
 	}
 	[void][WinAPI.Cursor]::SystemParametersInfo(0x0057, 0, $null, 0)
 }
+
 #endregion Cursors

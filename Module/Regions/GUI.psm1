@@ -1,5 +1,147 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
+using module ..\GUICommon.psm1
+using module ..\GUIExecution.psm1
+
+function New-SafeThickness
+{
+	param(
+		[double]$Left = 0,
+		[double]$Top = 0,
+		[double]$Right = 0,
+		[double]$Bottom = 0,
+		[Nullable[double]]$Uniform = $null
+	)
+
+	if ($null -ne $Uniform)
+	{
+		return [System.Windows.Thickness]::new([double]$Uniform)
+	}
+
+	return [System.Windows.Thickness]::new($Left, $Top, $Right, $Bottom)
+}
+
+function New-WpfSetter
+{
+	param(
+		[Parameter(Mandatory)][System.Windows.DependencyProperty]$Property,
+		[Parameter(Mandatory)][object]$Value,
+		[string]$TargetName
+	)
+
+	$setter = New-Object System.Windows.Setter
+	$setter.Property = $Property
+	$setter.Value = $Value
+	if (-not [string]::IsNullOrWhiteSpace($TargetName))
+	{
+		$setter.TargetName = $TargetName
+	}
+
+	return $setter
+}
+
+function Show-GuiRuntimeFailure
+{
+	param (
+		[string]$Context = 'GUI',
+		[System.Exception]$Exception,
+		[switch]$ShowDialog
+	)
+
+	if (-not $Exception) { return $null }
+
+	$errorLines = New-Object System.Collections.Generic.List[string]
+	[void]$errorLines.Add(("GUI event failed [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $Exception.Message))
+	[void]$errorLines.Add(("Exception type: {0}" -f $Exception.GetType().FullName))
+	if ($Exception.InnerException)
+	{
+		[void]$errorLines.Add(("Inner exception: {0}" -f $Exception.InnerException.Message))
+	}
+	if ($Exception.StackTrace)
+	{
+		[void]$errorLines.Add('Stack trace:')
+		[void]$errorLines.Add($Exception.StackTrace.Trim())
+	}
+
+	$errorText = ($errorLines -join [Environment]::NewLine)
+	if (Get-Command -Name 'LogError' -CommandType Function -ErrorAction SilentlyContinue)
+	{
+		LogError $errorText
+	}
+	else
+	{
+		Write-Warning $errorText
+	}
+
+	if ($ShowDialog -and $Script:MainForm -and $Script:CurrentTheme)
+	{
+		try
+		{
+			$noopButtonChrome = [scriptblock]::Create('param($Button, $Variant)')
+			GUICommon\Show-ThemedDialog `
+				-Theme $Script:CurrentTheme `
+				-ApplyButtonChrome $noopButtonChrome `
+				-OwnerWindow $Script:MainForm `
+				-Title 'GUI Error' `
+				-Message $errorText `
+				-Buttons @('OK') `
+				-AccentButton 'OK' | Out-Null
+		}
+		catch
+		{
+			$null = $_
+		}
+	}
+
+	return $errorText
+}
+
+function Write-GuiPresetDebug
+{
+	param (
+		[string]$Context = 'GUI',
+		[string]$Message
+	)
+
+	if ([string]::IsNullOrWhiteSpace($Message)) { return }
+
+	$debugText = "GUI preset debug [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $Message
+	try
+	{
+		if (-not $Script:GuiPresetDebugTrail)
+		{
+			$Script:GuiPresetDebugTrail = [System.Collections.Generic.List[string]]::new()
+		}
+		$trailEntry = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss.fff'), $debugText
+		[void]$Script:GuiPresetDebugTrail.Add($trailEntry)
+		while ($Script:GuiPresetDebugTrail.Count -gt 100)
+		{
+			$Script:GuiPresetDebugTrail.RemoveAt(0)
+		}
+
+		if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			LogWarning -Message $debugText -ShowConsole
+		}
+		else
+		{
+			Write-Warning $debugText
+		}
+	}
+	catch
+	{
+		try
+		{
+			Write-Warning $debugText
+		}
+		catch
+		{
+			$null = $_
+		}
+	}
+}
+
+$Script:GuiPresetDebugScript = ${function:Write-GuiPresetDebug}
 
 <#
 	.SYNOPSIS
@@ -36,323 +178,145 @@ using module ..\Helpers.psm1
 	  Scannable       $true (default) if system-scan can detect state; $false to always allow re-run
 #>
 
-#region Tweak Manifest
-$Script:TweakManifest = @(
+#region Detect & Visibility Scriptblocks
+# Detect scriptblocks keyed by Function name (cannot be stored in JSON).
+# Used by system-scan to determine current on/off state of a tweak.
+$Script:DetectScriptblocks = @{
+	'DiagTrackService' = { (Get-Service DiagTrack -EA SilentlyContinue).StartType -ne "Disabled" }
+	'MaintenanceWakeUp' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance" -Name MaintenanceDisabled -EA SilentlyContinue).MaintenanceDisabled -ne 1 }
+	'SharedExperiences' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name RomeSdkChannelUserAuthzPolicy -EA SilentlyContinue).RomeSdkChannelUserAuthzPolicy -eq 1 }
+	'ClipboardHistory' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Clipboard" -Name EnableClipboardHistory -EA SilentlyContinue).EnableClipboardHistory -eq 1 }
+	'Superfetch' = { (Get-Service SysMain -EA SilentlyContinue).StartType -ne "Disabled" }
+	'NTFSLongPaths' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -EA SilentlyContinue).LongPathsEnabled -eq 1 }
+	'SleepButton' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name ShowSleepOption -EA SilentlyContinue).ShowSleepOption -eq 1 }
+	'FastStartup' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -EA SilentlyContinue).HiberbootEnabled -eq 1 }
+	'AutoRebootOnCrash' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name AutoReboot -EA SilentlyContinue).AutoReboot -eq 1 }
+	'SigninInfo' = { $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\UserARSO\$sid" -Name OptOut -EA SilentlyContinue).OptOut -ne 1 }
+	'LanguageListAccess' = { (Get-ItemProperty "HKCU:\Control Panel\International\User Profile" -Name HttpAcceptLanguageOptOut -EA SilentlyContinue).HttpAcceptLanguageOptOut -ne 1 }
+	'AdvertisingID' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled -EA SilentlyContinue).Enabled -eq 1 }
+	'LockWidgets' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -EA SilentlyContinue).TaskbarDa -ne 0 }
+	'WindowsTips' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name SoftLandingEnabled -EA SilentlyContinue).SoftLandingEnabled -ne 0 }
+	'AppsSilentInstalling' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name SilentInstalledAppsEnabled -EA SilentlyContinue).SilentInstalledAppsEnabled -ne 0 }
+	'TailoredExperiences' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name TailoredExperiencesWithDiagnosticDataEnabled -EA SilentlyContinue).TailoredExperiencesWithDiagnosticDataEnabled -ne 0 }
+	'BingSearch' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name BingSearchEnabled -EA SilentlyContinue).BingSearchEnabled -ne 0 }
+	'WiFiSense' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name Value -EA SilentlyContinue).Value -ne 0 }
+	'WebSearch' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name CortanaConsent -EA SilentlyContinue).CortanaConsent -ne 0 }
+	'ActivityHistory' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableActivityFeed -EA SilentlyContinue).EnableActivityFeed -ne 0 }
+	'MapUpdates' = { (Get-ItemProperty "HKLM:\SYSTEM\Maps" -Name AutoUpdateEnabled -EA SilentlyContinue).AutoUpdateEnabled -eq 1 }
+	'WAPPush' = { (Get-Service dmwappushservice -EA SilentlyContinue).StartType -ne "Disabled" }
+	'ClearRecentFiles' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ClearRecentDocsOnExit -EA SilentlyContinue).ClearRecentDocsOnExit -eq 1 }
+	'RecentFiles' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoRecentDocsHistory -EA SilentlyContinue).NoRecentDocsHistory -ne 1 }
+	'CrossDeviceResume' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name IsResumeAllowed -EA SilentlyContinue).IsResumeAllowed -eq 1 }
+	'MultiplaneOverlay' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name OverlayTestMode -EA SilentlyContinue).OverlayTestMode -ne 5 }
+	'S3Sleep' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name PlatformAoAcOverride -EA SilentlyContinue).PlatformAoAcOverride -eq 0 }
+	'ExplorerAutoDiscovery' = { (Get-ItemProperty "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags\AllFolders\Shell" -Name FolderType -EA SilentlyContinue).FolderType -ne "NotSpecified" }
+	'WPBT' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name DisableWpbtExecution -EA SilentlyContinue).DisableWpbtExecution -ne 1 }
+	'FullscreenOptimizations' = { (Get-ItemProperty "HKCU:\System\GameConfigStore" -Name GameDVR_DXGIHonorFSEWindowsCompatible -EA SilentlyContinue).GameDVR_DXGIHonorFSEWindowsCompatible -ne 1 }
+	'Teredo' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name DisabledComponents -EA SilentlyContinue).DisabledComponents -ne 255 }
+	'ExplorerTitleFullPath' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" -Name FullPath -EA SilentlyContinue).FullPath -eq 1 }
+	'NavPaneAllFolders' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneShowAllFolders -EA SilentlyContinue).NavPaneShowAllFolders -eq 1 }
+	'NavPaneLibraries' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneShowLibraries -EA SilentlyContinue).NavPaneShowLibraries -eq 1 }
+	'FldrSeparateProcess' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SeparateProcess -EA SilentlyContinue).SeparateProcess -eq 1 }
+	'RestoreFldrWindows' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name PersistBrowsers -EA SilentlyContinue).PersistBrowsers -eq 1 }
+	'EncCompFilesColor' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowEncryptCompressedColor -EA SilentlyContinue).ShowEncryptCompressedColor -eq 1 }
+	'SharingWizard' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SharingWizardOn -EA SilentlyContinue).SharingWizardOn -ne 0 }
+	'SelectCheckboxes' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name AutoCheckSelect -EA SilentlyContinue).AutoCheckSelect -eq 1 }
+	'SyncNotifications' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSyncProviderNotifications -EA SilentlyContinue).ShowSyncProviderNotifications -eq 1 }
+	'BuildNumberOnDesktop' = { (Get-ItemProperty "HKCU:\Control Panel\Desktop" -Name PaintDesktopVersion -EA SilentlyContinue).PaintDesktopVersion -eq 1 }
+	'Thumbnails' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name IconsOnly -EA SilentlyContinue).IconsOnly -ne 1 }
+	'ThumbnailCache' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisableThumbnailCache -EA SilentlyContinue).DisableThumbnailCache -ne 1 }
+	'ThumbsDBOnNetwork' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisableThumbsDBOnNetworkFolders -EA SilentlyContinue).DisableThumbsDBOnNetworkFolders -ne 1 }
+	'CheckBoxes' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name AutoCheckSelect -EA SilentlyContinue).AutoCheckSelect -eq 1 }
+	'HiddenItems' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name Hidden -EA SilentlyContinue).Hidden -eq 1 }
+	'SuperHiddenFiles' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSuperHidden -EA SilentlyContinue).ShowSuperHidden -eq 1 }
+	'FileExtensions' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name HideFileExt -EA SilentlyContinue).HideFileExt -ne 1 }
+	'MergeConflicts' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name HideMergeConflicts -EA SilentlyContinue).HideMergeConflicts -ne 1 }
+	'SnapAssist' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SnapAssist -EA SilentlyContinue).SnapAssist -ne 0 }
+	'RecycleBinDeleteConfirmation' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ConfirmFileDelete -EA SilentlyContinue).ConfirmFileDelete -eq 1 }
+	'MeetNow' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name HideSCAMeetNow -EA SilentlyContinue).HideSCAMeetNow -ne 1 }
+	'NewsInterests' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name ShellFeedsTaskbarViewMode -EA SilentlyContinue).ShellFeedsTaskbarViewMode -ne 2 }
+	'TaskbarAlignment' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarAl -EA SilentlyContinue).TaskbarAl -ne 1 }
+	'TaskbarWidgets' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -EA SilentlyContinue).TaskbarDa -ne 0 }
+	'TaskViewButton' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowTaskViewButton -EA SilentlyContinue).ShowTaskViewButton -ne 0 }
+	'TaskbarEndTask' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings" -Name TaskbarEndTask -EA SilentlyContinue).TaskbarEndTask -eq 1 }
+	'FirstLogonAnimation' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name EnableFirstLogonAnimation -EA SilentlyContinue).EnableFirstLogonAnimation -ne 0 }
+	'JPEGWallpapersQuality' = { (Get-ItemProperty "HKCU:\Control Panel\Desktop" -Name JPEGImportQuality -EA SilentlyContinue).JPEGImportQuality -eq 100 }
+	'PrtScnSnippingTool' = { (Get-ItemProperty "HKCU:\Control Panel\Keyboard" -Name PrintScreenKeyForSnippingEnabled -EA SilentlyContinue).PrintScreenKeyForSnippingEnabled -eq 1 }
+	'AeroShaking' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisallowShaking -EA SilentlyContinue).DisallowShaking -ne 1 }
+	'NavigationPaneExpand' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneExpandToCurrentFolder -EA SilentlyContinue).NavPaneExpandToCurrentFolder -eq 1 }
+	'LockScreen' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoLockScreen -EA SilentlyContinue).NoLockScreen -ne 1 }
+	'LockScreenRS1' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DisableLockScreen -EA SilentlyContinue).DisableLockScreen -ne 1 }
+	'NetworkFromLockScreen' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DontDisplayNetworkSelectionUI -EA SilentlyContinue).DontDisplayNetworkSelectionUI -ne 1 }
+	'ShutdownFromLockScreen' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ShutdownWithoutLogon -EA SilentlyContinue).ShutdownWithoutLogon -eq 1 }
+	'LockScreenBlur' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DisableAcrylicBackgroundOnLogon -EA SilentlyContinue).DisableAcrylicBackgroundOnLogon -ne 1 }
+	'TaskManagerDetails' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name Preferences -EA SilentlyContinue) -ne $null }
+	'FileOperationsDetails' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name EnthusiastMode -EA SilentlyContinue).EnthusiastMode -eq 1 }
+	'FileDeleteConfirm' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ConfirmFileDelete -EA SilentlyContinue).ConfirmFileDelete -eq 1 }
+	'TrayIcons' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoAutoTrayNotify -EA SilentlyContinue).NoAutoTrayNotify -ne 1 }
+	'SearchAppInStore' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name NoUseStoreOpenWith -EA SilentlyContinue).NoUseStoreOpenWith -ne 1 }
+	'NewAppPrompt' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name NoNewAppAlert -EA SilentlyContinue).NoNewAppAlert -ne 1 }
+	'RecentlyAddedApps' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name HideRecentlyAddedApps -EA SilentlyContinue).HideRecentlyAddedApps -ne 1 }
+	'TitleBarColor' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\DWM" -Name ColorPrevalence -EA SilentlyContinue).ColorPrevalence -eq 1 }
+	'EnhPointerPrecision' = { (Get-ItemProperty "HKCU:\Control Panel\Mouse" -Name MouseSpeed -EA SilentlyContinue).MouseSpeed -eq 1 }
+	'StartupSound' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name DisableStartupSound -EA SilentlyContinue).DisableStartupSound -ne 1 }
+	'ChangingSoundScheme' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoChangingSoundScheme -EA SilentlyContinue).NoChangingSoundScheme -ne 1 }
+	'VerboseStatus' = { (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name VerboseStatus -EA SilentlyContinue).VerboseStatus -eq 1 }
+	'StorageSense' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy" -Name "01" -EA SilentlyContinue)."01" -eq 1 }
+	'Hibernation' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name HibernateEnabled -EA SilentlyContinue).HibernateEnabled -eq 1 }
+	'BSoDStopError' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name DisplayParameters -EA SilentlyContinue).DisplayParameters -eq 1 }
+	'DeliveryOptimization' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" -Name DODownloadMode -EA SilentlyContinue).DODownloadMode -ne 99 }
+	'WindowsManageDefaultPrinter' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -EA SilentlyContinue).LegacyDefaultPrinterMode -ne 1 }
+	'SMBServer' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name SMB2 -EA SilentlyContinue).SMB2 -ne 0 }
+	'NetBIOS' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces" -ErrorAction SilentlyContinue) -ne $null }
+	'LLMNR' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name EnableMulticast -EA SilentlyContinue).EnableMulticast -ne 0 }
+	'ConnectionSharing' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name NC_ShowSharedAccessUI -EA SilentlyContinue).NC_ShowSharedAccessUI -ne 0 }
+	'ReservedStorage' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager" -Name ShippedWithReserves -EA SilentlyContinue).ShippedWithReserves -eq 1 }
+	'NumLock' = { (Get-ItemProperty "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -EA SilentlyContinue).InitialKeyboardIndicators -match "2" }
+	'CapsLock' = { -not ((Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -EA SilentlyContinue)."Scancode Map") }
+	'StickyShift' = { (Get-ItemProperty "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -EA SilentlyContinue).Flags -ne 506 }
+	'Autoplay' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" -Name DisableAutoplay -EA SilentlyContinue).DisableAutoplay -ne 1 }
+	'SaveRestartableApps' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -EA SilentlyContinue).RestartApps -eq 1 }
+	'NetworkDiscovery' = { (Get-NetFirewallRule -DisplayGroup "Network Discovery" -EA SilentlyContinue | Where-Object Enabled -eq True | Select-Object -First 1) -ne $null }
+	'RegistryBackup' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -EA SilentlyContinue).EnablePeriodicBackup -eq 1 }
+	'XboxGameBar' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name AppCaptureEnabled -EA SilentlyContinue).AppCaptureEnabled -ne 0 }
+	'XboxGameTips' = { (Get-ItemProperty "HKCU:\Software\Microsoft\GameBar" -Name ShowStartupPanel -EA SilentlyContinue).ShowStartupPanel -ne 0 }
+	'GPUScheduling' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name HwSchMode -EA SilentlyContinue).HwSchMode -eq 2 }
+	'NetworkProtection' = { try { (Get-MpPreference -EA Stop).EnableNetworkProtection -eq 1 } catch { $false } }
+	'DefenderSandbox' = { [System.Environment]::GetEnvironmentVariable("MP_FORCE_USE_SANDBOX","Machine") -eq "1" }
+	'PowerShellModulesLogging' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Name EnableModuleLogging -EA SilentlyContinue).EnableModuleLogging -eq 1 }
+	'PowerShellScriptsLogging' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name EnableScriptBlockLogging -EA SilentlyContinue).EnableScriptBlockLogging -eq 1 }
+	'AppsSmartScreen' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -EA SilentlyContinue).EnableSmartScreen -ne 0 }
+	'SaveZoneInformation' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name SaveZoneInformation -EA SilentlyContinue).SaveZoneInformation -ne 2 }
+	'WindowsScriptHost' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows Script Host\Settings" -Name Enabled -EA SilentlyContinue).Enabled -ne 0 }
+	'WindowsSandbox' = { (Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -EA SilentlyContinue).State -eq "Enabled" }
+	'LocalSecurityAuthority' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name RunAsPPL -EA SilentlyContinue).RunAsPPL -ge 1 }
+	'SharingMappedDrives' = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name EnableLinkedConnections -EA SilentlyContinue).EnableLinkedConnections -eq 1 }
+	'Firewall' = { (Get-NetFirewallProfile -EA SilentlyContinue | Where-Object Enabled -eq True | Select-Object -First 1) -ne $null }
+	'DefenderTrayIcon' = { (Get-ItemProperty "HKCU:\Software\Policies\Microsoft\Windows Defender Security Center\Systray" -Name HideSystray -EA SilentlyContinue).HideSystray -ne 1 }
+	'DefenderCloud' = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name SpynetReporting -EA SilentlyContinue).SpynetReporting -ne 0 }
+	'CIMemoryIntegrity' = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Name Enabled -EA SilentlyContinue).Enabled -eq 1 }
+	'AccountProtectionWarn' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AccountProtection_MicrosoftAccount_Disconnected -EA SilentlyContinue).AccountProtectionWarn -ne 1 }
+	'DownloadBlocking' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name SaveZoneInformation -EA SilentlyContinue).SaveZoneInformation -ne 2 }
+	'F8BootMenu' = { (bcdedit /enum "{current}" 2>$null) -match "bootmenupolicy.*legacy" }
+	'BootRecovery' = { (bcdedit /enum "{current}" 2>$null) -match "recoveryenabled.*Yes" }
+	'MSIExtractContext' = { Test-Path "Registry::HKEY_CLASSES_ROOT\Msi.Package\shell\Extract" }
+	'CABInstallContext' = { Test-Path "Registry::HKEY_CLASSES_ROOT\CABFolder\Shell\runas" }
+	'MultipleInvokeContext' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name MultipleInvokePromptMinimum -EA SilentlyContinue).MultipleInvokePromptMinimum -ge 15 }
+	'OpenWindowsTerminalContext' = { Test-Path "Registry::HKEY_CLASSES_ROOT\Directory\shell\OpenWTHere" }
+	'SecondsInSystemClock' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSecondsInSystemClock -EA SilentlyContinue).ShowSecondsInSystemClock -eq 1 }
+	'ClockInNotificationCenter' = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowClock -EA SilentlyContinue).ShowClock -ne 0 }
+}
 
-	# ── Initial Setup ────────────────────────────────────────────────
-	@{ Name = "Check and Install WinGet";                  Category = "Initial Setup";       Function = "CheckWinGet";                     Type = "Action"; Default = $true;  WinDefault = $true;  Description = "Ensure WinGet package manager is installed"; Caution = $false; Scannable = $false }
-	@{ Name = "Install/Update PowerShell 7";               Category = "Initial Setup";       Function = "Update-Powershell";               Type = "Action"; Default = $true;  WinDefault = $false; Description = "Install the latest PowerShell 7 release"; Caution = $false; LinkedWith = "Powershell7Telemetry"; Scannable = $false }
-	@{ Name = "Lanman Workstation Guest Auth Policy";      Category = "Initial Setup";       Function = "LanmanWorkstationGuestAuthPolicy"; Type = "Action"; Default = $true;  WinDefault = $false; Description = "Enable the LanmanWorkstation guest-auth Group Policy setting"; Caution = $false }
-	@{ Name = "Hide About this Picture on Desktop";        Category = "Initial Setup";       Function = "Update-DesktopRegistry";          Type = "Action"; Default = $true;  WinDefault = $false; Description = "Remove the Spotlight 'About this picture' icon from the desktop"; Caution = $false }
+# VisibleIf scriptblocks keyed by Function name.
+# Controls OS-specific tweak visibility (e.g. Win10 vs Win11).
+$Script:VisibleIfScriptblocks = @{
+	'LockScreen' = { ((Get-OSInfo).OSName -like "*Windows 11*") }
+	'LockScreenRS1' = { ((Get-OSInfo).OSName -like "*Windows 10*") }
+}
+#endregion Detect & Visibility Scriptblocks
 
-	# ── OS Hardening ─────────────────────────────────────────────────
-	@{ Name = "Block Remote Commands";                     Category = "OS Hardening";        Function = "Disable-RemoteCommands";          Type = "Action"; Default = $true;  WinDefault = $false; Description = "Block remote command execution"; Caution = $false }
-	@{ Name = "Prevent Wireless Exploitation";             Category = "OS Hardening";        Function = "Suspend-AirstrikeAttack";         Type = "Action"; Default = $true;  WinDefault = $false; Description = "Prevent local Windows wireless exploitation"; Caution = $false }
-	@{ Name = "Disable SMBv3 Compression";                 Category = "OS Hardening";        Function = "Disable-SMBv3Compression";        Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable SMBv3 compression to mitigate CVE-2020-0796"; Caution = $false }
-	@{ Name = "Harden MS Office";                          Category = "OS Hardening";        Function = "Protect-MSOffice";                Type = "Action"; Default = $false; WinDefault = $false; Description = "Harden MS Office security settings"; Caution = $true; CautionReason = "Can affect macros, Office automation, downloaded Office documents, and workflows that rely on active content or permissive Outlook trust behavior." }
-	@{ Name = "General OS Hardening";                      Category = "OS Hardening";        Function = "Protect-OS";                      Type = "Action"; Default = $false; WinDefault = $false; Description = "Perform general OS hardening"; Caution = $true; CautionReason = "Changes authentication, networking, shell, and smart card related policy values. Review carefully in environments with legacy authentication, specialized networking, or smart-card workflows." }
-	@{ Name = "Prevent Remote DLL Hijacking";              Category = "OS Hardening";        Function = "Set-DLLHijackingPrevention";      Type = "Action"; Default = $true;  WinDefault = $false; Description = "Prevent remote DLL hijacking"; Caution = $false }
-	@{ Name = "Disable IPv6";                              Category = "OS Hardening";        Function = "Disable-IPv6";                    Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable IPv6 protocol"; Caution = $false }
-	@{ Name = "Disable TCP Timestamps";                    Category = "OS Hardening";        Function = "Disable-TCPTimestamps";           Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable TCP timestamps to reduce network fingerprinting"; Caution = $false }
-	@{ Name = "Enable Biometrics Anti-Spoofing";           Category = "OS Hardening";        Function = "Enable-BiometricsAntiSpoofing";   Type = "Action"; Default = $true;  WinDefault = $false; Description = "Enable biometrics anti-spoofing protection"; Caution = $false }
-	@{ Name = "Ensure Registry Paths Exist";               Category = "OS Hardening";        Function = "Update-RegistryPaths";            Type = "Action"; Default = $true;  WinDefault = $false; Description = "Create required registry paths before setting properties"; Caution = $false }
-	@{ Name = "Disable AutoRun";                           Category = "OS Hardening";        Function = "Disable-AutoRun";                 Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable AutoRun for all media"; Caution = $false }
-	@{ Name = "Disable AES Ciphers";                       Category = "OS Hardening";        Function = "Disable-AESCiphers";              Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable weak AES ciphers"; Caution = $false }
-	@{ Name = "Disable RC2 and RC4 Ciphers";               Category = "OS Hardening";        Function = "Disable-RC2RC4Ciphers";           Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable RC2 and RC4 ciphers"; Caution = $false }
-	@{ Name = "Disable Triple DES Cipher";                 Category = "OS Hardening";        Function = "Disable-TripleDESCipher";         Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable Triple DES cipher"; Caution = $false }
-	@{ Name = "Disable Weak Hash Algorithms";              Category = "OS Hardening";        Function = "Disable-HashAlgorithms";          Type = "Action"; Default = $true;  WinDefault = $false; Description = "Disable specified weak hash algorithms"; Caution = $false }
-	@{ Name = "Configure Key Exchange Algorithms";         Category = "OS Hardening";        Function = "Update-KeyExchanges";             Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure secure key exchange algorithms"; Caution = $false }
-	@{ Name = "Configure SSL/TLS Protocols";               Category = "OS Hardening";        Function = "Update-Protocols";                Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure secure SSL/TLS protocols"; Caution = $false }
-	@{ Name = "Configure Cipher Suites";                   Category = "OS Hardening";        Function = "Update-CipherSuites";             Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure secure cipher suites"; Caution = $false }
-	@{ Name = "Configure Strong .NET Authentication";      Category = "OS Hardening";        Function = "Update-DotNetStrongAuth";         Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure strong .NET authentication"; Caution = $false }
-	@{ Name = "Configure Event Log Sizes";                 Category = "OS Hardening";        Function = "Update-EventLogSize";             Type = "Action"; Default = $true;  WinDefault = $false; Description = "Increase event log sizes for better auditing"; Caution = $false }
-	@{ Name = "Harden Adobe Reader";                       Category = "OS Hardening";        Function = "Update-AdobereaderDCSTIG";        Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure Adobe Reader security settings"; Caution = $true; CautionReason = "Can affect Adobe update behavior, cloud/share integrations, and document handling features that depend on less restrictive Reader settings." }
-	@{ Name = "Harden Office Links";                       Category = "OS Hardening";        Function = "Protect-MSOfficeLinks";           Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure Office link update hardening"; Caution = $true; CautionReason = "Can affect documents or mail workflows that intentionally rely on automatic external link refresh behavior." }
-	@{ Name = "Harden WinRM";                              Category = "OS Hardening";        Function = "Protect-WinRM";                   Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure WinRM hardening"; Caution = $false }
-	@{ Name = "Reduce RPC Surface";                        Category = "OS Hardening";        Function = "Protect-RPCSurface";              Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure RPC surface reduction"; Caution = $true; CautionReason = "Can break remote task scheduling, remote service control, and management products that depend on those RPC paths." }
-	@{ Name = "Harden ClickOnce Trust Prompts";            Category = "OS Hardening";        Function = "Protect-ClickOnce";               Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure ClickOnce trust prompt hardening"; Caution = $true; CautionReason = "Aggressive. Can break ClickOnce-based installers, updates, or internal applications that depend on trust prompts." }
-	@{ Name = "Filesystem Performance Settings";           Category = "OS Hardening";        Function = "Protect-FileSystemPerformance";   Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure filesystem performance settings"; Caution = $false }
-
-	# ── Privacy & Telemetry ──────────────────────────────────────────
-	@{ Name = "Connected User Experiences (DiagTrack)";    Category = "Privacy & Telemetry"; Function = "DiagTrackService";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Connected User Experiences and Telemetry service"; Caution = $false; Detect = { (Get-Service DiagTrack -EA SilentlyContinue).StartType -ne "Disabled" } }
-	@{ Name = "Diagnostic Data Level";                     Category = "Privacy & Telemetry"; Function = "DiagnosticDataLevel";             Type = "Choice"; Options = @("Minimal","Default"); Default = "Minimal"; WinDefault = "Default"; Description = "Set diagnostic data collection level"; Caution = $false }
-	@{ Name = "Windows Error Reporting";                   Category = "Privacy & Telemetry"; Function = "ErrorReporting";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows Error Reporting"; Caution = $false }
-	@{ Name = "Feedback Frequency";                        Category = "Privacy & Telemetry"; Function = "FeedbackFrequency";               Type = "Choice"; Options = @("Never","Automatically"); Default = "Never"; WinDefault = "Automatically"; Description = "How often Windows asks for feedback"; Caution = $false }
-	@{ Name = "Diagnostics Tracking Tasks";                Category = "Privacy & Telemetry"; Function = "ScheduledTasks";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Diagnostics tracking scheduled tasks"; Caution = $false }
-	@{ Name = "Malicious Software Removal Tool (MSRT)";   Category = "Privacy & Telemetry"; Function = "UpdateMSRT";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Offering of MSRT through Windows Update"; Caution = $false }
-	@{ Name = "Driver Updates via Windows Update";         Category = "Privacy & Telemetry"; Function = "UpdateDriver";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Offering of drivers through Windows Update"; Caution = $false }
-	@{ Name = "Microsoft Product Updates";                 Category = "Privacy & Telemetry"; Function = "UpdateMSProducts";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Receive updates for other Microsoft products via Windows Update"; Caution = $false }
-	@{ Name = "Windows Update Auto Downloads";             Category = "Privacy & Telemetry"; Function = "UpdateAutoDownload";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows Update automatic downloads"; Caution = $false }
-	@{ Name = "Auto Restart After Update";                 Category = "Privacy & Telemetry"; Function = "UpdateRestart";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Automatic restart after Windows Update"; Caution = $false }
-	@{ Name = "Maintenance Wake-up";                       Category = "Privacy & Telemetry"; Function = "MaintenanceWakeUp";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Nightly wake-up for Automatic Maintenance"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance" -Name MaintenanceDisabled -EA SilentlyContinue).MaintenanceDisabled -ne 1 } }
-	@{ Name = "Shared Experiences";                        Category = "Privacy & Telemetry"; Function = "SharedExperiences";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Shared Experiences across devices"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name RomeSdkChannelUserAuthzPolicy -EA SilentlyContinue).RomeSdkChannelUserAuthzPolicy -eq 1 } }
-	@{ Name = "Clipboard History";                         Category = "Privacy & Telemetry"; Function = "ClipboardHistory";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Clipboard History"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Clipboard" -Name EnableClipboardHistory -EA SilentlyContinue).EnableClipboardHistory -eq 1 } }
-	@{ Name = "Superfetch Service";                        Category = "Privacy & Telemetry"; Function = "Superfetch";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Superfetch (SysMain) service"; Caution = $false; Detect = { (Get-Service SysMain -EA SilentlyContinue).StartType -ne "Disabled" } }
-	@{ Name = "NTFS Long Paths";                           Category = "Privacy & Telemetry"; Function = "NTFSLongPaths";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "NTFS paths with length over 260 characters"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -EA SilentlyContinue).LongPathsEnabled -eq 1 } }
-	@{ Name = "NTFS Last Access Timestamps";               Category = "Privacy & Telemetry"; Function = "NTFSLastAccess";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Updating of NTFS last access timestamps"; Caution = $false }
-	@{ Name = "Sleep Button";                              Category = "Privacy & Telemetry"; Function = "SleepButton";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Sleep start menu and keyboard button"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name ShowSleepOption -EA SilentlyContinue).ShowSleepOption -eq 1 } }
-	@{ Name = "Display and Sleep Timeouts";                Category = "Privacy & Telemetry"; Function = "SleepTimeout";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Display and sleep mode timeouts"; Caution = $false }
-	@{ Name = "Fast Startup";                              Category = "Privacy & Telemetry"; Function = "FastStartup";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows Fast Startup"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -EA SilentlyContinue).HiberbootEnabled -eq 1 } }
-	@{ Name = "Auto Reboot on Crash (BSOD)";              Category = "Privacy & Telemetry"; Function = "AutoRebootOnCrash";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Automatic reboot on crash"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name AutoReboot -EA SilentlyContinue).AutoReboot -eq 1 } }
-	@{ Name = "Sign-in Info After Update";                 Category = "Privacy & Telemetry"; Function = "SigninInfo";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Use sign-in info to finish setting up after update"; Caution = $false; Detect = { $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\UserARSO\$sid" -Name OptOut -EA SilentlyContinue).OptOut -ne 1 } }
-	@{ Name = "Language List Access for Websites";         Category = "Privacy & Telemetry"; Function = "LanguageListAccess";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Let websites access language list"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\International\User Profile" -Name HttpAcceptLanguageOptOut -EA SilentlyContinue).HttpAcceptLanguageOptOut -ne 1 } }
-	@{ Name = "Advertising ID";                            Category = "Privacy & Telemetry"; Function = "AdvertisingID";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Personalized ads using advertising ID"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled -EA SilentlyContinue).Enabled -eq 1 } }
-	@{ Name = "Windows Welcome Experience";                Category = "Privacy & Telemetry"; Function = "WindowsWelcomeExperience";        Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Windows welcome experiences after updates"; Caution = $false }
-	@{ Name = "Lock Screen Widgets";                       Category = "Privacy & Telemetry"; Function = "LockWidgets";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows Web Experience Pack (widgets and lock screen)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -EA SilentlyContinue).TaskbarDa -ne 0 } }
-	@{ Name = "Windows Tips";                              Category = "Privacy & Telemetry"; Function = "WindowsTips";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Tips and suggestions when using Windows"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name SoftLandingEnabled -EA SilentlyContinue).SoftLandingEnabled -ne 0 } }
-	@{ Name = "Settings Suggested Content";                Category = "Privacy & Telemetry"; Function = "SettingsSuggestedContent";        Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Suggested content in Settings app"; Caution = $false }
-	@{ Name = "Silent App Installing";                     Category = "Privacy & Telemetry"; Function = "AppsSilentInstalling";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Automatic installing of suggested apps"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name SilentInstalledAppsEnabled -EA SilentlyContinue).SilentInstalledAppsEnabled -ne 0 } }
-	@{ Name = "What's New in Windows";                     Category = "Privacy & Telemetry"; Function = "WhatsNewInWindows";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Suggestions to get the most out of Windows"; Caution = $false }
-	@{ Name = "Tailored Experiences";                      Category = "Privacy & Telemetry"; Function = "TailoredExperiences";             Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Microsoft diagnostic data for personalized tips"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name TailoredExperiencesWithDiagnosticDataEnabled -EA SilentlyContinue).TailoredExperiencesWithDiagnosticDataEnabled -ne 0 } }
-	@{ Name = "Bing Search in Start Menu";                 Category = "Privacy & Telemetry"; Function = "BingSearch";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Bing search results in Start Menu"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name BingSearchEnabled -EA SilentlyContinue).BingSearchEnabled -ne 0 } }
-	@{ Name = "Start Menu Recommendations/Tips";           Category = "Privacy & Telemetry"; Function = "StartRecommendationsTips";        Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Recommendations for tips, shortcuts, new apps in Start"; Caution = $false }
-	@{ Name = "Start Menu Account Notifications";          Category = "Privacy & Telemetry"; Function = "StartAccountNotifications";       Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Microsoft account notifications on Start Menu"; Caution = $false }
-	@{ Name = "WiFi Sense";                                Category = "Privacy & Telemetry"; Function = "WiFiSense";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "WiFi Sense hotspot sharing"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name Value -EA SilentlyContinue).Value -ne 0 } }
-	@{ Name = "Web Search in System Search";               Category = "Privacy & Telemetry"; Function = "WebSearch";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Web search integration in system search"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name CortanaConsent -EA SilentlyContinue).CortanaConsent -ne 0 } }
-	@{ Name = "Activity History";                          Category = "Privacy & Telemetry"; Function = "ActivityHistory";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Activity history tracking across devices"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableActivityFeed -EA SilentlyContinue).EnableActivityFeed -ne 0 } }
-	@{ Name = "Device Sensors";                            Category = "Privacy & Telemetry"; Function = "Sensors";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Accelerometer, gyroscope, and ambient light sensor"; Caution = $false }
-	@{ Name = "Location Services";                         Category = "Privacy & Telemetry"; Function = "LocationService";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Device location access for apps"; Caution = $false }
-	@{ Name = "Automatic Map Updates";                     Category = "Privacy & Telemetry"; Function = "MapUpdates";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Automatic updates for offline maps"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\Maps" -Name AutoUpdateEnabled -EA SilentlyContinue).AutoUpdateEnabled -eq 1 } }
-	@{ Name = "Web Language Sync";                         Category = "Privacy & Telemetry"; Function = "WebLangList";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Synchronization of preferred web languages"; Caution = $false }
-	@{ Name = "Camera Access";                             Category = "Privacy & Telemetry"; Function = "Camera";                          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Camera access for apps"; Caution = $false }
-	@{ Name = "Microphone Access";                         Category = "Privacy & Telemetry"; Function = "Microphone";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Microphone access for apps"; Caution = $false }
-	@{ Name = "WAP Push Messaging";                        Category = "Privacy & Telemetry"; Function = "WAPPush";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "WAP Push messaging from carriers"; Caution = $false; Detect = { (Get-Service dmwappushservice -EA SilentlyContinue).StartType -ne "Disabled" } }
-	@{ Name = "Clear Recent Files on Logout";              Category = "Privacy & Telemetry"; Function = "ClearRecentFiles";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Automatic clearing of recent files on logout"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ClearRecentDocsOnExit -EA SilentlyContinue).ClearRecentDocsOnExit -eq 1 } }
-	@{ Name = "Recent Files Tracking";                     Category = "Privacy & Telemetry"; Function = "RecentFiles";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Tracking of recently accessed files"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoRecentDocsHistory -EA SilentlyContinue).NoRecentDocsHistory -ne 1 } }
-	@{ Name = "UWP Voice Activation";                      Category = "Privacy & Telemetry"; Function = "UWPVoiceActivation";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Voice activation access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Notifications";                         Category = "Privacy & Telemetry"; Function = "UWPNotifications";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Notification access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Account Info";                          Category = "Privacy & Telemetry"; Function = "UWPAccountInfo";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Account info access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Contacts";                              Category = "Privacy & Telemetry"; Function = "UWPContacts";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Contacts access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Calendar";                              Category = "Privacy & Telemetry"; Function = "UWPCalendar";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Calendar access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Phone Calls";                           Category = "Privacy & Telemetry"; Function = "UWPPhoneCalls";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Phone call access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Call History";                           Category = "Privacy & Telemetry"; Function = "UWPCallHistory";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Call history access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Email";                                 Category = "Privacy & Telemetry"; Function = "UWPEmail";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Email access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Tasks";                                 Category = "Privacy & Telemetry"; Function = "UWPTasks";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Tasks access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Messaging";                             Category = "Privacy & Telemetry"; Function = "UWPMessaging";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Messaging access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Radios (Bluetooth)";                    Category = "Privacy & Telemetry"; Function = "UWPRadios";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Radios (Bluetooth) access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Other Devices";                         Category = "Privacy & Telemetry"; Function = "UWPOtherDevices";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Other devices access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Diagnostic Info";                       Category = "Privacy & Telemetry"; Function = "UWPDiagInfo";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Diagnostic info access from UWP apps"; Caution = $false }
-	@{ Name = "UWP File System";                           Category = "Privacy & Telemetry"; Function = "UWPFileSystem";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "File system access from UWP apps"; Caution = $false }
-	@{ Name = "UWP Swap File";                             Category = "Privacy & Telemetry"; Function = "UWPSwapFile";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "UWP apps swap file (swapfile.sys)"; Caution = $false }
-	@{ Name = "PowerShell 7 Telemetry";                    Category = "Privacy & Telemetry"; Function = "Powershell7Telemetry";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "PowerShell 7 telemetry collection"; Caution = $false; LinkedWith = "Update-Powershell" }
-
-	# ── System Tweaks ────────────────────────────────────────────────
-	@{ Name = "Cross-Device Resume";                       Category = "System Tweaks";       Function = "CrossDeviceResume";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Cross-Device Resume (24H2+)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name IsResumeAllowed -EA SilentlyContinue).IsResumeAllowed -eq 1 } }
-	@{ Name = "Multiplane Overlay";                        Category = "System Tweaks";       Function = "MultiplaneOverlay";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Multiplane Overlay"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name OverlayTestMode -EA SilentlyContinue).OverlayTestMode -ne 5 } }
-	@{ Name = "Modern Standby Fix";                        Category = "System Tweaks";       Function = "StandbyFix";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Modern Standby fix"; Caution = $false }
-	@{ Name = "S3 Sleep";                                  Category = "System Tweaks";       Function = "S3Sleep";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "S3 Sleep mode"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name PlatformAoAcOverride -EA SilentlyContinue).PlatformAoAcOverride -eq 0 } }
-	@{ Name = "Explorer Automatic Folder Discovery";       Category = "System Tweaks";       Function = "ExplorerAutoDiscovery";           Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Explorer automatic folder type discovery"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags\AllFolders\Shell" -Name FolderType -EA SilentlyContinue).FolderType -ne "NotSpecified" } }
-	@{ Name = "Windows Platform Binary Table (WPBT)";     Category = "System Tweaks";       Function = "WPBT";                            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "WPBT ACPI table"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name DisableWpbtExecution -EA SilentlyContinue).DisableWpbtExecution -ne 1 } }
-	@{ Name = "Disk Cleanup";                              Category = "System Tweaks";       Function = "DiskCleanup";                     Type = "Action"; Default = $true;  WinDefault = $false; Description = "Run Disk Cleanup"; Caution = $false }
-	@{ Name = "Services Manual Startup";                   Category = "System Tweaks";       Function = "ServicesManual";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Apply recommended startup types to Windows services"; Caution = $false }
-	@{ Name = "Adobe Network Block";                       Category = "System Tweaks";       Function = "AdobeNetworkBlock";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Block Adobe network access"; Caution = $true; CautionReason = "Blocking Adobe network access may prevent license validation, disable Creative Cloud syncing, break cloud-based features, trigger subscription errors, and may violate Adobe license terms." }
-	@{ Name = "Razer Software Block";                      Category = "System Tweaks";       Function = "RazerBlock";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Block Razer software installation"; Caution = $true; CautionReason = "May prevent Razer Synapse from installing/updating, disable RGB/macro/device profile functionality, stop firmware updates, and cause limited peripheral features." }
-	@{ Name = "Brave Debloat";                             Category = "System Tweaks";       Function = "BraveDebloat";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Disable Brave rewards, wallet, VPN, AI chat"; Caution = $true; CautionReason = "Disables Brave rewards, wallet, VPN, and AI chat features permanently. Only use if you want to remove those features completely." }
-	@{ Name = "Fullscreen Optimizations";                  Category = "System Tweaks";       Function = "FullscreenOptimizations";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Fullscreen Optimizations"; Caution = $true; CautionReason = "Disabling Fullscreen Optimizations may reduce gaming performance in some applications. Use only for troubleshooting."; Detect = { (Get-ItemProperty "HKCU:\System\GameConfigStore" -Name GameDVR_DXGIHonorFSEWindowsCompatible -EA SilentlyContinue).GameDVR_DXGIHonorFSEWindowsCompatible -ne 1 } }
-	@{ Name = "Teredo";                                    Category = "System Tweaks";       Function = "Teredo";                          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Teredo IPv6 tunneling protocol"; Caution = $true; CautionReason = "Teredo is an IPv6 tunneling protocol needed for NAT traversal. Disabling it may break Xbox Live and certain peer-to-peer applications."; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name DisabledComponents -EA SilentlyContinue).DisabledComponents -ne 255 } }
-
-	# ── UI & Personalization ─────────────────────────────────────────
-	@{ Name = "Explorer Title Full Path";                  Category = "UI & Personalization"; Function = "ExplorerTitleFullPath";           Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Full directory path in Explorer title bar"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CabinetState" -Name FullPath -EA SilentlyContinue).FullPath -eq 1 } }
-	@{ Name = "Nav Pane All Folders";                      Category = "UI & Personalization"; Function = "NavPaneAllFolders";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "All folders in Explorer navigation pane"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneShowAllFolders -EA SilentlyContinue).NavPaneShowAllFolders -eq 1 } }
-	@{ Name = "Nav Pane Libraries";                        Category = "UI & Personalization"; Function = "NavPaneLibraries";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Libraries in Explorer navigation pane"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneShowLibraries -EA SilentlyContinue).NavPaneShowLibraries -eq 1 } }
-	@{ Name = "Folder Separate Process";                   Category = "UI & Personalization"; Function = "FldrSeparateProcess";             Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Launch folder windows in separate process"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SeparateProcess -EA SilentlyContinue).SeparateProcess -eq 1 } }
-	@{ Name = "Restore Folder Windows at Logon";           Category = "UI & Personalization"; Function = "RestoreFldrWindows";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Restore previous folder windows at logon"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name PersistBrowsers -EA SilentlyContinue).PersistBrowsers -eq 1 } }
-	@{ Name = "Encrypted/Compressed File Color";           Category = "UI & Personalization"; Function = "EncCompFilesColor";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Coloring of encrypted/compressed NTFS files"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowEncryptCompressedColor -EA SilentlyContinue).ShowEncryptCompressedColor -eq 1 } }
-	@{ Name = "Sharing Wizard";                            Category = "UI & Personalization"; Function = "SharingWizard";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Sharing Wizard"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SharingWizardOn -EA SilentlyContinue).SharingWizardOn -ne 0 } }
-	@{ Name = "Item Selection Checkboxes";                 Category = "UI & Personalization"; Function = "SelectCheckboxes";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Item selection checkboxes in Explorer"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name AutoCheckSelect -EA SilentlyContinue).AutoCheckSelect -eq 1 } }
-	@{ Name = "Sync Provider Notifications";               Category = "UI & Personalization"; Function = "SyncNotifications";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Sync provider notifications"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSyncProviderNotifications -EA SilentlyContinue).ShowSyncProviderNotifications -eq 1 } }
-	@{ Name = "Recent Shortcuts in Explorer";              Category = "UI & Personalization"; Function = "RecentShortcuts";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Recently/frequently used item shortcuts"; Caution = $false }
-	@{ Name = "Build Number on Desktop";                   Category = "UI & Personalization"; Function = "BuildNumberOnDesktop";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Windows build number on desktop"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\Desktop" -Name PaintDesktopVersion -EA SilentlyContinue).PaintDesktopVersion -eq 1 } }
-	@{ Name = "Share Context Menu";                        Category = "UI & Personalization"; Function = "ShareMenu";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "'Share' context menu item"; Caution = $false }
-	@{ Name = "Thumbnails";                                Category = "UI & Personalization"; Function = "Thumbnails";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "File thumbnails (vs extension icons)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name IconsOnly -EA SilentlyContinue).IconsOnly -ne 1 } }
-	@{ Name = "Thumbnail Cache";                           Category = "UI & Personalization"; Function = "ThumbnailCache";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Thumbnail cache files"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisableThumbnailCache -EA SilentlyContinue).DisableThumbnailCache -ne 1 } }
-	@{ Name = "Thumbs.db on Network";                      Category = "UI & Personalization"; Function = "ThumbsDBOnNetwork";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Thumbs.db on network folders"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisableThumbsDBOnNetworkFolders -EA SilentlyContinue).DisableThumbsDBOnNetworkFolders -ne 1 } }
-	@{ Name = "This PC on Desktop";                        Category = "UI & Personalization"; Function = "ThisPC";                          Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $false; Description = "'This PC' icon on Desktop"; Caution = $false }
-	@{ Name = "Item Check Boxes";                          Category = "UI & Personalization"; Function = "CheckBoxes";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Use item check boxes"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name AutoCheckSelect -EA SilentlyContinue).AutoCheckSelect -eq 1 } }
-	@{ Name = "Hidden Files and Folders";                  Category = "UI & Personalization"; Function = "HiddenItems";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Show hidden files, folders, and drives"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name Hidden -EA SilentlyContinue).Hidden -eq 1 } }
-	@{ Name = "Protected OS Files";                        Category = "UI & Personalization"; Function = "SuperHiddenFiles";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Protected operating system files"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSuperHidden -EA SilentlyContinue).ShowSuperHidden -eq 1 } }
-	@{ Name = "File Extensions";                           Category = "UI & Personalization"; Function = "FileExtensions";                  Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $false; Description = "File name extensions"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name HideFileExt -EA SilentlyContinue).HideFileExt -ne 1 } }
-	@{ Name = "Folder Merge Conflicts";                    Category = "UI & Personalization"; Function = "MergeConflicts";                  Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $false; Description = "Show folder merge conflicts"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name HideMergeConflicts -EA SilentlyContinue).HideMergeConflicts -ne 1 } }
-	@{ Name = "Open File Explorer To";                     Category = "UI & Personalization"; Function = "OpenFileExplorerTo";              Type = "Choice"; Options = @("ThisPC","QuickAccess","Downloads"); DisplayOptions = @("This PC","Quick Access","Downloads"); Default = "ThisPC"; WinDefault = "QuickAccess"; Description = "Default File Explorer location"; Caution = $false }
-	@{ Name = "File Explorer Compact Mode";                Category = "UI & Personalization"; Function = "FileExplorerCompactMode";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "File Explorer compact mode"; Caution = $false }
-	@{ Name = "OneDrive File Explorer Ad";                 Category = "UI & Personalization"; Function = "OneDriveFileExplorerAd";          Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Sync provider notification in File Explorer"; Caution = $false }
-	@{ Name = "Snap Assist";                               Category = "UI & Personalization"; Function = "SnapAssist";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Show what to snap next to a window"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name SnapAssist -EA SilentlyContinue).SnapAssist -ne 0 } }
-	@{ Name = "File Transfer Dialog";                      Category = "UI & Personalization"; Function = "FileTransferDialog";              Type = "Choice"; Options = @("Detailed","Compact"); Default = "Detailed"; WinDefault = "Compact"; Description = "File transfer dialog box mode"; Caution = $false }
-	@{ Name = "Recycle Bin Delete Confirmation";           Category = "UI & Personalization"; Function = "RecycleBinDeleteConfirmation";    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Recycle Bin delete confirmation dialog"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ConfirmFileDelete -EA SilentlyContinue).ConfirmFileDelete -eq 1 } }
-	@{ Name = "Quick Access Recent Files";                 Category = "UI & Personalization"; Function = "QuickAccessRecentFiles";          Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Recently used files in Quick access"; Caution = $false }
-	@{ Name = "Quick Access Frequent Folders";             Category = "UI & Personalization"; Function = "QuickAccessFrequentFolders";      Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Frequently used folders in Quick access"; Caution = $false }
-	@{ Name = "Meet Now Icon";                             Category = "UI & Personalization"; Function = "MeetNow";                         Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Meet Now icon in notification area"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name HideSCAMeetNow -EA SilentlyContinue).HideSCAMeetNow -ne 1 } }
-	@{ Name = "News and Interests";                        Category = "UI & Personalization"; Function = "NewsInterests";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "News and Interests on the taskbar"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name ShellFeedsTaskbarViewMode -EA SilentlyContinue).ShellFeedsTaskbarViewMode -ne 2 } }
-	@{ Name = "Taskbar Alignment";                         Category = "UI & Personalization"; Function = "TaskbarAlignment";                Type = "Choice"; Options = @("Left","Center"); Default = "Left"; WinDefault = "Center"; Description = "Taskbar alignment"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarAl -EA SilentlyContinue).TaskbarAl -ne 1 } }
-	@{ Name = "Taskbar Widgets";                           Category = "UI & Personalization"; Function = "TaskbarWidgets";                  Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Widgets icon on the taskbar"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -EA SilentlyContinue).TaskbarDa -ne 0 } }
-	@{ Name = "Taskbar Search";                            Category = "UI & Personalization"; Function = "TaskbarSearch";                   Type = "Choice"; Options = @("Hide","SearchIcon","SearchBox"); Default = "Hide"; WinDefault = "SearchBox"; Description = "Search on the taskbar"; Caution = $false }
-	@{ Name = "Search Highlights";                         Category = "UI & Personalization"; Function = "SearchHighlights";                Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Search highlights"; Caution = $false }
-	@{ Name = "Task View Button";                          Category = "UI & Personalization"; Function = "TaskViewButton";                  Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Task View button on taskbar"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowTaskViewButton -EA SilentlyContinue).ShowTaskViewButton -ne 0 } }
-	@{ Name = "Taskbar Button Combine";                    Category = "UI & Personalization"; Function = "TaskbarCombine";                  Type = "Choice"; Options = @("Always","Full","Never"); Default = "Always"; WinDefault = "Always"; Description = "Combine taskbar buttons mode"; Caution = $false }
-	@{ Name = "Unpin Taskbar Shortcuts";                   Category = "UI & Personalization"; Function = "UnpinTaskbarShortcuts";           Type = "Action"; Default = $true;  WinDefault = $false; Description = "Unpin Edge, Store, Outlook, Mail, Copilot, Microsoft 365"; Caution = $false; ExtraArgs = @{ Shortcuts = @('Edge','Store','Outlook','Mail','Copilot','Microsoft365') } }
-	@{ Name = "End Task in Taskbar Right-Click";           Category = "UI & Personalization"; Function = "TaskbarEndTask";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "End task via taskbar right-click"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings" -Name TaskbarEndTask -EA SilentlyContinue).TaskbarEndTask -eq 1 } }
-	@{ Name = "Control Panel View";                        Category = "UI & Personalization"; Function = "ControlPanelView";                Type = "Choice"; Options = @("LargeIcons","SmallIcons","Category"); DisplayOptions = @("Large Icons","Small Icons","Category"); Default = "LargeIcons"; WinDefault = "Category"; Description = "Control Panel icons view"; Caution = $false }
-	@{ Name = "Windows Color Mode";                        Category = "UI & Personalization"; Function = "WindowsColorMode";                Type = "Choice"; Options = @("Dark","Light"); Default = "Dark"; WinDefault = "Light"; Description = "Default Windows color mode"; Caution = $false }
-	@{ Name = "App Color Mode";                            Category = "UI & Personalization"; Function = "AppColorMode";                    Type = "Choice"; Options = @("Dark","Light"); Default = "Dark"; WinDefault = "Light"; Description = "Default app color mode"; Caution = $false }
-	@{ Name = "First Logon Animation";                     Category = "UI & Personalization"; Function = "FirstLogonAnimation";             Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "First sign-in animation after upgrade"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name EnableFirstLogonAnimation -EA SilentlyContinue).EnableFirstLogonAnimation -ne 0 } }
-	@{ Name = "JPEG Wallpaper Quality";                    Category = "UI & Personalization"; Function = "JPEGWallpapersQuality";           Type = "Choice"; Options = @("Max","Default"); Default = "Max"; WinDefault = "Default"; Description = "JPEG desktop wallpaper quality factor"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\Desktop" -Name JPEGImportQuality -EA SilentlyContinue).JPEGImportQuality -eq 100 } }
-	@{ Name = "Shortcut Suffix";                           Category = "UI & Personalization"; Function = "ShortcutsSuffix";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "'- Shortcut' suffix on new shortcuts"; Caution = $false }
-	@{ Name = "Shortcut Arrow Icon";                       Category = "UI & Personalization"; Function = "ShortcutArrow";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Shortcut icon arrow overlay"; Caution = $false }
-	@{ Name = "PrtScn Opens Snipping Tool";                Category = "UI & Personalization"; Function = "PrtScnSnippingTool";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Print Screen opens Snipping Tool"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\Keyboard" -Name PrintScreenKeyForSnippingEnabled -EA SilentlyContinue).PrintScreenKeyForSnippingEnabled -eq 1 } }
-	@{ Name = "Per-App Input Method";                      Category = "UI & Personalization"; Function = "AppsLanguageSwitch";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Different input method per app window"; Caution = $false }
-	@{ Name = "Aero Shake";                                Category = "UI & Personalization"; Function = "AeroShaking";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Shake title bar to minimize other windows"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name DisallowShaking -EA SilentlyContinue).DisallowShaking -ne 1 } }
-	@{ Name = "Downloads Folder Grouping";                 Category = "UI & Personalization"; Function = "FolderGroupBy";                   Type = "Choice"; Options = @("None","Default"); Default = "None"; WinDefault = "Default"; Description = "File grouping in Downloads folder"; Caution = $false }
-	@{ Name = "Navigation Pane Auto Expand";               Category = "UI & Personalization"; Function = "NavigationPaneExpand";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Expand to open folder on navigation pane"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name NavPaneExpandToCurrentFolder -EA SilentlyContinue).NavPaneExpandToCurrentFolder -eq 1 } }
-	@{ Name = "Start Menu Recommended Section";            Category = "UI & Personalization"; Function = "StartRecommendedSection";         Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Recommended section in Start Menu (Enterprise/Education)"; Caution = $false }
-
-	# ── OneDrive ─────────────────────────────────────────────────────
-	@{ Name = "OneDrive";                                  Category = "OneDrive";            Function = "OneDrive";                        Type = "Choice"; Options = @("Install","Uninstall"); Default = "Uninstall"; WinDefault = "Install"; Description = "OneDrive installation state"; Caution = $false }
-
-	# ── System ───────────────────────────────────────────────────────
-	@{ Name = "Lock Screen";                               Category = "System";              Function = "LockScreen";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Lock screen"; Caution = $false; VisibleIf = { ((Get-OSInfo).OSName -like "*Windows 11*") }; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoLockScreen -EA SilentlyContinue).NoLockScreen -ne 1 } }
-	@{ Name = "Lock Screen (RS1)";                         Category = "System";              Function = "LockScreenRS1";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Lock screen (since 1903)"; Caution = $false; VisibleIf = { ((Get-OSInfo).OSName -like "*Windows 10*") }; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DisableLockScreen -EA SilentlyContinue).DisableLockScreen -ne 1 } }
-	@{ Name = "Network on Lock Screen";                    Category = "System";              Function = "NetworkFromLockScreen";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Network options from Lock Screen"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DontDisplayNetworkSelectionUI -EA SilentlyContinue).DontDisplayNetworkSelectionUI -ne 1 } }
-	@{ Name = "Shutdown on Lock Screen";                   Category = "System";              Function = "ShutdownFromLockScreen";           Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Shutdown options from Lock Screen"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name ShutdownWithoutLogon -EA SilentlyContinue).ShutdownWithoutLogon -eq 1 } }
-	@{ Name = "Lock Screen Blur";                          Category = "System";              Function = "LockScreenBlur";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Lock screen blur effect (since 1903)"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name DisableAcrylicBackgroundOnLogon -EA SilentlyContinue).DisableAcrylicBackgroundOnLogon -ne 1 } }
-	@{ Name = "Task Manager Details";                      Category = "System";              Function = "TaskManagerDetails";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Task Manager details view"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name Preferences -EA SilentlyContinue) -ne $null } }
-	@{ Name = "File Operations Details";                   Category = "System";              Function = "FileOperationsDetails";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "File operations details"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\OperationStatusManager" -Name EnthusiastMode -EA SilentlyContinue).EnthusiastMode -eq 1 } }
-	@{ Name = "File Delete Confirmation";                  Category = "System";              Function = "FileDeleteConfirm";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "File delete confirmation dialog"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name ConfirmFileDelete -EA SilentlyContinue).ConfirmFileDelete -eq 1 } }
-	@{ Name = "All Tray Icons";                            Category = "System";              Function = "TrayIcons";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Show all tray icons"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name NoAutoTrayNotify -EA SilentlyContinue).NoAutoTrayNotify -ne 1 } }
-	@{ Name = "Search App in Store for Unknown Ext.";     Category = "System";              Function = "SearchAppInStore";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Search for app in store for unknown extensions"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name NoUseStoreOpenWith -EA SilentlyContinue).NoUseStoreOpenWith -ne 1 } }
-	@{ Name = "New App Prompt";                            Category = "System";              Function = "NewAppPrompt";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "'How do you want to open this file?' prompt"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name NoNewAppAlert -EA SilentlyContinue).NoNewAppAlert -ne 1 } }
-	@{ Name = "Recently Added Apps (Start)";               Category = "System";              Function = "RecentlyAddedApps";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "'Recently added' list from the Start Menu"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name HideRecentlyAddedApps -EA SilentlyContinue).HideRecentlyAddedApps -ne 1 } }
-	@{ Name = "Most Used Apps (Start)";                    Category = "System";              Function = "MostUsedApps";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "'Most used' apps list from the Start Menu"; Caution = $false }
-	@{ Name = "Visual Effects";                            Category = "System";              Function = "VisualFX";                         Type = "Choice"; Options = @("Performance","Appearance"); Default = "Performance"; WinDefault = "Appearance"; Description = "Visual effects mode"; Caution = $false }
-	@{ Name = "Title Bar Color";                           Category = "System";              Function = "TitleBarColor";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Title bar color from background"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\DWM" -Name ColorPrevalence -EA SilentlyContinue).ColorPrevalence -eq 1 } }
-	@{ Name = "Enhanced Pointer Precision";                Category = "System";              Function = "EnhPointerPrecision";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Enhanced pointer precision (mouse acceleration)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\Mouse" -Name MouseSpeed -EA SilentlyContinue).MouseSpeed -eq 1 } }
-	@{ Name = "Startup Sound";                             Category = "System";              Function = "StartupSound";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Play Windows Startup sound"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name DisableStartupSound -EA SilentlyContinue).DisableStartupSound -ne 1 } }
-	@{ Name = "Changing Sound Scheme";                     Category = "System";              Function = "ChangingSoundScheme";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Allow changing sound scheme"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name NoChangingSoundScheme -EA SilentlyContinue).NoChangingSoundScheme -ne 1 } }
-	@{ Name = "Verbose Startup/Shutdown Messages";         Category = "System";              Function = "VerboseStatus";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Verbose startup/shutdown status messages"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -Name VerboseStatus -EA SilentlyContinue).VerboseStatus -eq 1 } }
-	@{ Name = "Storage Sense";                             Category = "System";              Function = "StorageSense";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Storage Sense"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy" -Name "01" -EA SilentlyContinue)."01" -eq 1 } }
-	@{ Name = "Hibernation";                               Category = "System";              Function = "Hibernation";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Hibernation"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name HibernateEnabled -EA SilentlyContinue).HibernateEnabled -eq 1 } }
-	@{ Name = "Win32 Long Path Limit";                     Category = "System";              Function = "Win32LongPathLimit";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows 260 character path limit"; Caution = $false }
-	@{ Name = "BSoD Stop Error Code";                      Category = "System";              Function = "BSoDStopError";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Display stop error code on BSoD"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name DisplayParameters -EA SilentlyContinue).DisplayParameters -eq 1 } }
-	@{ Name = "Admin Approval Mode (UAC)";                 Category = "System";              Function = "AdminApprovalMode";                Type = "Choice"; Options = @("Never","Default"); Default = "Default"; WinDefault = "Default"; Description = "UAC notification level"; Caution = $false }
-	@{ Name = "Delivery Optimization";                     Category = "System";              Function = "DeliveryOptimization";             Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Delivery Optimization"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" -Name DODownloadMode -EA SilentlyContinue).DODownloadMode -ne 99 } }
-	@{ Name = "Windows Manage Default Printer";            Category = "System";              Function = "WindowsManageDefaultPrinter";      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Let Windows manage default printer"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows" -Name LegacyDefaultPrinterMode -EA SilentlyContinue).LegacyDefaultPrinterMode -ne 1 } }
-	@{ Name = "Windows Features";                          Category = "System";              Function = "WindowsFeatures";                  Type = "Choice"; Options = @("Disable","Enable"); Default = $null; WinDefault = "Enable"; Description = "Manage Windows features via dialog"; Caution = $false }
-	@{ Name = "Windows Capabilities";                      Category = "System";              Function = "WindowsCapabilities";              Type = "Choice"; Options = @("Uninstall","Install"); Default = $null; WinDefault = "Install"; Description = "Manage optional features via dialog"; Caution = $false }
-	@{ Name = "Current Network Profile";                   Category = "System";              Function = "CurrentNetwork";                   Type = "Choice"; Options = @("Private","Public"); Default = "Private"; WinDefault = "Public"; Description = "Current network profile type"; Caution = $false }
-	@{ Name = "Unknown Networks Profile";                  Category = "System";              Function = "UnknownNetworks";                  Type = "Choice"; Options = @("Private","Public"); Default = "Private"; WinDefault = "Public"; Description = "Unknown network profile type"; Caution = $false }
-	@{ Name = "Network Devices Auto Install";              Category = "System";              Function = "NetDevicesAutoInst";               Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Automatic installation of network devices"; Caution = $false }
-	@{ Name = "Home Groups";                               Category = "System";              Function = "HomeGroups";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Home Groups services"; Caution = $false }
-	@{ Name = "SMB 1.0 Protocol";                          Category = "System";              Function = "SMB1";                             Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Obsolete SMB 1.0 protocol"; Caution = $false }
-	@{ Name = "File and Printer Sharing (SMB Server)";    Category = "System";              Function = "SMBServer";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "File and printer sharing"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name SMB2 -EA SilentlyContinue).SMB2 -ne 0 } }
-	@{ Name = "Repair Windows 11 SMB Issue";               Category = "System";              Function = "Repair-Windows11SMBUpdateIssue";   Type = "Action"; Default = $true;  WinDefault = $false; Description = "Repair common Windows 11 SMB client/share issue"; Caution = $false }
-	@{ Name = "SMB Sharing Compatibility";                 Category = "System";              Function = "Set-SMBSharingCompatibility";      Type = "Action"; Default = $true;  WinDefault = $false; Description = "Preserve SMB file/printer sharing and credentials"; Caution = $false }
-	@{ Name = "SMB Guest Compatibility";                   Category = "System";              Function = "Enable-SMBGuestCompatibility";     Type = "Action"; Default = $true;  WinDefault = $false; Description = "Enable guest/no-prompt SMB compatibility"; Caution = $false }
-	@{ Name = "NetBIOS over TCP/IP";                       Category = "System";              Function = "NetBIOS";                          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "NetBIOS over TCP/IP"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces" -ErrorAction SilentlyContinue) -ne $null } }
-	@{ Name = "LLMNR Protocol";                            Category = "System";              Function = "LLMNR";                            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Link-Local Multicast Name Resolution"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" -Name EnableMulticast -EA SilentlyContinue).EnableMulticast -ne 0 } }
-	@{ Name = "Client for Microsoft Networks";             Category = "System";              Function = "MSNetClient";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Client for Microsoft Networks"; Caution = $false }
-	@{ Name = "QoS Packet Scheduler";                      Category = "System";              Function = "QoS";                              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Quality of Service packet scheduler"; Caution = $false }
-	@{ Name = "NCSI Probe";                                Category = "System";              Function = "NCSIProbe";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Network Connectivity Status Indicator"; Caution = $false }
-	@{ Name = "Internet Connection Sharing";               Category = "System";              Function = "ConnectionSharing";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Internet Connection Sharing (hotspot)"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Network Connections" -Name NC_ShowSharedAccessUI -EA SilentlyContinue).NC_ShowSharedAccessUI -ne 0 } }
-	@{ Name = "Updates for Other MS Products";             Category = "System";              Function = "UpdateMicrosoftProducts";          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Receive updates for other Microsoft products"; Caution = $false }
-	@{ Name = "Restart Required Notification";             Category = "System";              Function = "RestartNotification";              Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $false; Description = "Notify when restart is required for updates"; Caution = $false }
-	@{ Name = "Restart After Update";                      Category = "System";              Function = "RestartDeviceAfterUpdate";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Restart as soon as possible to finish updating"; Caution = $false }
-	@{ Name = "Active Hours";                              Category = "System";              Function = "ActiveHours";                      Type = "Choice"; Options = @("Automatically","Manually"); Default = "Manually"; WinDefault = "Manually"; Description = "Active hours adjustment"; Caution = $false }
-	@{ Name = "Get Latest Updates ASAP";                   Category = "System";              Function = "WindowsLatestUpdate";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Get latest updates as soon as available"; Caution = $false }
-	@{ Name = "Power Plan";                                Category = "System";              Function = "PowerPlan";                        Type = "Choice"; Options = @("High","Balanced"); Default = "High"; WinDefault = "Balanced"; Description = "Power plan selection"; Caution = $false }
-	@{ Name = "Network Adapters Save Power";               Category = "System";              Function = "NetworkAdaptersSavePower";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Allow network adapters to save power"; Caution = $false }
-	@{ Name = "Default Input Method";                      Category = "System";              Function = "InputMethod";                      Type = "Choice"; Options = @("English","Default"); Default = "English"; WinDefault = "Default"; Description = "Override default input method"; Caution = $false }
-	@{ Name = "Latest .NET Runtime for All Apps";          Category = "System";              Function = "LatestInstalled.NET";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Use latest installed .NET runtime for all apps"; Caution = $false }
-	@{ Name = "Recommended Troubleshooting";               Category = "System";              Function = "RecommendedTroubleshooting";      Type = "Choice"; Options = @("Automatically","Default"); Default = "Default"; WinDefault = "Default"; Description = "Troubleshooter behavior"; Caution = $false }
-	@{ Name = "Reserved Storage";                          Category = "System";              Function = "ReservedStorage";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Reserved storage after next update"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager" -Name ShippedWithReserves -EA SilentlyContinue).ShippedWithReserves -eq 1 } }
-	@{ Name = "F1 Help Lookup";                            Category = "System";              Function = "F1HelpPage";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Help lookup via F1 key"; Caution = $false }
-	@{ Name = "Num Lock at Startup";                       Category = "System";              Function = "NumLock";                          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Num Lock on at startup"; Caution = $false; Detect = { (Get-ItemProperty "Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard" -Name InitialKeyboardIndicators -EA SilentlyContinue).InitialKeyboardIndicators -match "2" } }
-	@{ Name = "Caps Lock";                                 Category = "System";              Function = "CapsLock";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Caps Lock key"; Caution = $false; Detect = { -not ((Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Keyboard Layout" -Name "Scancode Map" -EA SilentlyContinue)."Scancode Map") } }
-	@{ Name = "Sticky Keys (5x Shift)";                   Category = "System";              Function = "StickyShift";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Press Shift 5 times for Sticky Keys"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Control Panel\Accessibility\StickyKeys" -Name Flags -EA SilentlyContinue).Flags -ne 506 } }
-	@{ Name = "AutoPlay";                                  Category = "System";              Function = "Autoplay";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "AutoPlay for media and devices"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" -Name DisableAutoplay -EA SilentlyContinue).DisableAutoplay -ne 1 } }
-	@{ Name = "Save Restartable Apps";                     Category = "System";              Function = "SaveRestartableApps";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Auto save and restart apps on sign-in"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name RestartApps -EA SilentlyContinue).RestartApps -eq 1 } }
-	@{ Name = "Network Discovery";                         Category = "System";              Function = "NetworkDiscovery";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Network Discovery and File/Printer Sharing"; Caution = $false; Detect = { (Get-NetFirewallRule -DisplayGroup "Network Discovery" -EA SilentlyContinue | Where-Object Enabled -eq True | Select-Object -First 1) -ne $null } }
-	@{ Name = "Default Terminal App";                      Category = "System";              Function = "DefaultTerminalApp";               Type = "Choice"; Options = @("WindowsTerminal","ConsoleHost"); DisplayOptions = @("Windows Terminal","Console Host"); Default = "WindowsTerminal"; WinDefault = "ConsoleHost"; Description = "Default terminal application"; Caution = $false }
-	@{ Name = "Performance Tuning";                        Category = "System";              Function = "PerformanceTuning";                Type = "Action"; Default = $true;  WinDefault = $false; Description = "Run legacy system/bootstrap optimizations"; Caution = $false }
-	@{ Name = "Prevent Edge Shortcut Creation";            Category = "System";              Function = "PreventEdgeShortcutCreation";      Type = "Action"; Default = $true;  WinDefault = $false; Description = "Prevent Edge desktop shortcut on update"; Caution = $false; ExtraArgs = @{ Channels = @('Stable','Beta','Dev','Canary') } }
-	@{ Name = "Registry Backup";                           Category = "System";              Function = "RegistryBackup";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Registry backup to RegBack folder"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Configuration Manager" -Name EnablePeriodicBackup -EA SilentlyContinue).EnablePeriodicBackup -eq 1 } }
-
-	# ── Advanced Startup ─────────────────────────────────────────────
-	@{ Name = "Advanced Startup Desktop Shortcut";         Category = "System";              Function = "AdvancedStartupShortcut";          Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Desktop shortcut that reboots into Advanced Startup"; Caution = $false }
-
-	# ── Start Menu ───────────────────────────────────────────────────
-	@{ Name = "Start Layout";                              Category = "Start Menu";          Function = "StartLayout";                      Type = "Choice"; Options = @("Default","ShowMorePins","ShowMoreRecommendations"); DisplayOptions = @("Default","Show More Pins","Show More Recommendations"); Default = "ShowMorePins"; WinDefault = "Default"; Description = "Start menu layout"; Caution = $false }
-
-	# ── UWP Apps ─────────────────────────────────────────────────────
-	@{ Name = "Copilot App";                               Category = "UWP Apps";            SubCategory = "App Management"; Function = "Copilot"; Type = "Choice"; Options = @("Install","Uninstall"); Default = $null; WinDefault = "Install"; Description = "Microsoft AI assistant integration. Uninstall removes Copilot and all Windows AI features. Install restores them and installs Copilot from the Microsoft Store."; Caution = $false }
-	@{ Name = "UWP Apps (Bulk)";                           Category = "UWP Apps";            SubCategory = "App Management"; Function = "UWPApps"; Type = "Choice"; Options = @("Uninstall","Install"); Default = "Uninstall"; WinDefault = "Install"; Description = "Apply action to all selected apps. A GUI selection window will appear to choose specific apps."; Caution = $true; CautionReason = "Uninstall: A selection dialog shows all installed UWP app bundles. Excluded from removal: Edge, Windows Store, Terminal, Notepad, WSL, media codecs, drivers. Some apps (e.g. Xbox Identity Provider, Gaming Services) cannot be reinstalled from the Store if uninstalled.`nInstall: A selection dialog shows missing apps that can be restored (Outlook, Calculator, Camera, Photos, Gaming Services, Phone Link, Dolby Access, Voice Recorder). Uses multiple fallback methods." }
-	@{ Name = "Cortana Autostart";                         Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "CortanaAutostart";  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Cortana autostart"; Caution = $false }
-	@{ Name = "New Outlook";                               Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "NewOutlook";        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "New Outlook app"; Caution = $false }
-	@{ Name = "Background Apps";                           Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "BackgroundApps";  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Background Apps"; Caution = $true; CautionReason = "Disabling Background Apps prevents apps from running in the background and may affect notifications, updates, and sync functionality." }
-	@{ Name = "Notifications";                             Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "Notifications";   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Notification Tray/Calendar"; Caution = $true; CautionReason = "Disabling Notifications completely turns off Windows notifications. You will not receive app alerts, system warnings, reminders, or calendar events. The notification tray and calendar flyout will not function." }
-	@{ Name = "Edge Debloat";                              Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "EdgeDebloat";      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Edge debloat Group Policy settings"; Caution = $true; CautionReason = "Enforces multiple Group Policy settings that affect Edge functionality system-wide including telemetry, personalization, shopping assistant, collections, rewards, and Copilot sidebar." }
-	@{ Name = "Revert Start Menu (24H2)";                  Category = "UWP Apps";            SubCategory = "Tweaks"; Function = "RevertStartMenu";  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Revert to original Start Menu from 24H2"; Caution = $true; CautionReason = "Aggressive. Reverting the Start Menu may break future Windows updates that depend on the new layout and requires additional tooling." }
-
-	# ── Gaming ───────────────────────────────────────────────────────
-	@{ Name = "Xbox Game Bar";                             Category = "Gaming";              Function = "XboxGameBar";                      Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Xbox Game Bar"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name AppCaptureEnabled -EA SilentlyContinue).AppCaptureEnabled -ne 0 } }
-	@{ Name = "Xbox Game Bar Tips";                        Category = "Gaming";              Function = "XboxGameTips";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Xbox Game Bar tips"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\GameBar" -Name ShowStartupPanel -EA SilentlyContinue).ShowStartupPanel -ne 0 } }
-	@{ Name = "GPU Scheduling";                            Category = "Gaming";              Function = "GPUScheduling";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Hardware-accelerated GPU scheduling"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name HwSchMode -EA SilentlyContinue).HwSchMode -eq 2 } }
-
-	# ── Security ─────────────────────────────────────────────────────
-	@{ Name = "Network Protection";                        Category = "Security";            Function = "NetworkProtection";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Defender Exploit Guard network protection"; Caution = $false; Detect = { try { (Get-MpPreference -EA Stop).EnableNetworkProtection -eq 1 } catch { $false } } }
-	@{ Name = "PUA Detection";                             Category = "Security";            Function = "PUAppsDetection";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Potentially unwanted application detection"; Caution = $false }
-	@{ Name = "Defender Sandbox";                          Category = "Security";            Function = "DefenderSandbox";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Sandboxing for Microsoft Defender"; Caution = $false; Detect = { [System.Environment]::GetEnvironmentVariable("MP_FORCE_USE_SANDBOX","Machine") -eq "1" } }
-	@{ Name = "Dismiss MS Account Offer";                  Category = "Security";            Function = "DismissMSAccount";                 Type = "Action"; Default = $true;  WinDefault = $false; Description = "Dismiss Defender MS account sign-in offer"; Caution = $false }
-	@{ Name = "Dismiss SmartScreen Filter Offer";          Category = "Security";            Function = "DismissSmartScreenFilter";         Type = "Action"; Default = $true;  WinDefault = $false; Description = "Dismiss Defender SmartScreen filter offer"; Caution = $false }
-	@{ Name = "Event Viewer Custom View";                  Category = "Security";            Function = "EventViewerCustomView";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Process Creation custom view in Event Viewer"; Caution = $false }
-	@{ Name = "PowerShell Module Logging";                 Category = "Security";            Function = "PowerShellModulesLogging";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Logging for all PowerShell modules"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Name EnableModuleLogging -EA SilentlyContinue).EnableModuleLogging -eq 1 } }
-	@{ Name = "PowerShell Script Logging";                 Category = "Security";            Function = "PowerShellScriptsLogging";         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Logging for all PowerShell scripts"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name EnableScriptBlockLogging -EA SilentlyContinue).EnableScriptBlockLogging -eq 1 } }
-	@{ Name = "Apps SmartScreen";                          Category = "Security";            Function = "AppsSmartScreen";                  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "SmartScreen marks downloaded files as unsafe"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name EnableSmartScreen -EA SilentlyContinue).EnableSmartScreen -ne 0 } }
-	@{ Name = "Save Zone Information";                     Category = "Security";            Function = "SaveZoneInformation";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Mark downloaded files as unsafe (Zone.Identifier)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name SaveZoneInformation -EA SilentlyContinue).SaveZoneInformation -ne 2 } }
-	@{ Name = "Windows Script Host";                       Category = "Security";            Function = "WindowsScriptHost";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Windows Script Host (.js/.vbs execution)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows Script Host\Settings" -Name Enabled -EA SilentlyContinue).Enabled -ne 0 } }
-	@{ Name = "Import Exploit Protection Policy";          Category = "Security";            Function = "Import-ExploitProtectionPolicy";   Type = "Action"; Default = $false; WinDefault = $false; Description = "Import the Exploit Protection policy"; Caution = $true; CautionReason = "Aggressive. Imports a downloaded mitigation policy that can change exploit protection behavior for applications across the system." }
-	@{ Name = "Defender Exploit Guard Policy";             Category = "Security";            Function = "Set-DefenderExploitGuardPolicy";   Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure additional Defender Exploit Guard policies"; Caution = $true; CautionReason = "Aggressive. Can block legitimate applications, Office automation, admin tooling, scripts, or line-of-business workflows." }
-	@{ Name = "LOLBin Firewall Rules";                     Category = "Security";            Function = "Set-LOLBinFirewallRules";          Type = "Action"; Default = $false; WinDefault = $false; Description = "Configure LOLBin outbound firewall block rules"; Caution = $true; CautionReason = "Aggressive. Can break administrative scripts, installers, troubleshooting tools, or enterprise workflows that intentionally use these binaries." }
-	@{ Name = "Windows Firewall Logging";                  Category = "Security";            Function = "Set-WindowsFirewallLogging";       Type = "Action"; Default = $true;  WinDefault = $false; Description = "Configure Windows Firewall logging"; Caution = $false }
-	@{ Name = "Windows Sandbox";                           Category = "Security";            Function = "WindowsSandbox";                   Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Windows Sandbox (Pro/Enterprise/Education)"; Caution = $false; Detect = { (Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -EA SilentlyContinue).State -eq "Enabled" } }
-	@{ Name = "DNS over HTTPS";                            Category = "Security";            Function = "DNSoverHTTPS";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "DNS-over-HTTPS for IPv4"; Caution = $false }
-	@{ Name = "Local Security Authority Protection";      Category = "Security";            Function = "LocalSecurityAuthority";           Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "LSA protection to prevent code injection"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name RunAsPPL -EA SilentlyContinue).RunAsPPL -ge 1 } }
-	@{ Name = "Sharing Mapped Drives";                     Category = "Security";            Function = "SharingMappedDrives";              Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Sharing mapped drives between users"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name EnableLinkedConnections -EA SilentlyContinue).EnableLinkedConnections -eq 1 } }
-	@{ Name = "Firewall";                                  Category = "Security";            Function = "Firewall";                         Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Windows Firewall"; Caution = $false; Detect = { (Get-NetFirewallProfile -EA SilentlyContinue | Where-Object Enabled -eq True | Select-Object -First 1) -ne $null } }
-	@{ Name = "Defender Tray Icon";                        Category = "Security";            Function = "DefenderTrayIcon";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Windows Defender SysTray icon"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Policies\Microsoft\Windows Defender Security Center\Systray" -Name HideSystray -EA SilentlyContinue).HideSystray -ne 1 } }
-	@{ Name = "Defender Cloud";                            Category = "Security";            Function = "DefenderCloud";                    Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Windows Defender Cloud protection"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name SpynetReporting -EA SilentlyContinue).SpynetReporting -ne 0 } }
-	@{ Name = "Core Isolation Memory Integrity";           Category = "Security";            Function = "CIMemoryIntegrity";                Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Core Isolation Memory Integrity (HVCI)"; Caution = $false; Detect = { (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Name Enabled -EA SilentlyContinue).Enabled -eq 1 } }
-	@{ Name = "Defender Application Guard";                Category = "Security";            Function = "DefenderAppGuard";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Windows Defender Application Guard"; Caution = $false }
-	@{ Name = "Account Protection Warning";                Category = "Security";            Function = "AccountProtectionWarn";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Account Protection warning in Defender"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AccountProtection_MicrosoftAccount_Disconnected -EA SilentlyContinue).AccountProtectionWarn -ne 1 } }
-	@{ Name = "Download File Blocking";                    Category = "Security";            Function = "DownloadBlocking";                 Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $true;  Description = "Blocking of downloaded files (zone info)"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name SaveZoneInformation -EA SilentlyContinue).SaveZoneInformation -ne 2 } }
-	@{ Name = "F8 Boot Menu";                              Category = "Security";            Function = "F8BootMenu";                       Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "F8 boot menu options"; Caution = $false; Detect = { (bcdedit /enum "{current}" 2>$null) -match "bootmenupolicy.*legacy" } }
-	@{ Name = "Boot Recovery";                             Category = "Security";            Function = "BootRecovery";                     Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $true;  Description = "Automatic recovery mode during boot"; Caution = $false; Detect = { (bcdedit /enum "{current}" 2>$null) -match "recoveryenabled.*Yes" } }
-	@{ Name = "DEP OptOut";                                Category = "Security";            Function = "DEPOptOut";                        Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $false; WinDefault = $false; Description = "Data Execution Prevention policy (OptOut)"; Caution = $false }
-
-	# ── Context Menu ─────────────────────────────────────────────────
-	@{ Name = "MSI Extract Context Menu";                  Category = "Context Menu";        Function = "MSIExtractContext";                Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $false; Description = "'Extract all' in MSI context menu"; Caution = $false; Detect = { Test-Path "Registry::HKEY_CLASSES_ROOT\Msi.Package\shell\Extract" } }
-	@{ Name = "CAB Install Context Menu";                  Category = "Context Menu";        Function = "CABInstallContext";                Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $false; Description = "'Install' in CAB context menu"; Caution = $false; Detect = { Test-Path "Registry::HKEY_CLASSES_ROOT\CABFolder\Shell\runas" } }
-	@{ Name = "Edit with Clipchamp";                       Category = "Context Menu";        Function = "EditWithClipchampContext";         Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Edit with Clipchamp' context menu"; Caution = $false }
-	@{ Name = "Edit with Photos";                          Category = "Context Menu";        Function = "EditWithPhotosContext";             Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Edit with Photos' context menu"; Caution = $false }
-	@{ Name = "Edit with Paint";                           Category = "Context Menu";        Function = "EditWithPaintContext";              Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Edit with Paint' context menu"; Caution = $false }
-	@{ Name = "Print CMD Context Menu";                    Category = "Context Menu";        Function = "PrintCMDContext";                   Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Print' in .bat/.cmd context menu"; Caution = $false }
-	@{ Name = "Compressed Folder in New Menu";             Category = "Context Menu";        Function = "CompressedFolderNewContext";       Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Compressed (zipped) Folder' in New menu"; Caution = $false }
-	@{ Name = "Multiple Invoke Context Menu";              Category = "Context Menu";        Function = "MultipleInvokeContext";            Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Open/Print/Edit for 15+ selected items"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name MultipleInvokePromptMinimum -EA SilentlyContinue).MultipleInvokePromptMinimum -ge 15 } }
-	@{ Name = "Store in Open With Dialog";                 Category = "Context Menu";        Function = "UseStoreOpenWith";                 Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "'Look for an app in the Microsoft Store' in Open With"; Caution = $false }
-	@{ Name = "Open in Windows Terminal";                  Category = "Context Menu";        Function = "OpenWindowsTerminalContext";       Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $true;  Description = "'Open in Windows Terminal' context menu"; Caution = $false; Detect = { Test-Path "Registry::HKEY_CLASSES_ROOT\Directory\shell\OpenWTHere" } }
-	@{ Name = "Windows Terminal as Admin Default";         Category = "Context Menu";        Function = "OpenWindowsTerminalAdminContext";  Type = "Toggle"; OnParam = "Enable";  OffParam = "Disable"; Default = $true;  WinDefault = $false; Description = "Open Windows Terminal as admin by default"; Caution = $false }
-
-	# ── Taskbar Clock ────────────────────────────────────────────────
-	@{ Name = "Seconds on Taskbar Clock";                  Category = "Taskbar Clock";       Function = "SecondsInSystemClock";             Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $false; Description = "Seconds on the taskbar clock"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSecondsInSystemClock -EA SilentlyContinue).ShowSecondsInSystemClock -eq 1 } }
-	@{ Name = "Clock in Notification Center";              Category = "Taskbar Clock";       Function = "ClockInNotificationCenter";        Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $false; Description = "Time in Notification Center"; Caution = $false; Detect = { (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowClock -EA SilentlyContinue).ShowClock -ne 0 } }
-
-	# ── Cursors ──────────────────────────────────────────────────────
-	@{ Name = "Cursors";                                   Category = "Cursors";             Function = "Install-Cursors";                  Type = "Choice"; Options = @("Default","Dark","Light"); Default = "Default"; WinDefault = "Default"; Description = "Cursor theme selection"; Caution = $false }
-
-	# ── Start Menu Apps ──────────────────────────────────────────────
-	@{ Name = "Recently Added Apps in Start";              Category = "Start Menu";          Function = "RecentlyAddedStartApps";           Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Recently added apps in Start"; Caution = $false }
-	@{ Name = "Most Used Apps in Start";                   Category = "Start Menu";          Function = "MostUsedStartApps";                Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $false; WinDefault = $true;  Description = "Most used apps in Start"; Caution = $false }
-	@{ Name = "Start Menu All Section Categories";         Category = "Start Menu";          Function = "StartMenuAllSectionCategories";    Type = "Toggle"; OnParam = "Show";    OffParam = "Hide";    Default = $true;  WinDefault = $true;  Description = "All section with categories in Start (24H2+)"; Caution = $false }
-)
-#endregion Tweak Manifest
+$Script:TweakManifest = @()
+$Script:ManifestLoadedFromData = $false
 
 #region GUI Builder
 <#
@@ -371,29 +335,66 @@ $Script:TweakManifest = @(
 function Show-TweakGUI
 {
 	[CmdletBinding()]
-	param (
-		[Parameter(Mandatory = $false)]
-		[System.Object]
-		$StartupSplash
-	)
+	param ()
+
+	if (-not $Script:ManifestLoadedFromData)
+	{
+		try
+		{
+			$Script:TweakManifest = Import-TweakManifestFromData `
+				-DetectScriptblocks $Script:DetectScriptblocks `
+				-VisibleIfScriptblocks $Script:VisibleIfScriptblocks
+			Test-TweakManifestIntegrity -Manifest $Script:TweakManifest
+		}
+		catch
+		{
+			Write-Warning ("Failed to load tweak metadata from Module/Data: {0}" -f $_.Exception.Message)
+			return
+		}
+		finally
+		{
+			$Script:ManifestLoadedFromData = $true
+		}
+	}
 
 	Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase
 
+	if (-not $Script:ExplicitPresetSelections) {
+		$Script:ExplicitPresetSelections = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	}
+
+	$Script:GuiModuleBasePath = $null
+	$Script:GuiPresetDirectoryPath = $null
+
+	try { $Script:GuiModuleBasePath = $MyInvocation.MyCommand.Module.ModuleBase } catch {}
+	if ([string]::IsNullOrWhiteSpace([string]$Script:GuiModuleBasePath))
+	{
+		try { $Script:GuiModuleBasePath = Split-Path -Parent $PSCommandPath } catch {}
+	}
+	if ([string]::IsNullOrWhiteSpace([string]$Script:GuiModuleBasePath))
+	{
+		try { $Script:GuiModuleBasePath = Split-Path -Parent $MyInvocation.MyCommand.Path } catch {}
+	}
+	if ([string]::IsNullOrWhiteSpace([string]$Script:GuiModuleBasePath))
+	{
+		try { $Script:GuiModuleBasePath = Split-Path -Parent $PSScriptRoot } catch {}
+	}
+
+	if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiModuleBasePath))
+	{
+		$Script:GuiPresetDirectoryPath = Join-Path -Path $Script:GuiModuleBasePath -ChildPath 'Data\Presets'
+	}
+
 	# Primary category tabs (top tier)
 	$PrimaryCategories = [ordered]@{
-		"Initial Setup"       = @()
-		"OS Hardening"        = @()
-		"Privacy & Telemetry" = @()
-		"System Tweaks"       = @()
-		"UI & Personalization" = @()
-		"OneDrive"            = @()
-		"System"              = @("System","Start Menu","Start Menu Apps")
-		"UWP Apps"            = @("UWP Apps")
-		"Gaming"              = @()
-		"Security"            = @()
-		"Context Menu"        = @()
-		"Taskbar Clock"       = @()
-		"Cursors"             = @()
+		"Initial Setup"        = @()
+		"Privacy & Telemetry"  = @()
+		"Security"             = @("Security", "OS Hardening")
+		"System"               = @("System", "System Tweaks", "Start Menu", "Start Menu Apps")
+		"UI & Personalization" = @("UI & Personalization", "Taskbar", "Taskbar Clock", "Cursors")
+		"UWP Apps"             = @("UWP Apps", "OneDrive")
+		"Gaming"               = @()
+		"Context Menu"         = @()
 	}
 
 	# Map manifest categories to primary tabs
@@ -419,247 +420,1184 @@ function Show-TweakGUI
 		}
 	}
 
-	#region Console window helpers
-	# SW_ constants
-	$SW_HIDE    = 0
-	$SW_SHOW    = 5
-
-	# Ensure the console interop type is available (same type used by Show-LoadingSplash)
-	if (-not ('SplashConsoleHide' -as [type]))
-	{
-		Add-Type -Name 'SplashConsoleHide' -Namespace '' -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("kernel32.dll")]
-public static extern System.IntPtr GetConsoleWindow();
-[System.Runtime.InteropServices.DllImport("user32.dll")]
-public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
-'@
-	}
-
-	function Get-ConsoleHandle
-	{
-		return [SplashConsoleHide]::GetConsoleWindow()
-	}
-
-	function Hide-ConsoleWindow
-	{
-		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-		param ()
-		$hwnd = Get-ConsoleHandle
-		if ($hwnd -ne [System.IntPtr]::Zero)
-		{
-			[SplashConsoleHide]::ShowWindow($hwnd, $SW_HIDE) | Out-Null
-		}
-	}
-
-	function Show-ConsoleWindow
-	{
-		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-		param ()
-		$hwnd = Get-ConsoleHandle
-		if ($hwnd -ne [System.IntPtr]::Zero)
-		{
-			[SplashConsoleHide]::ShowWindow($hwnd, $SW_SHOW) | Out-Null
-			# Use the Helpers interop type for SetForegroundWindow
-			try
-			{
-				Initialize-ForegroundWindowInterop
-				[WinAPI.ForegroundWindow]::SetForegroundWindow($hwnd) | Out-Null
-			}
-			catch { $null = $_ }
-		}
-	}
-
-	function Close-ConsoleWindow
-	{
-		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-		param ()
-		$hwnd = Get-ConsoleHandle
-		if ($hwnd -ne [System.IntPtr]::Zero)
-		{
-			[SplashConsoleHide]::ShowWindow($hwnd, $SW_HIDE) | Out-Null
-		}
-	}
-	#endregion Console window helpers
-
 	#region Theme colors
 	$Script:DarkTheme = @{
 		WindowBg      = "#1E1E2E"
 		HeaderBg      = "#181825"
 		PanelBg       = "#1E1E2E"
-		CardBg        = "#2A2A3C"
-		TabBg         = "#313244"
-		TabActiveBg   = "#45475A"
-		TabHoverBg    = "#585B70"
-		BorderColor   = "#45475A"
+		CardBg        = "#272B3A"
+		TabBg         = "#2F3445"
+		TabActiveBg   = "#223B60"
+		TabHoverBg    = "#3B455E"
+		BorderColor   = "#4C556D"
 		TextPrimary   = "#CDD6F4"
-		TextSecondary = "#A6ADC8"
-		TextMuted     = "#6C7086"
+		TextSecondary = "#B6BED8"
+		TextMuted     = "#828AA2"
 		AccentBlue    = "#89B4FA"
 		AccentHover   = "#74C7EC"
 		AccentPress   = "#94E2D5"
+		FocusRing     = "#C9DEFF"
 		CautionBg     = "#3B2028"
 		CautionBorder = "#F38BA8"
 		CautionText   = "#F38BA8"
 		ImpactBadge   = "#F38BA8"
 		ImpactBadgeBg = "#3B2028"
-		DestructiveBg = "#8B2252"
+		LowRiskBadge     = "#B8E6C1"
+		LowRiskBadgeBg   = "#213326"
+		RiskMediumBadge   = "#F9E2AF"
+		RiskMediumBadgeBg = "#3B3020"
+		RiskHighBadge     = "#F38BA8"
+		RiskHighBadgeBg   = "#3B2028"
+		DestructiveBg = "#C0325A"
 		DestructiveHover = "#A6294E"
 		SectionLabel  = "#89B4FA"
 		ScrollBg      = "#313244"
 		ScrollThumb   = "#585B70"
 		ToggleOn      = "#A6E3A1"
 		ToggleOff     = "#F38BA8"
+		StateEnabled  = "#9FD6AA"
+		StateDisabled = "#98A0B7"
+		SearchBg      = "#313244"
+		SearchBorder  = "#585B70"
+		SearchPlaceholder = "#8188A0"
+		InputBg       = "#313244"
+		InputHoverBg  = "#383D52"
+		CardBorder    = "#394256"
+		CardHoverBg   = "#323A4E"
+		SecondaryButtonBg = "#30374A"
+		SecondaryButtonHoverBg = "#39415A"
+		SecondaryButtonPressBg = "#262D3E"
+		SecondaryButtonBorder = "#5F6984"
+		SecondaryButtonFg = "#E5EAF7"
+		PresetPanelBg = "#23283A"
+		PresetPanelBorder = "#52607E"
+		StatusPillBg = "#20385C"
+		StatusPillBorder = "#5C86C7"
+		StatusPillText = "#D6E7FF"
+		ActiveTabBorder = "#89B4FA"
 	}
 	$Script:LightTheme = @{
-		WindowBg      = "#C8CAD6"
-		HeaderBg      = "#B8BAC6"
-		PanelBg       = "#C8CAD6"
-		CardBg        = "#D4D6E2"
-		TabBg         = "#AAACB8"
-		TabActiveBg   = "#9A9CA8"
-		TabHoverBg    = "#8A8C98"
-		BorderColor   = "#9A9CA8"
-		TextPrimary   = "#1E2030"
-		TextSecondary = "#3A3C50"
-		TextMuted     = "#5A5C70"
+		WindowBg      = "#E4E8F0"
+		HeaderBg      = "#D6DBE5"
+		PanelBg       = "#E4E8F0"
+		CardBg        = "#FFFFFF"
+		TabBg         = "#D4D9E4"
+		TabActiveBg   = "#FFFFFF"
+		TabHoverBg    = "#EDF2FA"
+		BorderColor   = "#A7B0C0"
+		TextPrimary   = "#1A1C2E"
+		TextSecondary = "#31384A"
+		TextMuted     = "#646C7F"
 		AccentBlue    = "#1550AA"
 		AccentHover   = "#1A60C4"
 		AccentPress   = "#104090"
-		CautionBg     = "#D8AAAA"
-		CautionBorder = "#880020"
-		CautionText   = "#880020"
-		ImpactBadge   = "#880020"
-		ImpactBadgeBg = "#D8AAAA"
-		DestructiveBg = "#880020"
-		DestructiveHover = "#660018"
+		FocusRing     = "#0D63E0"
+		CautionBg     = "#F5D0D0"
+		CautionBorder = "#A02040"
+		CautionText   = "#A02040"
+		ImpactBadge   = "#A02040"
+		ImpactBadgeBg = "#F5D0D0"
+		LowRiskBadge     = "#245A2D"
+		LowRiskBadgeBg   = "#DDEFD9"
+		RiskMediumBadge   = "#7A5A00"
+		RiskMediumBadgeBg = "#FFF3D0"
+		RiskHighBadge     = "#A02040"
+		RiskHighBadgeBg   = "#F5D0D0"
+		DestructiveBg = "#C0304E"
+		DestructiveHover = "#A02840"
 		SectionLabel  = "#1550AA"
-		ScrollBg      = "#AAACB8"
-		ScrollThumb   = "#8A8C98"
-		ToggleOn      = "#226622"
-		ToggleOff     = "#880020"
+		ScrollBg      = "#D0D2DE"
+		ScrollThumb   = "#A0A2AE"
+		ToggleOn      = "#1A7A2A"
+		ToggleOff     = "#B02040"
+		StateEnabled  = "#2F6E38"
+		StateDisabled = "#778096"
+		SearchBg      = "#FFFFFF"
+		SearchBorder  = "#98A2B4"
+		SearchPlaceholder = "#7A8296"
+		InputBg       = "#FFFFFF"
+		InputHoverBg  = "#F5F8FD"
+		CardBorder    = "#B2BBCB"
+		CardHoverBg   = "#F2F6FC"
+		SecondaryButtonBg = "#FFFFFF"
+		SecondaryButtonHoverBg = "#F4F7FC"
+		SecondaryButtonPressBg = "#E7EDF8"
+		SecondaryButtonBorder = "#98A7BF"
+		SecondaryButtonFg = "#263248"
+		PresetPanelBg = "#FFFFFF"
+		PresetPanelBorder = "#AAB7CC"
+		StatusPillBg = "#E6F0FF"
+		StatusPillBorder = "#8FAAD8"
+		StatusPillText = "#0F4EA8"
+		ActiveTabBorder = "#1550AA"
 	}
+
+	$Script:GuiThemeFallbackWarnings = [System.Collections.Generic.HashSet[string]]::new()
+	$Script:GuiRuntimeWarnings = [System.Collections.Generic.HashSet[string]]::new()
+
+	function Write-GuiThemeFallbackWarning
+	{
+		param (
+			[string]$Context,
+			[string]$Message
+		)
+
+		if ([string]::IsNullOrWhiteSpace($Message)) { return }
+		if ($Message -match 'Encountered an empty color value')
+		{
+			return
+		}
+
+		$warningKey = '{0}|{1}' -f $Context, $Message
+		$shouldLog = $true
+		if ($Script:GuiThemeFallbackWarnings)
+		{
+			try { $shouldLog = $Script:GuiThemeFallbackWarnings.Add($warningKey) } catch { $shouldLog = $true }
+		}
+		if (-not $shouldLog) { return }
+
+		$warningText = "GUI theme fallback [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $Message
+		if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			LogWarning $warningText
+		}
+		else
+		{
+			Write-Warning $warningText
+		}
+	}
+
+	function Get-GuiFallbackColor
+	{
+		param ([string]$FallbackColor)
+
+		if (-not [string]::IsNullOrWhiteSpace($FallbackColor))
+		{
+			return [string]$FallbackColor
+		}
+
+		if ($Script:DarkTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:DarkTheme.AccentBlue))
+		{
+			return [string]$Script:DarkTheme.AccentBlue
+		}
+
+		return '#89B4FA'
+	}
+
+	function Repair-GuiThemePalette
+	{
+		param (
+			[hashtable]$Theme,
+			[string]$ThemeName = 'Dark'
+		)
+
+		$repairedTheme = @{}
+		if ($Theme)
+		{
+			foreach ($key in $Theme.Keys)
+			{
+				$repairedTheme[$key] = $Theme[$key]
+			}
+		}
+
+		# Ensure core interactive colors always exist before downstream theme repair runs.
+		$defaultColors = @{
+			'TabHoverBg' = '#3B455E'
+			'TextPrimary' = '#CDD6F4'
+			'FocusRing' = '#C9DEFF'
+			'AccentBlue' = '#3B82F6'
+			'AccentHover' = '#60A5FA'
+			'AccentPress' = '#2563EB'
+			'HeaderBg' = '#1F2937'
+			'TextSecondary' = '#9CA3AF'
+		}
+		foreach ($key in $defaultColors.Keys)
+		{
+			if (-not $repairedTheme.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$repairedTheme[$key]))
+			{
+				$repairedTheme[$key] = $defaultColors[$key]
+				Write-GuiThemeFallbackWarning -Context "Repair-GuiThemePalette/$ThemeName" -Message "Added missing color '$key' with $($defaultColors[$key])."
+			}
+		}
+
+		$primaryTheme = if ($ThemeName -eq 'Light') { $Script:LightTheme } else { $Script:DarkTheme }
+		$secondaryTheme = if ($ThemeName -eq 'Light') { $Script:DarkTheme } else { $Script:LightTheme }
+		$requiredKeys = [System.Collections.Generic.HashSet[string]]::new()
+		foreach ($sourceTheme in @($primaryTheme, $secondaryTheme))
+		{
+			if (-not $sourceTheme) { continue }
+			foreach ($key in $sourceTheme.Keys)
+			{
+				[void]$requiredKeys.Add([string]$key)
+			}
+		}
+
+		foreach ($key in $requiredKeys)
+		{
+			$currentValue = if ($repairedTheme.ContainsKey($key)) { [string]$repairedTheme[$key] } else { $null }
+			if (-not [string]::IsNullOrWhiteSpace($currentValue))
+			{
+				continue
+			}
+
+			$fallbackValue = $null
+			if ($primaryTheme -and $primaryTheme.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$primaryTheme[$key]))
+			{
+				$fallbackValue = [string]$primaryTheme[$key]
+			}
+			elseif ($secondaryTheme -and $secondaryTheme.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$secondaryTheme[$key]))
+			{
+				$fallbackValue = [string]$secondaryTheme[$key]
+			}
+			else
+			{
+				$fallbackValue = '#89B4FA'
+			}
+
+			$repairedTheme[$key] = $fallbackValue
+			Write-GuiThemeFallbackWarning -Context "Repair-GuiThemePalette/$ThemeName" -Message "Filled missing color '$key' with $fallbackValue."
+		}
+
+		return $repairedTheme
+	}
+
+	function ConvertTo-GuiBrush
+	{
+		param (
+			[object]$Color,
+			[string]$Context = 'GUI',
+			[string]$FallbackColor = $null
+		)
+
+		$resolvedFallback = if (-not [string]::IsNullOrWhiteSpace([string]$FallbackColor))
+		{
+			[string]$FallbackColor
+		}
+		elseif ($Script:DarkTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:DarkTheme.AccentBlue))
+		{
+			[string]$Script:DarkTheme.AccentBlue
+		}
+		else
+		{
+			'#89B4FA'
+		}
+
+		$emitThemeWarning = {
+			param ([string]$WarningMessage)
+
+			if ([string]::IsNullOrWhiteSpace($WarningMessage)) { return }
+
+			$warningKey = '{0}|{1}' -f $Context, $WarningMessage
+			$shouldLog = $true
+			if ($Script:GuiThemeFallbackWarnings)
+			{
+				try { $shouldLog = $Script:GuiThemeFallbackWarnings.Add($warningKey) } catch { $shouldLog = $true }
+			}
+			if (-not $shouldLog) { return }
+
+			$warningText = "GUI theme fallback [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $WarningMessage
+			if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				LogWarning $warningText
+			}
+			else
+			{
+				Write-Warning $warningText
+			}
+		}.GetNewClosure()
+
+		$resolvedColor = [string]$Color
+		if ([string]::IsNullOrWhiteSpace($resolvedColor))
+		{
+			& $emitThemeWarning "Encountered an empty color value. Using $resolvedFallback."
+			$resolvedColor = $resolvedFallback
+		}
+
+		$innerConverter = [System.Windows.Media.BrushConverter]::new()
+		try
+		{
+			return $innerConverter.ConvertFromString($resolvedColor)
+		}
+		catch
+		{
+			& $emitThemeWarning "Failed to convert '$resolvedColor' ($($_.Exception.Message)). Using $resolvedFallback."
+			return $innerConverter.ConvertFromString($resolvedFallback)
+		}
+	}
+
+	function New-SafeBrushConverter
+	{
+		param (
+			[string]$Context = 'GUI',
+			[string]$FallbackColor = $null
+		)
+
+		$contextCapture = if ([string]::IsNullOrWhiteSpace($Context)) { 'GUI' } else { $Context }
+		$getGuiFallbackColorScript = ${function:Get-GuiFallbackColor}
+		$fallbackCapture = & $getGuiFallbackColorScript -FallbackColor $FallbackColor
+		$convertBrushScript = ${function:ConvertTo-GuiBrush}
+		$converter = [pscustomobject]@{}
+		$scriptMethod = {
+			param ($Color)
+			return (& $convertBrushScript -Color $Color -Context $contextCapture -FallbackColor $fallbackCapture)
+		}.GetNewClosure()
+		$converter | Add-Member -MemberType ScriptMethod -Name ConvertFromString -Value $scriptMethod
+		return $converter
+	}
+
+	function Write-GuiRuntimeWarning
+	{
+		param (
+			[string]$Context,
+			[string]$Message
+		)
+
+		if ([string]::IsNullOrWhiteSpace($Message)) { return }
+		if ($Message -match 'Argument types do not match')
+		{
+			return
+		}
+
+		$warningKey = '{0}|{1}' -f $Context, $Message
+		$shouldLog = $true
+		if ($Script:GuiRuntimeWarnings)
+		{
+			try { $shouldLog = $Script:GuiRuntimeWarnings.Add($warningKey) } catch { $shouldLog = $true }
+		}
+		if (-not $shouldLog) { return }
+
+		$warningText = "GUI runtime safeguard [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $Message
+		if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			LogWarning $warningText
+		}
+		else
+		{
+			Write-Warning $warningText
+		}
+	}
+
+	function Set-GuiControlProperty
+	{
+		param (
+			[object]$Control,
+			[string]$PropertyName,
+			[object]$Value,
+			[string]$Context = 'GUI'
+		)
+
+		if (-not $Control -or [string]::IsNullOrWhiteSpace($PropertyName)) { return $false }
+
+		$property = $null
+		try { $property = $Control.PSObject.Properties[$PropertyName] } catch { $property = $null }
+		if (-not $property)
+		{
+			return $false
+		}
+
+		try
+		{
+			$Control.$PropertyName = $Value
+			return $true
+		}
+		catch
+		{
+			if ($_.Exception.Message -notlike '*Argument types do not match*')
+			{
+				$warningMessage = "Failed to set property '{0}' on {1}: {2}" -f `
+					$PropertyName, `
+					$(try { $Control.GetType().Name } catch { 'unknown' }), `
+					$_.Exception.Message
+
+				$warningKey = '{0}|{1}' -f $Context, $warningMessage
+				$shouldLog = $true
+				if ($Script:GuiRuntimeWarnings)
+				{
+					try { $shouldLog = $Script:GuiRuntimeWarnings.Add($warningKey) } catch { $shouldLog = $true }
+				}
+				if ($shouldLog)
+				{
+					$warningText = "GUI runtime safeguard [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $warningMessage
+					if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+					{
+						LogWarning $warningText
+					}
+					else
+					{
+						Write-Warning $warningText
+					}
+				}
+			}
+			return $false
+		}
+	}
+
+	function Show-GuiRuntimeFailure
+	{
+		param (
+			[string]$Context = 'GUI',
+			[System.Exception]$Exception,
+			[switch]$ShowDialog
+		)
+
+		if (-not $Exception) { return $null }
+
+		$errorLines = New-Object System.Collections.Generic.List[string]
+		[void]$errorLines.Add(("GUI event failed [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $Exception.Message))
+		[void]$errorLines.Add(("Exception type: {0}" -f $Exception.GetType().FullName))
+		if ($Exception.InnerException)
+		{
+			[void]$errorLines.Add(("Inner exception: {0}" -f $Exception.InnerException.Message))
+		}
+		if ($Exception.StackTrace)
+		{
+			[void]$errorLines.Add('Stack trace:')
+			[void]$errorLines.Add($Exception.StackTrace.Trim())
+		}
+
+		if ($Script:GuiPresetDebugTrail -and $Script:GuiPresetDebugTrail.Count -gt 0)
+		{
+			[void]$errorLines.Add('')
+			[void]$errorLines.Add('Preset debug trail (most recent entries):')
+			$startIndex = [Math]::Max(0, $Script:GuiPresetDebugTrail.Count - 15)
+			for ($i = $startIndex; $i -lt $Script:GuiPresetDebugTrail.Count; $i++)
+			{
+				[void]$errorLines.Add($Script:GuiPresetDebugTrail[$i])
+			}
+		}
+
+		$errorText = ($errorLines -join [Environment]::NewLine)
+		if (Get-Command -Name 'LogError' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			LogError $errorText
+		}
+		else
+		{
+			Write-Warning $errorText
+		}
+
+		if ($ShowDialog -and $Script:MainForm)
+		{
+			try
+			{
+				Show-ThemedDialog -Title 'GUI Error' -Message $errorText -Buttons @('OK') -AccentButton 'OK' | Out-Null
+			}
+			catch
+			{
+				$null = $_
+			}
+		}
+
+		return $errorText
+	}
+
+	function Invoke-GuiSafeAction
+	{
+		param (
+			[scriptblock]$Action,
+			[string]$Context = 'GUI',
+			[switch]$ShowDialog
+		)
+
+		if (-not $Action) { return }
+
+		try
+		{
+			& $Action
+		}
+		catch
+		{
+			$showGuiRuntimeFailureScript = $Script:ShowGuiRuntimeFailureScript
+			if ($showGuiRuntimeFailureScript)
+			{
+				$null = & $showGuiRuntimeFailureScript -Context $Context -Exception $_.Exception -ShowDialog:$ShowDialog
+			}
+			else
+			{
+				Write-Warning ("GUI event failed [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $_.Exception.Message)
+			}
+		}
+	}
+
+	$Script:ShowGuiRuntimeFailureScript = ${function:Show-GuiRuntimeFailure}
+
+	$Script:DarkTheme = Repair-GuiThemePalette -Theme $Script:DarkTheme -ThemeName 'Dark'
+	$Script:LightTheme = Repair-GuiThemePalette -Theme $Script:LightTheme -ThemeName 'Light'
 	$Script:CurrentTheme = $Script:DarkTheme
 	#endregion Theme colors
 
+	function Set-ButtonChrome
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[System.Windows.Controls.Button]$Button,
+			[ValidateSet('Primary', 'Danger', 'Secondary', 'Subtle')]
+			[string]$Variant = 'Secondary',
+			[switch]$Compact,
+			[switch]$Muted
+		)
+
+		if (-not $Button) { return }
+
+		$bc = New-SafeBrushConverter -Context 'Set-ButtonChrome'
+		$theme = $Script:CurrentTheme
+		$getSafeColor = {
+			param (
+				[string]$ColorName,
+				[string]$DefaultColor
+			)
+
+			if (-not $theme) { return $DefaultColor }
+
+			$color = if ($theme.ContainsKey($ColorName)) { [string]$theme[$ColorName] } else { $null }
+			if ([string]::IsNullOrWhiteSpace($color))
+			{
+				return $DefaultColor
+			}
+
+			return $color
+		}.GetNewClosure()
+		switch ($Variant)
+		{
+			'Primary'
+			{
+				$normalBg     = & $getSafeColor -ColorName 'AccentBlue' -DefaultColor '#3B82F6'
+				$hoverBg      = & $getSafeColor -ColorName 'AccentHover' -DefaultColor '#60A5FA'
+				$pressBg      = & $getSafeColor -ColorName 'AccentPress' -DefaultColor '#2563EB'
+				$normalBorder = & $getSafeColor -ColorName 'AccentHover' -DefaultColor '#60A5FA'
+				$foreground   = & $getSafeColor -ColorName 'HeaderBg' -DefaultColor '#1F2937'
+			}
+			'Danger'
+			{
+				$normalBg     = & $getSafeColor -ColorName 'DestructiveBg' -DefaultColor '#C0325A'
+				$hoverBg      = & $getSafeColor -ColorName 'DestructiveHover' -DefaultColor '#A6294E'
+				$pressBg      = & $getSafeColor -ColorName 'CautionBorder' -DefaultColor '#F38BA8'
+				$normalBorder = & $getSafeColor -ColorName 'CautionBorder' -DefaultColor '#F38BA8'
+				$foreground   = '#FFFFFF'
+			}
+			'Subtle'
+			{
+				$normalBg     = & $getSafeColor -ColorName 'TabBg' -DefaultColor '#2F3445'
+				$hoverBg      = & $getSafeColor -ColorName 'TabHoverBg' -DefaultColor '#3B455E'
+				$pressBg      = & $getSafeColor -ColorName 'TabActiveBg' -DefaultColor '#223B60'
+				$normalBorder = & $getSafeColor -ColorName 'BorderColor' -DefaultColor '#4C556D'
+				$foreground   = if ($Muted) {
+					& $getSafeColor -ColorName 'TextSecondary' -DefaultColor '#9CA3AF'
+				} else {
+					& $getSafeColor -ColorName 'TextPrimary' -DefaultColor '#CDD6F4'
+				}
+			}
+			default
+			{
+				$normalBg     = & $getSafeColor -ColorName 'SecondaryButtonBg' -DefaultColor '#30374A'
+				$hoverBg      = & $getSafeColor -ColorName 'SecondaryButtonHoverBg' -DefaultColor '#39415A'
+				$pressBg      = & $getSafeColor -ColorName 'SecondaryButtonPressBg' -DefaultColor '#262D3E'
+				$normalBorder = & $getSafeColor -ColorName 'SecondaryButtonBorder' -DefaultColor '#5F6984'
+				$foreground   = & $getSafeColor -ColorName 'SecondaryButtonFg' -DefaultColor '#E5EAF7'
+			}
+		}
+
+		$cornerRadius = if ($Compact) { 5 } else { 6 }
+		$paddingValue = if ($Button.Padding -and ($Button.Padding.Left -ne 0 -or $Button.Padding.Top -ne 0 -or $Button.Padding.Right -ne 0 -or $Button.Padding.Bottom -ne 0)) {
+			$Button.Padding
+		} elseif ($Compact) {
+			[System.Windows.Thickness]::new(10, 4, 10, 4)
+		} else {
+			[System.Windows.Thickness]::new(12, 6, 12, 6)
+		}
+
+		$normalBgBrush = $bc.ConvertFromString($normalBg)
+		$hoverBgBrush = $bc.ConvertFromString($hoverBg)
+		$pressBgBrush = $bc.ConvertFromString($pressBg)
+		$normalBorderBrush = $bc.ConvertFromString($normalBorder)
+		$focusBorderBrush = $bc.ConvertFromString((& $getSafeColor -ColorName 'FocusRing' -DefaultColor '#C9DEFF'))
+		$foregroundBrush = $bc.ConvertFromString($foreground)
+
+		$Button.Foreground = $foregroundBrush
+		$Button.Background = $normalBgBrush
+		$Button.BorderBrush = $normalBorderBrush
+		$Button.BorderThickness = New-SafeThickness -Uniform 1
+		$Button.FocusVisualStyle = $null
+		$Button.Cursor = [System.Windows.Input.Cursors]::Hand
+		$Button.Template = $null
+
+		$tmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
+		$bd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
+		$bd.Name = 'Bd'
+		$bd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new($cornerRadius))
+		$bd.SetValue([System.Windows.Controls.Border]::PaddingProperty, $paddingValue)
+		$bd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $normalBgBrush)
+		$bd.SetValue([System.Windows.Controls.Border]::BorderBrushProperty, $normalBorderBrush)
+		$bd.SetValue([System.Windows.Controls.Border]::BorderThicknessProperty, (New-SafeThickness -Uniform 1))
+		$cp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
+		$cp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
+		$cp.SetValue([System.Windows.Controls.ContentPresenter]::VerticalAlignmentProperty, [System.Windows.VerticalAlignment]::Center)
+		$bd.AppendChild($cp)
+		$tmpl.VisualTree = $bd
+
+		$hoverTrigger = New-Object System.Windows.Trigger
+		$hoverTrigger.Property = [System.Windows.UIElement]::IsMouseOverProperty
+		$hoverTrigger.Value = $true
+		$hoverTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BackgroundProperty) -Value $hoverBgBrush -TargetName 'Bd')) | Out-Null
+		$hoverTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BorderBrushProperty) -Value $focusBorderBrush -TargetName 'Bd')) | Out-Null
+		$tmpl.Triggers.Add($hoverTrigger) | Out-Null
+
+		$focusTrigger = New-Object System.Windows.Trigger
+		$focusTrigger.Property = [System.Windows.UIElement]::IsKeyboardFocusedProperty
+		$focusTrigger.Value = $true
+		$focusTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BorderBrushProperty) -Value $focusBorderBrush -TargetName 'Bd')) | Out-Null
+		$focusTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BorderThicknessProperty) -Value (New-SafeThickness -Uniform 2) -TargetName 'Bd')) | Out-Null
+		$tmpl.Triggers.Add($focusTrigger) | Out-Null
+
+		$pressTrigger = New-Object System.Windows.Trigger
+		$pressTrigger.Property = [System.Windows.Controls.Primitives.ButtonBase]::IsPressedProperty
+		$pressTrigger.Value = $true
+		$pressTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BackgroundProperty) -Value $pressBgBrush -TargetName 'Bd')) | Out-Null
+		$pressTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BorderBrushProperty) -Value $focusBorderBrush -TargetName 'Bd')) | Out-Null
+		$tmpl.Triggers.Add($pressTrigger) | Out-Null
+
+		$disabledTrigger = New-Object System.Windows.Trigger
+		$disabledTrigger.Property = [System.Windows.UIElement]::IsEnabledProperty
+		$disabledTrigger.Value = $false
+		$disabledTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::OpacityProperty) -Value 0.55 -TargetName 'Bd')) | Out-Null
+		$tmpl.Triggers.Add($disabledTrigger) | Out-Null
+
+		$Button.Template = $tmpl
+	}
+
+	function Set-HeaderToggleStyle
+	{
+		param ([System.Windows.Controls.CheckBox]$CheckBox)
+
+		if (-not $CheckBox) { return }
+
+		$theme = $Script:CurrentTheme
+
+		# Helper to ensure a color is a valid hex string
+		$ensureHexColor = {
+			param($Color, $Default = '#89B4FA')
+			if ([string]::IsNullOrWhiteSpace($Color)) { return $Default }
+			if ($Color -match '^#[0-9A-Fa-f]{6}$|^#[0-9A-Fa-f]{8}$') { return $Color }
+			return $Default
+		}
+
+		$trackOffBg   = & $ensureHexColor $theme.SearchBorder   '#6B7280'
+		$trackOffBorder = & $ensureHexColor $theme.BorderColor  '#6B7280'
+		$trackOnBg    = & $ensureHexColor $theme.AccentBlue     '#3B82F6'
+		$trackOnBorder = & $ensureHexColor $theme.ActiveTabBorder '#3B82F6'
+		$thumbFill    = '#FFFFFF'
+		$hoverBorder  = & $ensureHexColor $theme.AccentHover    '#60A5FA'
+		$focusBorder  = & $ensureHexColor $theme.FocusRing      '#C9DEFF'
+
+		if (-not $Script:HeaderToggleTemplate -or $Script:HeaderToggleTemplateTheme -ne $Script:CurrentThemeName)
+		{
+			$templateXaml = @"
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type CheckBox}">
+    <Grid SnapsToDevicePixels="True">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Border x:Name="SwitchTrack"
+                Width="42"
+                Height="24"
+                CornerRadius="12"
+                Background="$trackOffBg"
+                BorderBrush="$trackOffBorder"
+                BorderThickness="1"
+                VerticalAlignment="Center">
+            <Grid Margin="2">
+                <Ellipse x:Name="SwitchThumb"
+                         Width="18"
+                         Height="18"
+                         Fill="$thumbFill"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <ContentPresenter Grid.Column="1"
+                          Margin="10,0,0,0"
+                          VerticalAlignment="Center"
+                          RecognizesAccessKey="True"
+                          ContentSource="Content" />
+    </Grid>
+
+    <ControlTemplate.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+            <Setter TargetName="SwitchTrack" Property="Background" Value="$trackOnBg" />
+            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="$trackOnBorder" />
+            <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right" />
+        </Trigger>
+        <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="$hoverBorder" />
+        </Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True">
+            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="$focusBorder" />
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+            <Setter TargetName="SwitchTrack" Property="Opacity" Value="0.55" />
+            <Setter Property="Opacity" Value="0.65" />
+        </Trigger>
+    </ControlTemplate.Triggers>
+</ControlTemplate>
+"@
+			try {
+				$templateReader = New-Object System.Xml.XmlNodeReader ([xml]$templateXaml)
+				$Script:HeaderToggleTemplate = [System.Windows.Markup.XamlReader]::Load($templateReader)
+				$Script:HeaderToggleTemplateTheme = $Script:CurrentThemeName
+			}
+			catch {
+				# Silently ignore XAML errors
+				return
+			}
+		}
+
+		try {
+			$bc = New-SafeBrushConverter -Context 'Set-HeaderToggleStyle'
+			$CheckBox.Template = $Script:HeaderToggleTemplate
+			$CheckBox.Cursor = [System.Windows.Input.Cursors]::Hand
+			$CheckBox.FocusVisualStyle = $null
+			$CheckBox.Background = [System.Windows.Media.Brushes]::Transparent
+			$CheckBox.BorderBrush = [System.Windows.Media.Brushes]::Transparent
+			$CheckBox.BorderThickness = [System.Windows.Thickness]::new(0)
+			$CheckBox.Padding = [System.Windows.Thickness]::new(0)
+			$CheckBox.Margin = [System.Windows.Thickness]::new(0)
+			$CheckBox.MinHeight = 24
+			$CheckBox.VerticalContentAlignment = [System.Windows.VerticalAlignment]::Center
+			$CheckBox.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+		}
+		catch {
+			# Silent fallback
+		}
+	}
+
+	function Set-HeaderToggleControlsStyle
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		if ($ChkAdvancedMode) { Set-HeaderToggleStyle -CheckBox $ChkAdvancedMode }
+		if ($ChkTheme) { Set-HeaderToggleStyle -CheckBox $ChkTheme }
+	}
+
 	#region Themed Dialog
-	# Show a dark-themed WPF dialog that matches the main GUI, replacing
-	# the stock Windows MessageBox which looks out of place.
-	# Returns the string label of the button the user clicked.
 	function Show-ThemedDialog
 	{
 		param(
 			[string]$Title,
 			[string]$Message,
 			[string[]]$Buttons = @('OK'),
-			[string]$AccentButton = $null,   # which button gets accent styling
-			[string]$DestructiveButton = $null # which button gets red/destructive styling
+			[string]$AccentButton = $null,
+			[string]$DestructiveButton = $null
 		)
 
-		$bc = [System.Windows.Media.BrushConverter]::new()
+		return (GUICommon\Show-ThemedDialog `
+			-Theme $Script:CurrentTheme `
+			-ApplyButtonChrome ${function:Set-ButtonChrome} `
+			-OwnerWindow $Form `
+			-Title $Title `
+			-Message $Message `
+			-Buttons $Buttons `
+			-AccentButton $AccentButton `
+			-DestructiveButton $DestructiveButton)
+	}
+
+	function Show-ExecutionSummaryDialog
+	{
+		param(
+			[object[]]$Results,
+			[string]$Title = 'Execution Summary',
+			[string]$SummaryText,
+			[string]$LogPath,
+			[string[]]$Buttons = @('Close')
+		)
+
+		return (GUICommon\Show-ExecutionSummaryDialog `
+			-Theme $Script:CurrentTheme `
+			-ApplyButtonChrome ${function:Set-ButtonChrome} `
+			-OwnerWindow $Form `
+			-Results $Results `
+			-Title $Title `
+			-SummaryText $SummaryText `
+			-LogPath $LogPath `
+			-Buttons $Buttons)
+	}
+
+	function Show-HelpDialog
+	{
 		$theme = $Script:CurrentTheme
+		$bc = [System.Windows.Media.BrushConverter]::new()
 
-		$dlg = New-Object System.Windows.Window
-		$dlg.Title                  = $Title
-		$dlg.Width                  = 440
-		$dlg.SizeToContent          = 'Height'
-		$dlg.ResizeMode             = 'NoResize'
-		$dlg.WindowStartupLocation  = 'CenterOwner'
-		$dlg.Background             = $bc.ConvertFromString($theme.WindowBg)
-		$dlg.Foreground             = $bc.ConvertFromString($theme.TextPrimary)
-		$dlg.FontFamily             = [System.Windows.Media.FontFamily]::new('Segoe UI')
-		$dlg.FontSize               = 13
-		$dlg.ShowInTaskbar          = $false
-		$dlg.WindowStyle            = 'SingleBorderWindow'
-
-		# Try to set owner to main window
-		try { $dlg.Owner = $Form } catch { $null = $_ }
-
-		$outerStack = New-Object System.Windows.Controls.StackPanel
-
-		# Message area
-		$msgBorder = New-Object System.Windows.Controls.Border
-		$msgBorder.Padding = [System.Windows.Thickness]::new(24, 20, 24, 20)
-		$msgTb = New-Object System.Windows.Controls.TextBlock
-		$msgTb.Text         = $Message
-		$msgTb.TextWrapping = 'Wrap'
-		$msgTb.Foreground   = $bc.ConvertFromString($theme.TextPrimary)
-		$msgTb.FontSize     = 13
-		$msgTb.LineHeight   = 20
-		$msgBorder.Child = $msgTb
-		$outerStack.Children.Add($msgBorder) | Out-Null
-
-		# Button bar
-		$btnBorder = New-Object System.Windows.Controls.Border
-		$btnBorder.Background = $bc.ConvertFromString($theme.HeaderBg)
-		$btnBorder.Padding    = [System.Windows.Thickness]::new(16, 12, 16, 12)
-		$btnPanel = New-Object System.Windows.Controls.StackPanel
-		$btnPanel.Orientation       = 'Horizontal'
-		$btnPanel.HorizontalAlignment = 'Right'
-
-		$resultRef = @{ Value = $null }
-
-		foreach ($label in $Buttons)
-		{
-			$btn = New-Object System.Windows.Controls.Button
-			$btn.Content  = $label
-			$btn.MinWidth = 90
-			$btn.Height   = 32
-			$btn.Margin   = [System.Windows.Thickness]::new(6, 0, 0, 0)
-			$btn.Cursor   = [System.Windows.Input.Cursors]::Hand
-
-			# Template for rounded buttons
-			$tmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-			$bd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-			$bd.Name = 'Bd'
-			$bd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(5))
-			$bd.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(14, 6, 14, 6))
-			$cp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-			$cp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-			$cp.SetValue([System.Windows.Controls.ContentPresenter]::VerticalAlignmentProperty, [System.Windows.VerticalAlignment]::Center)
-			$bd.AppendChild($cp)
-			$tmpl.VisualTree = $bd
-			$btn.Template = $tmpl
-
-			if ($label -eq $AccentButton)
-			{
-				$bd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($theme.AccentBlue))
-				$btn.Foreground = $bc.ConvertFromString($theme.HeaderBg)
-				$btn.FontWeight = [System.Windows.FontWeights]::SemiBold
-			}
-			elseif ($label -eq $DestructiveButton)
-			{
-				$bd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($theme.DestructiveBg))
-				$btn.Foreground = $bc.ConvertFromString('#FFFFFF')
-				$btn.FontWeight = [System.Windows.FontWeights]::SemiBold
-			}
-			else
-			{
-				$bd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($theme.TabBg))
-				$bd.SetValue([System.Windows.Controls.Border]::BorderBrushProperty, $bc.ConvertFromString($theme.BorderColor))
-				$bd.SetValue([System.Windows.Controls.Border]::BorderThicknessProperty, [System.Windows.Thickness]::new(1))
-				$btn.Foreground = $bc.ConvertFromString($theme.TextPrimary)
-			}
-
-			$btnLabel = $label
-			$dlgRef = $dlg
-			$resRef = $resultRef
-			$btn.Add_Click({
-				$resRef.Value = $btnLabel
-				$dlgRef.Close()
-			}.GetNewClosure())
-
-			$btnPanel.Children.Add($btn) | Out-Null
+		$sections = [ordered]@{
+			'Getting Started' = @(
+				'The GUI opens with all tweaks unselected.'
+				'Select tweaks manually or click a preset button to populate the current selection.'
+				'Preset buttons do not run anything by themselves.'
+			)
+			'Presets' = @(
+				'Minimal, Safe, Balanced, and Aggressive load selections from their matching preset files.'
+				'Clicking a preset replaces any previously loaded preset selection - selections do not stack.'
+				'Presets only update the GUI selection. They do not execute changes.'
+				'Run Tweaks applies the current GUI selection.'
+			)
+			'Preview Run' = @(
+				'Preview Run shows what would execute from the current selection without applying any changes.'
+			)
+			'Run Tweaks' = @(
+				'Run Tweaks executes only the items currently selected in the GUI.'
+				'Expected result states per tweak: Success, Failed, Skipped, Already Applied.'
+			)
+			'Risk Levels' = @(
+				'Low Risk: generally safe usability and quality-of-life changes.'
+				'Medium Risk: may affect behavior, compatibility, networking, or security posture.'
+				'High Risk: may reduce compatibility, disable features, or be difficult to reverse.'
+				'Restart Required badge: the tweak requires a system restart to take full effect.'
+			)
+			'Restore to Windows Defaults' = @(
+				'Restores supported default values only.'
+				'Does not guarantee that every previous change can be undone.'
+				'Some destructive or one-way actions are not fully restorable.'
+			)
+			'Advanced Mode' = @(
+				'Advanced Mode reveals high-risk and advanced tweaks hidden by default.'
+				'Use it only if you understand the impact of the settings being changed.'
+			)
+			'System Scan' = @(
+				'System Scan checks the current system state and refreshes supported tweak states in the GUI.'
+			)
+			'Import / Export / Session Restore' = @(
+				'Export Settings saves the current GUI selection to a file.'
+				'Import Settings restores a saved selection into the GUI for review before execution.'
+				'Restore Snapshot restores the last captured GUI state only. It does not execute tweaks.'
+			)
+			'Logs and Troubleshooting' = @(
+				'Open Log opens the current session log for troubleshooting.'
+				'If a preset line cannot be matched to a tweak it will be reported in the log.'
+				'If a tweak fails, review the log and the execution summary for details.'
+			)
 		}
 
-		$btnBorder.Child = $btnPanel
-		$outerStack.Children.Add($btnBorder) | Out-Null
-		$dlg.Content = $outerStack
+		[xml]$xaml = @"
+<Window
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	Title="Help"
+	Width="580" Height="620"
+	MinWidth="420" MinHeight="400"
+	WindowStartupLocation="CenterOwner"
+	ResizeMode="CanResize"
+	Background="$($theme.WindowBg)"
+	BorderBrush="$($theme.BorderColor)"
+	BorderThickness="1">
+	<Window.Resources>
+		<Style TargetType="ScrollBar">
+			<Setter Property="Background" Value="$($theme.ScrollBg)"/>
+			<Setter Property="Width" Value="6"/>
+		</Style>
+	</Window.Resources>
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
+
+		<Border Grid.Row="0" Background="$($theme.HeaderBg)"
+				BorderBrush="$($theme.BorderColor)" BorderThickness="0,0,0,1"
+				Padding="20,14,20,14">
+			<StackPanel>
+				<TextBlock Text="Help" FontSize="16" FontWeight="SemiBold"
+						   Foreground="$($theme.TextPrimary)"/>
+				<TextBlock Text="Win10_11Util - usage guide"
+						   FontSize="12" Foreground="$($theme.TextMuted)" Margin="0,2,0,0"/>
+			</StackPanel>
+		</Border>
+
+		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+					  HorizontalScrollBarVisibility="Disabled"
+					  Padding="0,0,4,0">
+			<StackPanel Name="ContentPanel" Margin="20,16,20,16"/>
+		</ScrollViewer>
+
+		<Border Grid.Row="2" Background="$($theme.HeaderBg)"
+				BorderBrush="$($theme.BorderColor)" BorderThickness="0,1,0,0"
+				Padding="20,10,20,10">
+			<Grid>
+				<Button Name="BtnClose" Content="Close"
+						HorizontalAlignment="Right"
+						Padding="20,6" FontSize="13"/>
+			</Grid>
+		</Border>
+	</Grid>
+</Window>
+"@
+
+		$reader = [System.Xml.XmlNodeReader]::new($xaml)
+		$dlg = [Windows.Markup.XamlReader]::Load($reader)
+		$dlg.Owner = $Form
+
+		$panel = $dlg.FindName('ContentPanel')
+		$btnClose = $dlg.FindName('BtnClose')
+
+		Set-ButtonChrome -Button $btnClose -Variant 'Primary' -Compact
+
+		foreach ($sectionTitle in $sections.Keys)
+		{
+			$heading = [System.Windows.Controls.TextBlock]::new()
+			$heading.Text = $sectionTitle
+			$heading.FontSize = 12
+			$heading.FontWeight = [System.Windows.FontWeights]::SemiBold
+			$heading.Foreground = $bc.ConvertFromString($theme.AccentBlue)
+			$heading.Margin = [System.Windows.Thickness]::new(0, 12, 0, 4)
+			$panel.Children.Add($heading) | Out-Null
+
+			$sep = [System.Windows.Controls.Separator]::new()
+			$sep.Background = $bc.ConvertFromString($theme.BorderColor)
+			$sep.Margin = [System.Windows.Thickness]::new(0, 0, 0, 6)
+			$panel.Children.Add($sep) | Out-Null
+
+			foreach ($line in $sections[$sectionTitle])
+			{
+				$row = [System.Windows.Controls.Grid]::new()
+				$col1 = [System.Windows.Controls.ColumnDefinition]::new()
+				$col1.Width = [System.Windows.GridLength]::new(14)
+				$col2 = [System.Windows.Controls.ColumnDefinition]::new()
+				$col2.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+				$row.ColumnDefinitions.Add($col1) | Out-Null
+				$row.ColumnDefinitions.Add($col2) | Out-Null
+				$row.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4)
+
+				$bullet = [System.Windows.Controls.TextBlock]::new()
+				$bullet.Text = [char]0x2022
+				$bullet.FontSize = 12
+				$bullet.Foreground = $bc.ConvertFromString($theme.TextMuted)
+				$bullet.VerticalAlignment = [System.Windows.VerticalAlignment]::Top
+				[System.Windows.Controls.Grid]::SetColumn($bullet, 0)
+
+				$text = [System.Windows.Controls.TextBlock]::new()
+				$text.Text = $line
+				$text.FontSize = 12
+				$text.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+				$text.TextWrapping = [System.Windows.TextWrapping]::Wrap
+				[System.Windows.Controls.Grid]::SetColumn($text, 1)
+
+				$row.Children.Add($bullet) | Out-Null
+				$row.Children.Add($text) | Out-Null
+				$panel.Children.Add($row) | Out-Null
+			}
+		}
+
+		$btnClose.Add_Click({ $dlg.Close() })
+		$dlg.Add_KeyDown({
+			param($s, $e)
+			if ($e.Key -eq [System.Windows.Input.Key]::Escape) { $dlg.Close() }
+		})
 
 		$dlg.ShowDialog() | Out-Null
+	}
 
-		return $resultRef.Value
+	function Show-LogDialog
+	{
+		param([string]$LogPath)
+
+		$theme = $Script:CurrentTheme
+		$bc = [System.Windows.Media.BrushConverter]::new()
+
+		[xml]$xaml = @"
+<Window
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	Title="Log Viewer"
+	Width="780" Height="640"
+	MinWidth="500" MinHeight="300"
+	WindowStartupLocation="CenterOwner"
+	ResizeMode="CanResize"
+	Background="$($theme.WindowBg)"
+	BorderBrush="$($theme.BorderColor)"
+	BorderThickness="1">
+	<Window.Resources>
+		<Style TargetType="ScrollBar">
+			<Setter Property="Background" Value="$($theme.ScrollBg)"/>
+			<Setter Property="Width" Value="6"/>
+		</Style>
+	</Window.Resources>
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
+
+		<Border Grid.Row="0" Background="$($theme.HeaderBg)"
+				BorderBrush="$($theme.BorderColor)" BorderThickness="0,0,0,1"
+				Padding="20,14,20,14">
+			<Grid>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="Auto"/>
+				</Grid.ColumnDefinitions>
+				<StackPanel Grid.Column="0">
+					<TextBlock Text="Log Viewer" FontSize="16" FontWeight="SemiBold"
+							   Foreground="$($theme.TextPrimary)"/>
+					<TextBlock Name="TxtLogPath" FontSize="11"
+							   Foreground="$($theme.TextMuted)" Margin="0,2,0,0"
+							   TextTrimming="CharacterEllipsis"/>
+				</StackPanel>
+				<StackPanel Grid.Column="1" Orientation="Horizontal"
+							VerticalAlignment="Center" HorizontalAlignment="Right">
+					<Button Name="BtnRefresh" Content="Refresh" Margin="0,0,8,0"
+							Padding="12,5" FontSize="12"/>
+					<Button Name="BtnOpenExternal" Content="Open in Notepad"
+							Padding="12,5" FontSize="12"/>
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<ScrollViewer Name="LogScroll" Grid.Row="1"
+					  VerticalScrollBarVisibility="Auto"
+					  HorizontalScrollBarVisibility="Auto"
+					  Background="$($theme.SearchBg)"
+					  Padding="0,0,4,0">
+			<StackPanel Name="LogPanel" Margin="16,12,16,12"/>
+		</ScrollViewer>
+
+		<Border Grid.Row="2" Background="$($theme.HeaderBg)"
+				BorderBrush="$($theme.BorderColor)" BorderThickness="0,1,0,0"
+				Padding="20,10,20,10">
+			<Grid>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="Auto"/>
+				</Grid.ColumnDefinitions>
+				<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+					<Ellipse Width="8" Height="8" Fill="$($theme.LowRiskBadge)" Margin="0,0,5,0"/>
+					<TextBlock Text="success" FontSize="11" Foreground="$($theme.TextMuted)" Margin="0,0,14,0"/>
+					<Ellipse Width="8" Height="8" Fill="$($theme.RiskHighBadge)" Margin="0,0,5,0"/>
+					<TextBlock Text="failed" FontSize="11" Foreground="$($theme.TextMuted)" Margin="0,0,14,0"/>
+					<Ellipse Width="8" Height="8" Fill="$($theme.RiskMediumBadge)" Margin="0,0,5,0"/>
+					<TextBlock Text="skipped / warning" FontSize="11" Foreground="$($theme.TextMuted)" Margin="0,0,14,0"/>
+					<Ellipse Width="8" Height="8" Fill="$($theme.TextMuted)" Margin="0,0,5,0"/>
+					<TextBlock Text="info" FontSize="11" Foreground="$($theme.TextMuted)"/>
+				</StackPanel>
+				<Button Name="BtnClose" Grid.Column="1" Content="Close"
+						Padding="20,6" FontSize="13"/>
+			</Grid>
+		</Border>
+	</Grid>
+</Window>
+"@
+
+		$reader = [System.Xml.XmlNodeReader]::new($xaml)
+		$dlg = [Windows.Markup.XamlReader]::Load($reader)
+		$dlg.Owner = $Form
+
+		$logPanel = $dlg.FindName('LogPanel')
+		$logScroll = $dlg.FindName('LogScroll')
+		$txtLogPath = $dlg.FindName('TxtLogPath')
+		$btnClose = $dlg.FindName('BtnClose')
+		$btnRefresh = $dlg.FindName('BtnRefresh')
+		$btnExternal = $dlg.FindName('BtnOpenExternal')
+
+		Set-ButtonChrome -Button $btnClose -Variant 'Primary' -Compact
+		Set-ButtonChrome -Button $btnRefresh -Variant 'Subtle' -Compact -Muted
+		Set-ButtonChrome -Button $btnExternal -Variant 'Subtle' -Compact -Muted
+
+		$txtLogPath.Text = $LogPath
+
+		$colorRules = @(
+			@{ Pattern = '- success[!]?$';          Color = $theme.LowRiskBadge    }
+			@{ Pattern = '- failed[!]?$';           Color = $theme.RiskHighBadge   }
+			@{ Pattern = '- skipped[.]?$';          Color = $theme.RiskMediumBadge }
+			@{ Pattern = '- already applied[.]?$';  Color = $theme.AccentBlue      }
+			@{ Pattern = '\bERROR\b|\bFAIL\b';      Color = $theme.RiskHighBadge   }
+			@{ Pattern = '\bWARN\b|\bWARNING\b';    Color = $theme.RiskMediumBadge }
+			@{ Pattern = '^={3}';                   Color = $theme.AccentBlue      }
+		)
+
+		$loadLogContent = {
+			$logPanel.Children.Clear()
+
+			if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath -ErrorAction SilentlyContinue))
+			{
+				$tb = [System.Windows.Controls.TextBlock]::new()
+				$tb.Text = "Log file not found:`n$LogPath"
+				$tb.FontSize = 12
+				$tb.Foreground = $bc.ConvertFromString($theme.RiskHighBadge)
+				$tb.Margin = [System.Windows.Thickness]::new(0, 4, 0, 4)
+				$logPanel.Children.Add($tb) | Out-Null
+				return
+			}
+
+			try
+			{
+				$lines = [System.IO.File]::ReadAllLines($LogPath)
+			}
+			catch
+			{
+				$tb = [System.Windows.Controls.TextBlock]::new()
+				$tb.Text = "Failed to read log file: $($_.Exception.Message)"
+				$tb.FontSize = 12
+				$tb.Foreground = $bc.ConvertFromString($theme.RiskHighBadge)
+				$tb.Margin = [System.Windows.Thickness]::new(0, 4, 0, 4)
+				$logPanel.Children.Add($tb) | Out-Null
+				return
+			}
+
+			foreach ($line in $lines)
+			{
+				$color = $theme.TextSecondary
+				foreach ($rule in $colorRules)
+				{
+					if ($line -match $rule.Pattern)
+					{
+						$color = $rule.Color
+						break
+					}
+				}
+
+				$tb = [System.Windows.Controls.TextBlock]::new()
+				$tb.Text = $line
+				$tb.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas, Courier New')
+				$tb.FontSize = 11
+				$tb.Foreground = $bc.ConvertFromString($color)
+				$tb.TextWrapping = [System.Windows.TextWrapping]::NoWrap
+				$tb.Margin = [System.Windows.Thickness]::new(0, 1, 0, 1)
+				$logPanel.Children.Add($tb) | Out-Null
+			}
+
+			$logScroll.ScrollToEnd()
+		}.GetNewClosure()
+
+		& $loadLogContent
+
+		$btnClose.Add_Click({ $dlg.Close() })
+		$btnRefresh.Add_Click({
+			& $loadLogContent
+			$txtLogPath.Text = $LogPath
+		}.GetNewClosure())
+		$btnExternal.Add_Click({
+			if ($LogPath -and (Test-Path -LiteralPath $LogPath -ErrorAction SilentlyContinue))
+			{
+				Start-Process -FilePath 'notepad.exe' -ArgumentList $LogPath -ErrorAction SilentlyContinue
+			}
+		}.GetNewClosure())
+		$dlg.Add_KeyDown({
+			param($s, $e)
+			if ($e.Key -eq [System.Windows.Input.Key]::Escape) { $dlg.Close() }
+		})
+
+		$dlg.ShowDialog() | Out-Null
 	}
 	#endregion Themed Dialog
+
+	# 980x640 keeps the header actions, filter row, primary tabs, and bottom
+	# action strip readable without controls crowding into each other.
+	$guiWindowMinWidth = 980
+	$guiWindowMinHeight = 640
 
 	#region XAML template
 	[xml]$XAML = @"
@@ -667,8 +1605,8 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	Name="MainWindow"
-	Title="WinUtil &#x2014; Windows Optimization &amp; Hardening"
-	MinWidth="820" MinHeight="560"
+	Title="WinUtil - Windows Optimization &amp; Hardening"
+	MinWidth="$guiWindowMinWidth" MinHeight="$guiWindowMinHeight"
 	WindowStartupLocation="CenterScreen"
 	FontFamily="Segoe UI" FontSize="13"
 	ShowInTaskbar="True">
@@ -682,24 +1620,58 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		<!-- Header -->
 		<Border Name="HeaderBorder" Grid.Row="0" Padding="16,10">
 			<Grid>
-				<Grid.ColumnDefinitions>
-					<ColumnDefinition Width="*"/>
-					<ColumnDefinition Width="Auto"/>
-					<ColumnDefinition Width="Auto"/>
-					<ColumnDefinition Width="Auto"/>
-				</Grid.ColumnDefinitions>
-				<TextBlock Name="TitleText" Grid.Column="0"
-					FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
-				<Button Name="BtnLog" Grid.Column="1" Content="Open Log"
-					FontSize="11" Margin="0,0,12,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
-				<StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed">
-					<TextBlock Text="System Scan" VerticalAlignment="Center" Margin="0,0,6,0"
-						Name="ScanLabel" FontSize="11"/>
-					<CheckBox Name="ChkScan" VerticalAlignment="Center"/>
-				</StackPanel>
-				<StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-					<CheckBox Name="ChkTheme" VerticalAlignment="Center" Content="Light Mode"/>
-				</StackPanel>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"/>
+					<RowDefinition Height="Auto"/>
+					<RowDefinition Height="Auto"/>
+				</Grid.RowDefinitions>
+				<Grid Grid.Row="0">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="Auto"/>
+					</Grid.ColumnDefinitions>
+					<TextBlock Name="TitleText" Grid.Column="0"
+						FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+					<Button Name="BtnHelp" Grid.Column="1" Content="Help"
+						FontSize="11" Margin="0,0,12,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
+					<Button Name="BtnLog" Grid.Column="2" Content="Open Log"
+						FontSize="11" Margin="0,0,12,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
+					<StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed">
+						<TextBlock Text="System Scan" VerticalAlignment="Center" Margin="0,0,6,0"
+							Name="ScanLabel" FontSize="11"/>
+						<CheckBox Name="ChkScan" VerticalAlignment="Center"/>
+					</StackPanel>
+					<StackPanel Grid.Column="4" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center">
+						<CheckBox Name="ChkAdvancedMode" VerticalAlignment="Center" Content="Advanced Mode"/>
+					</StackPanel>
+					<StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+						<CheckBox Name="ChkTheme" VerticalAlignment="Center" Content="Light Mode"/>
+					</StackPanel>
+				</Grid>
+				<Grid Grid.Row="1" Margin="0,10,0,0">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="Auto"/>
+					</Grid.ColumnDefinitions>
+					<TextBlock Name="SearchLabel" Grid.Column="0" Text="Quick Filter" Margin="0,0,10,0" VerticalAlignment="Center" FontSize="11"/>
+					<Grid Grid.Column="1" Margin="0,0,8,0">
+						<TextBox Name="TxtSearch" Height="30" Padding="10,4" VerticalContentAlignment="Center"/>
+						<TextBlock Name="TxtSearchPlaceholder" Text="Filter by name, tag, or category..."
+							Margin="12,0,36,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+					</Grid>
+					<Button Name="BtnClearSearch" Grid.Column="2" Content="Clear" FontSize="11" Padding="12,4" Cursor="Hand" Height="30"/>
+				</Grid>
+				<WrapPanel Grid.Row="2" Margin="0,8,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+					<TextBlock Name="RiskFilterLabel" Text="Risk" Margin="0,0,10,0" VerticalAlignment="Center" FontSize="11"/>
+					<ComboBox Name="CmbRiskFilter" Width="138" Height="30" Margin="0,0,16,0" VerticalContentAlignment="Center"/>
+					<TextBlock Name="CategoryFilterLabel" Text="Category" Margin="0,0,10,0" VerticalAlignment="Center" FontSize="11"/>
+					<ComboBox Name="CmbCategoryFilter" Width="220" Height="30" VerticalContentAlignment="Center"/>
+				</WrapPanel>
 			</Grid>
 		</Border>
 		<!-- Primary tab bar -->
@@ -718,12 +1690,19 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 					<ColumnDefinition Width="*"/>
 					<ColumnDefinition Width="Auto"/>
 				</Grid.ColumnDefinitions>
-				<Button Name="BtnDefaults" Grid.Column="0" Content="Restore to Windows Defaults"
-					FontSize="13" Margin="4" Padding="16,8" Cursor="Hand"/>
+				<WrapPanel Name="ActionButtonBar" Grid.Column="0" Margin="0,0,8,0"
+					VerticalAlignment="Center" HorizontalAlignment="Left">
+					<Button Name="BtnDefaults" Content="Restore to Windows Defaults"
+						FontSize="13" Margin="4" Padding="16,8" Cursor="Hand"/>
+				</WrapPanel>
 				<TextBlock Name="StatusText" Grid.Column="1" VerticalAlignment="Center"
 					FontSize="12" Margin="8,0" TextWrapping="Wrap"/>
-				<Button Name="BtnRun" Grid.Column="2" Content="Run Tweaks"
-					FontSize="13" Margin="4" Padding="20,8" Cursor="Hand" FontWeight="SemiBold"/>
+				<StackPanel Name="BottomActionBar" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+					<Button Name="BtnPreviewRun" Content="Preview Run"
+						FontSize="12" Margin="4" Padding="16,10" Cursor="Hand" FontWeight="SemiBold"/>
+					<Button Name="BtnRun" Content="Run Tweaks"
+						FontSize="14" Margin="4" Padding="24,10" Cursor="Hand" FontWeight="Bold"/>
+				</StackPanel>
 			</Grid>
 		</Border>
 	</Grid>
@@ -731,7 +1710,8 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 "@
 	#endregion XAML template
 
-	$Form = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $XAML))
+	$Form = [System.Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $XAML))
+	$Script:MainForm = $Form
 
 	# Size the window to 85% of the screen working area so it fits any resolution
 	# without being full-screen. Falls back to safe defaults if the call fails.
@@ -740,13 +1720,17 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		$workArea = [System.Windows.SystemParameters]::WorkArea
 		$targetW  = [Math]::Round($workArea.Width  * 0.85)
 		$targetH  = [Math]::Round($workArea.Height * 0.85)
-		$Form.Width  = [Math]::Max($targetW, 820)
-		$Form.Height = [Math]::Max($targetH, 560)
+		$Form.MinWidth = $guiWindowMinWidth
+		$Form.MinHeight = $guiWindowMinHeight
+		$Form.Width  = [Math]::Max($targetW, $guiWindowMinWidth)
+		$Form.Height = [Math]::Max($targetH, $guiWindowMinHeight)
 	}
 	catch
 	{
-		$Form.Width  = 1100
-		$Form.Height = 720
+		$Form.MinWidth = $guiWindowMinWidth
+		$Form.MinHeight = $guiWindowMinHeight
+		$Form.Width  = [Math]::Max(1100, $guiWindowMinWidth)
+		$Form.Height = [Math]::Max(720, $guiWindowMinHeight)
 	}
 	$HeaderBorder  = $Form.FindName("HeaderBorder")
 	$TitleText     = $Form.FindName("TitleText")
@@ -755,12 +1739,27 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	$ContentScroll = $Form.FindName("ContentScroll")
 	$BottomBorder  = $Form.FindName("BottomBorder")
 	$StatusText    = $Form.FindName("StatusText")
+	$ActionButtonBar = $Form.FindName("ActionButtonBar")
+	$BtnPreviewRun = $Form.FindName("BtnPreviewRun")
 	$BtnRun        = $Form.FindName("BtnRun")
 	$BtnDefaults   = $Form.FindName("BtnDefaults")
+	$BtnExportSettings = $null
+	$BtnImportSettings = $null
+	$BtnRestoreSnapshot = $null
 	$ChkTheme      = $Form.FindName("ChkTheme")
+	$ChkAdvancedMode = $Form.FindName("ChkAdvancedMode")
+	$BtnHelp       = $Form.FindName("BtnHelp")
 	$BtnLog        = $Form.FindName("BtnLog")
 	$ChkScan       = $Form.FindName("ChkScan")
 	$ScanLabel     = $Form.FindName("ScanLabel")
+	$SearchLabel   = $Form.FindName("SearchLabel")
+	$TxtSearch     = $Form.FindName("TxtSearch")
+	$TxtSearchPlaceholder = $Form.FindName("TxtSearchPlaceholder")
+	$BtnClearSearch = $Form.FindName("BtnClearSearch")
+	$RiskFilterLabel = $Form.FindName("RiskFilterLabel")
+	$CategoryFilterLabel = $Form.FindName("CategoryFilterLabel")
+	$CmbRiskFilter = $Form.FindName("CmbRiskFilter")
+	$CmbCategoryFilter = $Form.FindName("CmbCategoryFilter")
 	$Script:ExecutionLogBox = $null
 	$Script:ExecutionPreviousContent = $null
 	$Script:ExecutionLastConsoleAction = $null
@@ -771,18 +1770,1206 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	$Script:ExecutionSubProgressText = $null
 	$Script:AbortRunButton = $null
 	$Script:AbortRequested = $false
+	$Script:ExecutionWorker = $null
+	$Script:ExecutionRunspace = $null
+	$Script:ExecutionRunPowerShell = $null
+		$Script:ExecutionRunTimer = $null
+		$Script:RunAbortDisposition = $null
+		$Script:ExecutionMode = $null
+		$Script:SuppressRunClosePrompt = $false
+		$Script:ExecutionTimerErrorShown = $false
+	$Script:AbortDialogShowing = $false
+	$Script:BgPS = $null
+	$Script:BgAsync = $null
+	$Script:SearchText = ''
+	$Script:SearchResultsTabTag = '__SEARCH_RESULTS__'
+	$Script:LastStandardPrimaryTab = $null
+	$Script:TabScrollOffsets = @{}
+	$Script:CurrentThemeName = 'Dark'
+	$Script:UiSnapshotUndo = $null
+	$Script:PresetStatusMessage = $null
+	$Script:PresetStatusTone = 'info'
+	$Script:PresetStatusBadge = $null
+	$Script:SecondaryActionGroupBorder = $null
+	$Script:GuiUnhandledExceptionHooked = $false
+	$Script:GuiUnhandledExceptionHandler = $null
+	$Script:ExplicitPresetSelections = [System.Collections.Generic.HashSet[string]]::new(
+		[System.StringComparer]::OrdinalIgnoreCase
+	)
+
+	if (-not $Script:GuiUnhandledExceptionHooked -and $Form -and $Form.Dispatcher)
+	{
+		$Script:GuiUnhandledExceptionHandler = [System.Windows.Threading.DispatcherUnhandledExceptionEventHandler]{
+			param($unusedSender, $e)
+
+			try
+			{
+				$showGuiRuntimeFailureScript = $Script:ShowGuiRuntimeFailureScript
+				if ($showGuiRuntimeFailureScript)
+				{
+					$null = & $showGuiRuntimeFailureScript -Context 'WPF Dispatcher' -Exception $e.Exception -ShowDialog
+				}
+				else
+				{
+					Write-Warning ("GUI event failed [WPF Dispatcher]: {0}" -f $e.Exception.Message)
+				}
+			}
+			catch
+			{
+				$null = $_
+			}
+
+			$e.Handled = $true
+		}
+
+		try
+		{
+			$Form.Dispatcher.add_UnhandledException($Script:GuiUnhandledExceptionHandler)
+			$Script:GuiUnhandledExceptionHooked = $true
+		}
+		catch
+		{
+			$null = $_
+		}
+	}
+	$Script:RiskFilter = 'All'
+	$Script:CategoryFilter = 'All'
+	$Script:AdvancedMode = $false
+	$Script:FilterUiUpdating = $false
+	$Script:ExecutionSummaryRecords = @()
+	$Script:ExecutionSummaryLookup = @{}
+	$Script:ExecutionCurrentSummaryKey = $null
+	$Script:GuiDisplayVersion = Get-WinUtilDisplayVersion
 
 	# Set the window title to include OS name
-	try { $Form.Title = "WinUtil Script for $((Get-OSInfo).OSName)" } catch { $null = $_ }
+	try
+	{
+		$formTitle = "WinUtil Script for $((Get-OSInfo).OSName)"
+		if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiDisplayVersion))
+		{
+			$formTitle = "{0} {1}" -f $formTitle, $Script:GuiDisplayVersion
+		}
+		$Form.Title = $formTitle
+	}
+	catch { $null = $_ }
 	$TitleText.Text = $Form.Title
 
-	#region Helper: Apply theme
-	function Set-GUITheme
+	function Update-PrimaryTabVisuals
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-		param ([hashtable]$Theme)
-		$Script:CurrentTheme = $Theme
-		$bc = [System.Windows.Media.BrushConverter]::new()
+		param ()
+		$bc = New-SafeBrushConverter -Context 'Update-PrimaryTabVisuals'
+		foreach ($tab in $PrimaryTabs.Items)
+		{
+			if (-not ($tab -is [System.Windows.Controls.TabItem])) { continue }
+			$tab.BorderThickness = [System.Windows.Thickness]::new(0, 0, 0, 1)
+			$tab.Padding = [System.Windows.Thickness]::new(14, 7, 14, 7)
+			if ($tab -eq $PrimaryTabs.SelectedItem)
+			{
+				$tab.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+				$tab.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+				$tab.FontWeight = [System.Windows.FontWeights]::Bold
+				$tab.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.ActiveTabBorder)
+				$tab.BorderThickness = [System.Windows.Thickness]::new(0, 0, 0, 4)
+			}
+			else
+			{
+				$tab.Background = $bc.ConvertFromString($Script:CurrentTheme.TabBg)
+				$tab.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+				$tab.FontWeight = [System.Windows.FontWeights]::Normal
+				$tab.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.BorderColor)
+			}
+		}
+	}
+
+	function Add-PrimaryTabHoverEffects
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([System.Windows.Controls.TabItem]$Tab)
+		if (-not $Tab) { return }
+		$setGuiControlPropertyScript = ${function:Set-GuiControlProperty}
+		$invokeGuiSafeActionScript = ${function:Invoke-GuiSafeAction}
+		$newSafeBrushConverterScript = ${function:New-SafeBrushConverter}
+		$updatePrimaryTabVisualsScript = ${function:Update-PrimaryTabVisuals}
+
+		$mouseEnterHandler = {
+			if ($Tab -eq $PrimaryTabs.SelectedItem) { return }
+			$bc = & $newSafeBrushConverterScript -Context 'Add-PrimaryTabHoverEffects/MouseEnter'
+
+			$hoverBgColor = if ($Script:CurrentTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:CurrentTheme.TabHoverBg)) { [string]$Script:CurrentTheme.TabHoverBg } else { '#3B455E' }
+			$textPrimaryColor = if ($Script:CurrentTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:CurrentTheme.TextPrimary)) { [string]$Script:CurrentTheme.TextPrimary } else { '#CDD6F4' }
+			$focusRingColor = if ($Script:CurrentTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:CurrentTheme.FocusRing)) { [string]$Script:CurrentTheme.FocusRing } else { '#C9DEFF' }
+
+			& $setGuiControlPropertyScript -Control $Tab -PropertyName 'Background' -Value ($bc.ConvertFromString($hoverBgColor)) -Context 'Add-PrimaryTabHoverEffects/MouseEnter/Background' | Out-Null
+			& $setGuiControlPropertyScript -Control $Tab -PropertyName 'Foreground' -Value ($bc.ConvertFromString($textPrimaryColor)) -Context 'Add-PrimaryTabHoverEffects/MouseEnter/Foreground' | Out-Null
+			& $setGuiControlPropertyScript -Control $Tab -PropertyName 'BorderBrush' -Value ($bc.ConvertFromString($focusRingColor)) -Context 'Add-PrimaryTabHoverEffects/MouseEnter/BorderBrush' | Out-Null
+		}.GetNewClosure()
+		$Tab.Add_MouseEnter({
+			& $invokeGuiSafeActionScript -Context 'Add-PrimaryTabHoverEffects/MouseEnter' -Action $mouseEnterHandler
+		}.GetNewClosure())
+
+		$refreshTabVisualsHandler = {
+			& $updatePrimaryTabVisualsScript
+		}.GetNewClosure()
+		$Tab.Add_MouseLeave({
+			& $invokeGuiSafeActionScript -Context 'Add-PrimaryTabHoverEffects/MouseLeave' -Action $refreshTabVisualsHandler
+		}.GetNewClosure())
+
+		$gotFocusHandler = {
+			if ($Tab -eq $PrimaryTabs.SelectedItem) { return }
+			$bc = & $newSafeBrushConverterScript -Context 'Add-PrimaryTabHoverEffects/GotFocus'
+			$focusRingColor = if ($Script:CurrentTheme -and -not [string]::IsNullOrWhiteSpace([string]$Script:CurrentTheme.FocusRing)) { [string]$Script:CurrentTheme.FocusRing } else { '#C9DEFF' }
+			& $setGuiControlPropertyScript -Control $Tab -PropertyName 'BorderBrush' -Value ($bc.ConvertFromString($focusRingColor)) -Context 'Add-PrimaryTabHoverEffects/GotFocus/BorderBrush' | Out-Null
+			& $setGuiControlPropertyScript -Control $Tab -PropertyName 'BorderThickness' -Value (New-SafeThickness -Bottom 3) -Context 'Add-PrimaryTabHoverEffects/GotFocus/BorderThickness' | Out-Null
+		}.GetNewClosure()
+		$Tab.Add_GotKeyboardFocus({
+			& $invokeGuiSafeActionScript -Context 'Add-PrimaryTabHoverEffects/GotFocus' -Action $gotFocusHandler
+		}.GetNewClosure())
+
+		$Tab.Add_LostKeyboardFocus({
+			& $invokeGuiSafeActionScript -Context 'Add-PrimaryTabHoverEffects/LostFocus' -Action $refreshTabVisualsHandler
+		}.GetNewClosure())
+	}
+
+	function Get-PrimaryTabItem
+	{
+		param ([string]$Tag)
+		foreach ($tab in $PrimaryTabs.Items)
+		{
+			if (($tab -is [System.Windows.Controls.TabItem]) -and ([string]$tab.Tag -eq $Tag))
+			{
+				return $tab
+			}
+		}
+		return $null
+	}
+
+	function Initialize-SearchResultsTab
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		$searchTab = Get-PrimaryTabItem -Tag $Script:SearchResultsTabTag
+		if ($searchTab) { return $searchTab }
+
+		$bc = New-SafeBrushConverter -Context 'Initialize-SearchResultsTab'
+		$searchTab = New-Object System.Windows.Controls.TabItem
+		$searchTab.Header = 'Search Results'
+		$searchTab.Tag = $Script:SearchResultsTabTag
+		$searchTab.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+		$searchTab.Background = $bc.ConvertFromString($Script:CurrentTheme.TabBg)
+		$searchTab.Padding = [System.Windows.Thickness]::new(12, 6, 12, 6)
+		$PrimaryTabs.Items.Add($searchTab) | Out-Null
+		Add-PrimaryTabHoverEffects -Tab $searchTab
+		Update-PrimaryTabVisuals
+		return $searchTab
+	}
+
+	function Remove-SearchResultsTab
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		$searchTab = Get-PrimaryTabItem -Tag $Script:SearchResultsTabTag
+		if ($searchTab)
+		{
+			$PrimaryTabs.Items.Remove($searchTab)
+			Update-PrimaryTabVisuals
+		}
+	}
+
+	function Update-SearchResultsTabState
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		$searchQuery = if ($null -eq $Script:SearchText) { '' } else { $Script:SearchText.Trim() }
+		if (-not [string]::IsNullOrWhiteSpace($searchQuery))
+		{
+			$selectedTag = if ($PrimaryTabs.SelectedItem -and $PrimaryTabs.SelectedItem.Tag) { [string]$PrimaryTabs.SelectedItem.Tag } else { $null }
+			if ($selectedTag -and $selectedTag -ne $Script:SearchResultsTabTag)
+			{
+				$Script:LastStandardPrimaryTab = $selectedTag
+			}
+
+			$searchTab = Initialize-SearchResultsTab
+			if ($PrimaryTabs.SelectedItem -ne $searchTab)
+			{
+				$PrimaryTabs.SelectedItem = $searchTab
+				return
+			}
+
+			if ($Script:CurrentPrimaryTab)
+			{
+				Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
+			}
+			return
+		}
+
+		$searchTab = Get-PrimaryTabItem -Tag $Script:SearchResultsTabTag
+		$wasSearchTabSelected = $false
+		if ($searchTab)
+		{
+			$wasSearchTabSelected = ($PrimaryTabs.SelectedItem -eq $searchTab)
+			Remove-SearchResultsTab
+		}
+
+		if ($wasSearchTabSelected -or $Script:CurrentPrimaryTab -eq $Script:SearchResultsTabTag)
+		{
+			$restoreTag = $Script:LastStandardPrimaryTab
+			if (-not $restoreTag -or -not (Get-PrimaryTabItem -Tag $restoreTag))
+			{
+				foreach ($tab in $PrimaryTabs.Items)
+				{
+					if (($tab -is [System.Windows.Controls.TabItem]) -and $tab.Tag -and ([string]$tab.Tag -ne $Script:SearchResultsTabTag))
+					{
+						$restoreTag = [string]$tab.Tag
+						break
+					}
+				}
+			}
+
+			$restoreTab = if ($restoreTag) { Get-PrimaryTabItem -Tag $restoreTag } else { $null }
+			if ($restoreTab -and $PrimaryTabs.SelectedItem -ne $restoreTab)
+			{
+				$PrimaryTabs.SelectedItem = $restoreTab
+				return
+			}
+		}
+
+		if ($Script:CurrentPrimaryTab -and $Script:CurrentPrimaryTab -ne $Script:SearchResultsTabTag)
+		{
+			Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
+		}
+	}
+
+	function Set-SearchInputStyle
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		if (-not $TxtSearch) { return }
+		$bc = New-SafeBrushConverter -Context 'Set-SearchInputStyle'
+		$TxtSearch.Background = $bc.ConvertFromString($(if ($TxtSearch.IsKeyboardFocusWithin) { $Script:CurrentTheme.InputHoverBg } else { $Script:CurrentTheme.SearchBg }))
+		$TxtSearch.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+		$TxtSearch.BorderBrush = $bc.ConvertFromString($(if ($TxtSearch.IsKeyboardFocusWithin) { $Script:CurrentTheme.FocusRing } else { $Script:CurrentTheme.SearchBorder }))
+		$TxtSearch.BorderThickness = [System.Windows.Thickness]::new($(if ($TxtSearch.IsKeyboardFocusWithin) { 2 } else { 1 }))
+		$TxtSearch.CaretBrush = $bc.ConvertFromString($Script:CurrentTheme.AccentBlue)
+		$SearchLabel.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		if ($TxtSearchPlaceholder)
+		{
+			$TxtSearchPlaceholder.Foreground = $bc.ConvertFromString($Script:CurrentTheme.SearchPlaceholder)
+			$TxtSearchPlaceholder.Visibility = if ([string]::IsNullOrWhiteSpace($TxtSearch.Text)) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+		}
+		if ($BtnClearSearch)
+		{
+			$BtnClearSearch.Visibility = if ([string]::IsNullOrWhiteSpace($TxtSearch.Text)) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+			Set-ButtonChrome -Button $BtnClearSearch -Variant 'Subtle' -Compact -Muted
+		}
+	}
+
+	function Add-CardHoverEffects
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[System.Windows.Controls.Border]$Card,
+			[object[]]$FocusSources = @()
+		)
+		if (-not $Card) { return }
+		$setGuiControlPropertyCapture = ${function:Set-GuiControlProperty}.GetNewClosure()
+		$invokeGuiSafeActionCapture = ${function:Invoke-GuiSafeAction}.GetNewClosure()
+		$bc = New-SafeBrushConverter -Context 'Add-CardHoverEffects'
+		$defaultBg = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
+		$hoverBg = $bc.ConvertFromString($Script:CurrentTheme.CardHoverBg)
+		$defaultBorder = $bc.ConvertFromString($Script:CurrentTheme.CardBorder)
+		$hoverBorder = $bc.ConvertFromString($Script:CurrentTheme.AccentHover)
+		$focusBorder = $bc.ConvertFromString($Script:CurrentTheme.FocusRing)
+		$updateChrome = {
+			$hasFocus = $false
+			foreach ($focusSource in $FocusSources)
+			{
+				if ($focusSource -and $focusSource.IsKeyboardFocusWithin)
+			{
+					$hasFocus = $true
+					break
+				}
+			}
+			& $setGuiControlPropertyCapture -Control $Card -PropertyName 'Background' -Value ($(if ($Card.IsMouseOver) { $hoverBg } else { $defaultBg })) -Context 'Add-CardHoverEffects/Background' | Out-Null
+			if ($hasFocus)
+			{
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderBrush' -Value $focusBorder -Context 'Add-CardHoverEffects/FocusBorderBrush' | Out-Null
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderThickness' -Value ([System.Windows.Thickness]::new(2)) -Context 'Add-CardHoverEffects/FocusBorderThickness' | Out-Null
+			}
+			elseif ($Card.IsMouseOver)
+			{
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderBrush' -Value $hoverBorder -Context 'Add-CardHoverEffects/HoverBorderBrush' | Out-Null
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderThickness' -Value ([System.Windows.Thickness]::new(1)) -Context 'Add-CardHoverEffects/HoverBorderThickness' | Out-Null
+			}
+			else
+			{
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderBrush' -Value $defaultBorder -Context 'Add-CardHoverEffects/DefaultBorderBrush' | Out-Null
+				& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderThickness' -Value ([System.Windows.Thickness]::new(1)) -Context 'Add-CardHoverEffects/DefaultBorderThickness' | Out-Null
+			}
+		}.GetNewClosure()
+		& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderBrush' -Value $defaultBorder -Context 'Add-CardHoverEffects/InitialBorderBrush' | Out-Null
+		& $setGuiControlPropertyCapture -Control $Card -PropertyName 'BorderThickness' -Value ([System.Windows.Thickness]::new(1)) -Context 'Add-CardHoverEffects/InitialBorderThickness' | Out-Null
+		$shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+		$shadow.Color = [System.Windows.Media.Colors]::Black
+		$shadow.Direction = 270
+		$shadow.ShadowDepth = if ($Script:CurrentTheme -eq $Script:LightTheme) { 2 } else { 1 }
+		$shadow.Opacity = if ($Script:CurrentTheme -eq $Script:LightTheme) { 0.09 } else { 0.18 }
+		$shadow.BlurRadius = if ($Script:CurrentTheme -eq $Script:LightTheme) { 8 } else { 10 }
+		$Card.Effect = $shadow
+		$Card.Cursor = [System.Windows.Input.Cursors]::Hand
+		$Card.Add_MouseEnter({
+			& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/MouseEnter' -Action $updateChrome
+		}.GetNewClosure())
+		$Card.Add_MouseLeave({
+			& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/MouseLeave' -Action $updateChrome
+		}.GetNewClosure())
+		$pressBg = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+		$pressHandler = {
+			& $setGuiControlPropertyCapture -Control $Card -PropertyName 'Background' -Value $pressBg -Context 'Add-CardHoverEffects/MouseDown/Background' | Out-Null
+		}.GetNewClosure()
+		$Card.Add_PreviewMouseLeftButtonDown({
+			& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/MouseDown' -Action $pressHandler
+		}.GetNewClosure())
+		$Card.Add_PreviewMouseLeftButtonUp({
+			& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/MouseUp' -Action $updateChrome
+		}.GetNewClosure())
+		foreach ($focusSource in $FocusSources)
+		{
+			if (-not $focusSource) { continue }
+			$focusSource.Add_GotKeyboardFocus({
+				& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/GotFocus' -Action $updateChrome
+			}.GetNewClosure())
+			$focusSource.Add_LostKeyboardFocus({
+				& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/LostFocus' -Action $updateChrome
+			}.GetNewClosure())
+		}
+		& $invokeGuiSafeActionCapture -Context 'Add-CardHoverEffects/Initialize' -Action $updateChrome
+	}
+
+	function Set-ChoiceComboStyle
+	{
+		param ([System.Windows.Controls.ComboBox]$Combo)
+		if (-not $Combo) { return }
+
+		$theme = $Script:CurrentTheme
+		$bc = New-SafeBrushConverter -Context 'Set-ChoiceComboStyle'
+
+		# Helper to ensure a color is a valid hex string
+		$ensureHexColor = {
+			param($Color, $Default = '#89B4FA')
+			if ([string]::IsNullOrWhiteSpace($Color)) { return $Default }
+			if ($Color -match '^#[0-9A-Fa-f]{6}$|^#[0-9A-Fa-f]{8}$') { return $Color }
+			return $Default
+		}
+
+		$inputBg       = & $ensureHexColor $theme.InputBg       '#313244'
+		$textPrimary   = & $ensureHexColor $theme.TextPrimary   '#CDD6F4'
+		$borderBrush   = & $ensureHexColor $theme.SearchBorder  '#585B70'
+		$hoverBg       = & $ensureHexColor $theme.CardHoverBg   '#323A4E'
+		$activeBg      = & $ensureHexColor $theme.TabActiveBg   '#223B60'
+		$activeBorder  = & $ensureHexColor $theme.ActiveTabBorder '#89B4FA'
+
+		if (-not $Script:ChoiceComboTemplate -or $Script:ChoiceComboTemplateTheme -ne $Script:CurrentThemeName)
+		{
+			$comboTemplateXaml = @"
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type ComboBox}">
+    <Grid SnapsToDevicePixels="True"
+          TextElement.Foreground="{TemplateBinding Foreground}">
+        <Border Background="$inputBg"
+                BorderBrush="$borderBrush"
+                BorderThickness="1"
+                CornerRadius="6"
+                SnapsToDevicePixels="True" />
+
+        <ContentPresenter x:Name="ContentSite"
+                          Margin="{TemplateBinding Padding}"
+                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                          Content="{TemplateBinding SelectionBoxItem}"
+                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                          IsHitTestVisible="False"
+                          RecognizesAccessKey="True"
+                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+
+        <ToggleButton x:Name="ToggleButton"
+                      Focusable="False"
+                      ClickMode="Press"
+                      Background="Transparent"
+                      BorderBrush="Transparent"
+                      BorderThickness="0"
+                      IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
+            <ToggleButton.Template>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </ToggleButton.Template>
+        </ToggleButton>
+
+        <Path HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Margin="0,0,10,0"
+              Data="M 0 0 L 4 4 L 8 0"
+              Stroke="{TemplateBinding Foreground}"
+              StrokeThickness="1.6"
+              StrokeStartLineCap="Round"
+              StrokeEndLineCap="Round"
+              Stretch="Fill"
+              Width="8"
+              Height="4"
+              IsHitTestVisible="False" />
+
+        <Popup x:Name="Popup"
+               Placement="Bottom"
+               AllowsTransparency="True"
+               Focusable="False"
+               IsOpen="{TemplateBinding IsDropDownOpen}"
+               PopupAnimation="Slide"
+               PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+            <Border Width="{Binding PlacementTarget.ActualWidth, RelativeSource={RelativeSource AncestorType={x:Type Popup}}}"
+                    Background="$inputBg"
+                    BorderBrush="$borderBrush"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    SnapsToDevicePixels="True">
+                <ScrollViewer Margin="4,6,4,6"
+                              SnapsToDevicePixels="True">
+                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                </ScrollViewer>
+            </Border>
+        </Popup>
+    </Grid>
+</ControlTemplate>
+"@
+			try {
+				$comboTemplateReader = New-Object System.Xml.XmlNodeReader ([xml]$comboTemplateXaml)
+				$Script:ChoiceComboTemplate = [System.Windows.Markup.XamlReader]::Load($comboTemplateReader)
+				$Script:ChoiceComboTemplateTheme = $Script:CurrentThemeName
+			}
+			catch {
+				# Silently ignore XAML errors – the control will fall back to default style
+				return
+			}
+		}
+
+		# Apply the template and styles (with error swallowing)
+		try {
+			$Combo.Resources[[System.Windows.SystemColors]::WindowBrushKey] = $bc.ConvertFromString($inputBg)
+			$Combo.Resources[[System.Windows.SystemColors]::WindowTextBrushKey] = $bc.ConvertFromString($textPrimary)
+			$Combo.Resources[[System.Windows.SystemColors]::ControlBrushKey] = $bc.ConvertFromString($inputBg)
+			$Combo.Resources[[System.Windows.SystemColors]::ControlTextBrushKey] = $bc.ConvertFromString($textPrimary)
+			$Combo.Resources[[System.Windows.SystemColors]::HighlightBrushKey] = $bc.ConvertFromString($activeBg)
+			$Combo.Resources[[System.Windows.SystemColors]::HighlightTextBrushKey] = $bc.ConvertFromString($textPrimary)
+			$Combo.Resources[[System.Windows.SystemColors]::MenuBrushKey] = $bc.ConvertFromString($inputBg)
+			$Combo.Resources[[System.Windows.SystemColors]::MenuTextBrushKey] = $bc.ConvertFromString($textPrimary)
+
+			$itemStyle = New-Object System.Windows.Style([System.Windows.Controls.ComboBoxItem])
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BackgroundProperty) -Value ($bc.ConvertFromString($inputBg)))) | Out-Null
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::ForegroundProperty) -Value ($bc.ConvertFromString($textPrimary)))) | Out-Null
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BorderBrushProperty) -Value ($bc.ConvertFromString($borderBrush)))) | Out-Null
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BorderThicknessProperty) -Value ([System.Windows.Thickness]::new(0)))) | Out-Null
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::PaddingProperty) -Value ([System.Windows.Thickness]::new(10, 4, 10, 4)))) | Out-Null
+			$itemStyle.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::HorizontalContentAlignmentProperty) -Value ([System.Windows.HorizontalAlignment]::Stretch))) | Out-Null
+
+			$hoverTrigger = New-Object System.Windows.Trigger
+			$hoverTrigger.Property = [System.Windows.Controls.ComboBoxItem]::IsMouseOverProperty
+			$hoverTrigger.Value = $true
+			$hoverTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BackgroundProperty) -Value ($bc.ConvertFromString($hoverBg)))) | Out-Null
+			$hoverTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BorderBrushProperty) -Value ($bc.ConvertFromString($activeBorder)))) | Out-Null
+			$itemStyle.Triggers.Add($hoverTrigger) | Out-Null
+
+			$selectedTrigger = New-Object System.Windows.Trigger
+			$selectedTrigger.Property = [System.Windows.Controls.ComboBoxItem]::IsSelectedProperty
+			$selectedTrigger.Value = $true
+			$selectedTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BackgroundProperty) -Value ($bc.ConvertFromString($activeBg)))) | Out-Null
+			$selectedTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::ForegroundProperty) -Value ($bc.ConvertFromString($textPrimary)))) | Out-Null
+			$selectedTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Control]::BorderBrushProperty) -Value ($bc.ConvertFromString($activeBorder)))) | Out-Null
+			$itemStyle.Triggers.Add($selectedTrigger) | Out-Null
+
+			$Combo.ItemContainerStyle = $itemStyle
+			$Combo.OverridesDefaultStyle = $true
+			$Combo.Background = $bc.ConvertFromString($inputBg)
+			$Combo.Foreground = $bc.ConvertFromString($textPrimary)
+			$Combo.SetValue([System.Windows.Documents.TextElement]::ForegroundProperty, $bc.ConvertFromString($textPrimary))
+			$Combo.BorderBrush = $bc.ConvertFromString($borderBrush)
+			$Combo.BorderThickness = [System.Windows.Thickness]::new(1)
+			$Combo.Template = $Script:ChoiceComboTemplate
+			$Combo.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
+			$Combo.MinWidth = 190
+			$Combo.Height = 30
+		}
+		catch {
+			# Silently ignore any remaining errors – the combo will still work
+			return
+		}
+	}
+
+	function Set-FilterControlStyle
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		$bc = New-SafeBrushConverter -Context 'Set-FilterControlStyle'
+		if ($RiskFilterLabel) { $RiskFilterLabel.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary) }
+		if ($CategoryFilterLabel) { $CategoryFilterLabel.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary) }
+		if ($ChkAdvancedMode) { $ChkAdvancedMode.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary) }
+		if ($CmbRiskFilter) { Set-ChoiceComboStyle -Combo $CmbRiskFilter }
+		if ($CmbCategoryFilter) { Set-ChoiceComboStyle -Combo $CmbCategoryFilter }
+	}
+
+	function Test-TweakVisibleInCurrentMode
+	{
+		param (
+			[hashtable]$Tweak,
+			[int]$LeftIndent = 28
+		)
+		if (-not $Tweak) { return $false }
+		if ($Script:AdvancedMode) { return $true }
+
+		$riskLevel = if ([string]::IsNullOrWhiteSpace([string]$Tweak.Risk)) { 'Low' } else { [string]$Tweak.Risk }
+		if ($riskLevel -eq 'High') { return $false }
+
+		$tagValues = @($Tweak.Tags | ForEach-Object { [string]$_ })
+		if ($tagValues -contains 'advanced') { return $false }
+
+		return $true
+	}
+
+	function Get-AvailableCategoryFilters
+	{
+		param ([string]$PrimaryTab)
+
+		$categorySet = New-Object 'System.Collections.Generic.SortedSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+		$isSearchContext = ($PrimaryTab -eq $Script:SearchResultsTabTag)
+		foreach ($tweak in $Script:TweakManifest)
+		{
+			if (-not (Test-TweakVisibleInCurrentMode -Tweak $tweak)) { continue }
+			$owningPrimary = $CategoryToPrimary[$tweak.Category]
+			if (-not $isSearchContext -and $owningPrimary -ne $PrimaryTab) { continue }
+			if ([string]::IsNullOrWhiteSpace([string]$tweak.Category)) { continue }
+			[void]$categorySet.Add([string]$tweak.Category)
+		}
+
+		return @($categorySet)
+	}
+
+	function Update-CategoryFilterList
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([string]$PrimaryTab)
+		if (-not $CmbCategoryFilter) { return }
+
+		$targetTab = if (-not [string]::IsNullOrWhiteSpace($PrimaryTab)) {
+			$PrimaryTab
+		}
+		elseif ($PrimaryTabs -and $PrimaryTabs.SelectedItem -and $PrimaryTabs.SelectedItem.Tag) {
+			[string]$PrimaryTabs.SelectedItem.Tag
+		}
+		elseif ($Script:CurrentPrimaryTab) {
+			[string]$Script:CurrentPrimaryTab
+		}
+		else {
+			$null
+		}
+
+		$currentValue = if ($CmbCategoryFilter.SelectedItem) { [string]$CmbCategoryFilter.SelectedItem } elseif ($Script:CategoryFilter) { [string]$Script:CategoryFilter } else { 'All' }
+		$values = if ($targetTab) { @(Get-AvailableCategoryFilters -PrimaryTab $targetTab) } else { @() }
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$CmbCategoryFilter.Items.Clear()
+			[void]$CmbCategoryFilter.Items.Add('All')
+			foreach ($value in $values)
+			{
+				[void]$CmbCategoryFilter.Items.Add($value)
+			}
+
+			if ($currentValue -and $currentValue -ne 'All' -and $values -contains $currentValue)
+			{
+				$CmbCategoryFilter.SelectedItem = $currentValue
+				$Script:CategoryFilter = $currentValue
+			}
+			else
+			{
+				$CmbCategoryFilter.SelectedIndex = 0
+				$Script:CategoryFilter = 'All'
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+	}
+
+	function Test-TweakMatchesCurrentFilters
+	{
+		param (
+			[hashtable]$Tweak,
+			[string]$PrimaryTab,
+			[string]$SearchQuery,
+			[bool]$IsSearchResultsTab = $false
+		)
+
+		if (-not (Test-TweakVisibleInCurrentMode -Tweak $Tweak)) { return $false }
+
+		$owningPrimary = $CategoryToPrimary[$Tweak.Category]
+		if (-not $IsSearchResultsTab -and $owningPrimary -ne $PrimaryTab) { return $false }
+
+		if (-not [string]::IsNullOrWhiteSpace([string]$Script:RiskFilter) -and $Script:RiskFilter -ne 'All')
+		{
+			$riskLevel = if ([string]::IsNullOrWhiteSpace([string]$Tweak.Risk)) { 'Low' } else { [string]$Tweak.Risk }
+			if ($riskLevel -ne $Script:RiskFilter) { return $false }
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace([string]$Script:CategoryFilter) -and $Script:CategoryFilter -ne 'All')
+		{
+			if ([string]$Tweak.Category -ne [string]$Script:CategoryFilter) { return $false }
+		}
+
+		$effectiveQuery = if ($null -eq $SearchQuery) { '' } else { $SearchQuery.Trim() }
+		if (-not [string]::IsNullOrWhiteSpace($effectiveQuery))
+		{
+			$searchParts = @(
+				$Tweak.Name,
+				$Tweak.Description,
+				$Tweak.Detail,
+				$Tweak.WhyThisMatters,
+				$Tweak.Category,
+				$Tweak.SubCategory,
+				$Tweak.Function,
+				$owningPrimary,
+				$Tweak.Risk,
+				$Tweak.PresetTier,
+				($Tweak.Tags -join ' '),
+				$(if ($Tweak.Safe) { 'safe' } else { 'not-safe' }),
+				$(if ($Tweak.Impact) { 'impact' } else { 'standard' }),
+				$(if ($Tweak.RequiresRestart) { 'restart reboot requires-restart' } else { 'no-restart' })
+			)
+			$haystack = ($searchParts | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join ' '
+			if ($haystack -notmatch [regex]::Escape($effectiveQuery))
+			{
+				return $false
+			}
+		}
+
+		return $true
+	}
+
+	function Set-SearchControlsEnabled
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([bool]$Enabled)
+		if ($TxtSearch) { $TxtSearch.IsEnabled = $Enabled }
+		if ($BtnClearSearch) { $BtnClearSearch.IsEnabled = $Enabled }
+		if ($CmbRiskFilter) { $CmbRiskFilter.IsEnabled = $Enabled }
+		if ($CmbCategoryFilter) { $CmbCategoryFilter.IsEnabled = $Enabled }
+		if ($ChkAdvancedMode) { $ChkAdvancedMode.IsEnabled = $Enabled }
+		Set-SearchInputStyle
+	}
+
+	function Set-GuiActionButtonsEnabled
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([bool]$Enabled)
+		if ($BtnDefaults) { $BtnDefaults.IsEnabled = $Enabled }
+		if ($BtnExportSettings) { $BtnExportSettings.IsEnabled = $Enabled }
+		if ($BtnImportSettings) { $BtnImportSettings.IsEnabled = $Enabled }
+		if ($BtnRestoreSnapshot) { $BtnRestoreSnapshot.IsEnabled = ($Enabled -and $null -ne $Script:UiSnapshotUndo) }
+	}
+
+	function Save-GuiUndoSnapshot
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		$Script:UiSnapshotUndo = Get-GuiSettingsSnapshot
+		Set-GuiActionButtonsEnabled -Enabled (-not $Script:RunInProgress)
+	}
+
+	function Get-GuiSettingsSnapshot
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		$themeName = if ($ChkTheme) {
+			if ($ChkTheme.IsChecked) { 'Light' } else { 'Dark' }
+		}
+		elseif ($Script:CurrentThemeName) {
+			[string]$Script:CurrentThemeName
+		}
+		else {
+			'Dark'
+		}
+
+		$searchText = if ($TxtSearch) { [string]$TxtSearch.Text } elseif ($null -ne $Script:SearchText) { [string]$Script:SearchText } else { '' }
+		$scanEnabled = if ($ChkScan) { [bool]$ChkScan.IsChecked } else { [bool]$Script:ScanEnabled }
+		$currentPrimaryTab = if ($PrimaryTabs -and $PrimaryTabs.SelectedItem -and $PrimaryTabs.SelectedItem.Tag) {
+			[string]$PrimaryTabs.SelectedItem.Tag
+		}
+		elseif ($Script:CurrentPrimaryTab) {
+			[string]$Script:CurrentPrimaryTab
+		}
+		else {
+			$null
+		}
+
+		$snapshot = [ordered]@{
+			Schema = 'Win10_11Util.GuiSettings'
+			SchemaVersion = 2
+			SavedAt = (Get-Date).ToString('o')
+			Theme = $themeName
+			SearchText = $searchText
+			ScanEnabled = $scanEnabled
+			AdvancedMode = [bool]$Script:AdvancedMode
+			RiskFilter = if ($Script:RiskFilter) { [string]$Script:RiskFilter } else { 'All' }
+			CategoryFilter = if ($Script:CategoryFilter) { [string]$Script:CategoryFilter } else { 'All' }
+			CurrentPrimaryTab = $currentPrimaryTab
+			LastStandardPrimaryTab = if ($Script:LastStandardPrimaryTab) { [string]$Script:LastStandardPrimaryTab } else { $null }
+			ExplicitSelections = @($Script:ExplicitPresetSelections)
+			Controls = @()
+		}
+
+		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
+		{
+			$manifest = $Script:TweakManifest[$i]
+			$control = $Script:Controls[$i]
+			$entry = [ordered]@{
+				Index = $i
+				Function = $manifest.Function
+				Type = $manifest.Type
+			}
+
+			switch ($manifest.Type)
+			{
+				'Choice'
+				{
+					$selectedIndex = -1
+					if ($control -and $control.PSObject.Properties['SelectedIndex'])
+					{
+						$selectedIndex = [int]$control.SelectedIndex
+					}
+					$selectedValue = $null
+					if ($selectedIndex -ge 0 -and $selectedIndex -lt $manifest.Options.Count)
+					{
+						$selectedValue = [string]$manifest.Options[$selectedIndex]
+					}
+					$entry.SelectedIndex = $selectedIndex
+					$entry.SelectedValue = $selectedValue
+				}
+				default
+				{
+					$entry.IsChecked = if ($control -and $control.PSObject.Properties['IsChecked']) { [bool]$control.IsChecked } else { $false }
+				}
+			}
+
+			$snapshot.Controls += [pscustomobject]$entry
+		}
+
+		return [pscustomobject]$snapshot
+	}
+
+	function Restore-GuiSettingsSnapshot
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[Parameter(Mandatory = $true)]
+			[object]
+			$Snapshot
+		)
+
+		if (-not $Snapshot)
+		{
+			throw "No GUI settings snapshot was supplied."
+		}
+
+		$controlStates = @{}
+		if ($Snapshot.PSObject.Properties['Controls'])
+		{
+			foreach ($entry in @($Snapshot.Controls))
+			{
+				if ($entry -and $entry.PSObject.Properties['Function'])
+				{
+					$controlStates[[string]$entry.Function] = $entry
+				}
+			}
+		}
+
+		$Script:ExplicitPresetSelections.Clear()
+		if ($Snapshot.PSObject.Properties['ExplicitSelections'])
+		{
+			foreach ($functionName in @($Snapshot.ExplicitSelections))
+			{
+				if (-not [string]::IsNullOrWhiteSpace([string]$functionName))
+				{
+					[void]$Script:ExplicitPresetSelections.Add([string]$functionName)
+				}
+			}
+		}
+
+		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
+		{
+			$manifest = $Script:TweakManifest[$i]
+			$control = $Script:Controls[$i]
+			if (-not $control) { continue }
+
+			$state = $controlStates[$manifest.Function]
+			if (-not $state) { continue }
+
+			switch ($manifest.Type)
+			{
+				'Choice'
+				{
+					if ($control.PSObject.Properties['SelectedIndex'])
+					{
+						$selectedIndex = -1
+						if ($state.PSObject.Properties['SelectedValue'] -and -not [string]::IsNullOrWhiteSpace([string]$state.SelectedValue))
+						{
+							$selectedIndex = [array]::IndexOf($manifest.Options, [string]$state.SelectedValue)
+						}
+						if ($selectedIndex -lt 0 -and $state.PSObject.Properties['SelectedIndex'])
+						{
+							$selectedIndex = [int]$state.SelectedIndex
+						}
+						if ($selectedIndex -ge $manifest.Options.Count) { $selectedIndex = -1 }
+						$control.SelectedIndex = $selectedIndex
+					}
+				}
+				default
+				{
+					if ($control.PSObject.Properties['IsChecked'])
+					{
+						$control.IsChecked = [bool]$state.IsChecked
+					}
+				}
+			}
+		}
+
+		$desiredTheme = if ($Snapshot.PSObject.Properties['Theme']) { [string]$Snapshot.Theme } else { 'Dark' }
+		$desiredScan  = if ($Snapshot.PSObject.Properties['ScanEnabled']) { [bool]$Snapshot.ScanEnabled } else { $false }
+		$desiredSearch = if ($Snapshot.PSObject.Properties['SearchText']) { [string]$Snapshot.SearchText } else { '' }
+		$desiredAdvanced = if ($Snapshot.PSObject.Properties['AdvancedMode']) { [bool]$Snapshot.AdvancedMode } else { $false }
+		$desiredRisk = if ($Snapshot.PSObject.Properties['RiskFilter'] -and -not [string]::IsNullOrWhiteSpace([string]$Snapshot.RiskFilter)) { [string]$Snapshot.RiskFilter } else { 'All' }
+		$desiredCategory = if ($Snapshot.PSObject.Properties['CategoryFilter'] -and -not [string]::IsNullOrWhiteSpace([string]$Snapshot.CategoryFilter)) { [string]$Snapshot.CategoryFilter } else { 'All' }
+		$desiredTab   = if ($Snapshot.PSObject.Properties['CurrentPrimaryTab']) { [string]$Snapshot.CurrentPrimaryTab } else { $null }
+		$desiredLast  = if ($Snapshot.PSObject.Properties['LastStandardPrimaryTab']) { [string]$Snapshot.LastStandardPrimaryTab } else { $null }
+
+		if ($desiredLast)
+		{
+			$Script:LastStandardPrimaryTab = $desiredLast
+		}
+
+		if ($ChkTheme)
+		{
+			if ($desiredTheme -eq 'Light' -and -not $ChkTheme.IsChecked)
+			{
+				$ChkTheme.IsChecked = $true
+			}
+			elseif ($desiredTheme -ne 'Light' -and $ChkTheme.IsChecked)
+			{
+				$ChkTheme.IsChecked = $false
+			}
+		}
+		else
+		{
+			if ($desiredTheme -eq 'Light')
+			{
+				Set-GUITheme -Theme $Script:LightTheme
+			}
+			else
+			{
+				Set-GUITheme -Theme $Script:DarkTheme
+			}
+		}
+
+		$Script:ScanEnabled = $desiredScan
+		if ($ChkScan)
+		{
+			if ($ChkScan.IsChecked -ne $desiredScan)
+			{
+				$ChkScan.IsChecked = $desiredScan
+			}
+		}
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$Script:AdvancedMode = $desiredAdvanced
+			if ($ChkAdvancedMode)
+			{
+				if ([bool]$ChkAdvancedMode.IsChecked -ne $desiredAdvanced)
+				{
+					$ChkAdvancedMode.IsChecked = $desiredAdvanced
+				}
+			}
+
+			$Script:RiskFilter = $desiredRisk
+			if ($CmbRiskFilter)
+			{
+				if ($CmbRiskFilter.Items.Contains($desiredRisk))
+				{
+					$CmbRiskFilter.SelectedItem = $desiredRisk
+				}
+				else
+				{
+					$CmbRiskFilter.SelectedIndex = 0
+					$Script:RiskFilter = 'All'
+				}
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+
+		$Script:SearchText = $desiredSearch
+		if ($TxtSearch)
+		{
+			if ($TxtSearch.Text -ne $desiredSearch)
+			{
+				$TxtSearch.Text = $desiredSearch
+			}
+		}
+
+		Update-SearchResultsTabState
+		Update-CategoryFilterList -PrimaryTab $(if ($desiredSearch) { $Script:SearchResultsTabTag } else { $desiredTab })
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$Script:CategoryFilter = $desiredCategory
+			if ($CmbCategoryFilter)
+			{
+				if ($CmbCategoryFilter.Items.Contains($desiredCategory))
+				{
+					$CmbCategoryFilter.SelectedItem = $desiredCategory
+				}
+				else
+				{
+					$CmbCategoryFilter.SelectedIndex = 0
+					$Script:CategoryFilter = 'All'
+				}
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+
+		Update-SearchResultsTabState
+
+		if ([string]::IsNullOrWhiteSpace($desiredSearch) -and $desiredTab)
+		{
+			if ($desiredTab -eq $Script:SearchResultsTabTag)
+			{
+				$restoreTag = if ($desiredLast) { $desiredLast } else { $Script:LastStandardPrimaryTab }
+				$restoreTab = if ($restoreTag) { Get-PrimaryTabItem -Tag $restoreTag } else { $null }
+				if (-not $restoreTab)
+				{
+					foreach ($tab in $PrimaryTabs.Items)
+					{
+						if (($tab -is [System.Windows.Controls.TabItem]) -and $tab.Tag -and ([string]$tab.Tag -ne $Script:SearchResultsTabTag))
+						{
+							$restoreTab = $tab
+							break
+						}
+					}
+				}
+				if ($restoreTab -and $PrimaryTabs.SelectedItem -ne $restoreTab)
+				{
+					$PrimaryTabs.SelectedItem = $restoreTab
+				}
+			}
+			else
+			{
+				$targetTab = Get-PrimaryTabItem -Tag $desiredTab
+				if ($targetTab -and $PrimaryTabs.SelectedItem -ne $targetTab)
+				{
+					$PrimaryTabs.SelectedItem = $targetTab
+				}
+			}
+		}
+
+		Set-GuiActionButtonsEnabled -Enabled (-not $Script:RunInProgress)
+	}
+
+	function Restore-GuiSnapshot
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		if (-not $Script:UiSnapshotUndo)
+		{
+			return $false
+		}
+
+		$redoSnapshot = Get-GuiSettingsSnapshot
+		try
+		{
+			Restore-GuiSettingsSnapshot -Snapshot $Script:UiSnapshotUndo
+		}
+		catch
+		{
+			try
+			{
+				Restore-GuiSettingsSnapshot -Snapshot $redoSnapshot
+			}
+			catch { $null = $_ }
+			throw "Failed to restore the previous GUI snapshot: $($_.Exception.Message)"
+		}
+
+		$Script:UiSnapshotUndo = $redoSnapshot
+		Set-GuiActionButtonsEnabled -Enabled (-not $Script:RunInProgress)
+		return $true
+	}
+
+	function Get-GuiSettingsProfileDirectory
+	{
+		param ()
+		return (GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Win10_11Util')
+	}
+
+	function Get-GuiSessionStatePath
+	{
+		param ()
+		return (GUICommon\Get-GuiSessionStatePath -AppName 'Win10_11Util')
+	}
+
+	function Save-GuiSessionState
+	{
+		param ()
+		return (GUICommon\Save-GuiSessionStateDocument -Snapshot (Get-GuiSettingsSnapshot) -AppName 'Win10_11Util')
+	}
+
+	function Restore-GuiSessionState
+	{
+		param ()
+
+		$snapshot = GUICommon\Read-GuiSessionStateDocument -AppName 'Win10_11Util' -ExpectedSchema 'Win10_11Util.GuiSettings'
+		if (-not $snapshot)
+		{
+			return $false
+		}
+
+		try
+		{
+			Restore-GuiSettingsSnapshot -Snapshot $snapshot
+			LogInfo "Restored previous GUI session state."
+			return $true
+		}
+		catch
+		{
+			LogWarning "Failed to restore GUI session state: $($_.Exception.Message)"
+			return $false
+		}
+	}
+
+	function Export-GuiSettingsProfile
+	{
+		param ()
+
+		$snapshot = Get-GuiSettingsSnapshot
+		$savePath = GUICommon\Show-GuiSettingsSaveDialog -AppName 'Win10_11Util'
+		if ([string]::IsNullOrWhiteSpace($savePath))
+		{
+			return $false
+		}
+
+		try
+		{
+			GUICommon\Write-GuiSettingsProfileDocument -Snapshot $snapshot -FilePath $savePath | Out-Null
+			LogInfo "Exported GUI settings to $savePath"
+			$StatusText.Text = "Settings exported to $savePath"
+			$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+			return $true
+		}
+		catch
+		{
+			LogError "Failed to export GUI settings: $($_.Exception.Message)"
+			Show-ThemedDialog -Title 'Export Settings' -Message "Failed to export settings.`n`n$($_.Exception.Message)" -Buttons @('OK') -AccentButton 'OK' | Out-Null
+			return $false
+		}
+	}
+
+	function Import-GuiSettingsProfile
+	{
+		param ()
+
+		$openPath = GUICommon\Show-GuiSettingsOpenDialog -AppName 'Win10_11Util'
+		if ([string]::IsNullOrWhiteSpace($openPath))
+		{
+			return $false
+		}
+
+		try
+		{
+			$snapshot = GUICommon\Read-GuiSettingsProfileDocument -FilePath $openPath -ExpectedSchema 'Win10_11Util.GuiSettings'
+		}
+		catch
+		{
+			LogError "Failed to read GUI settings profile: $($_.Exception.Message)"
+			Show-ThemedDialog -Title 'Import Settings' -Message "Failed to read the selected profile.`n`n$($_.Exception.Message)" -Buttons @('OK') -AccentButton 'OK' | Out-Null
+			return $false
+		}
+
+		Save-GuiUndoSnapshot
+		try
+		{
+			Restore-GuiSettingsSnapshot -Snapshot $snapshot
+			$StatusText.Text = "Settings imported from $openPath"
+			$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+			LogInfo "Imported GUI settings from $openPath"
+			Set-GuiActionButtonsEnabled -Enabled (-not $Script:RunInProgress)
+			return $true
+		}
+		catch
+		{
+			LogError "Failed to import GUI settings: $($_.Exception.Message)"
+			if ($Script:UiSnapshotUndo)
+			{
+				try
+				{
+					Restore-GuiSettingsSnapshot -Snapshot $Script:UiSnapshotUndo
+				}
+				catch { $null = $_ }
+			}
+			$Script:UiSnapshotUndo = $null
+			Set-GuiActionButtonsEnabled -Enabled (-not $Script:RunInProgress)
+			Show-ThemedDialog -Title 'Import Settings' -Message "Failed to import settings.`n`n$($_.Exception.Message)" -Buttons @('OK') -AccentButton 'OK' | Out-Null
+			return $false
+		}
+	}
+
+	#region Helper: Apply theme
+		function Set-GUITheme
+		{
+			[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+			param ([hashtable]$Theme)
+			$themeRepairName = 'Dark'
+			if ($Theme -eq $Script:LightTheme)
+			{
+				$Script:CurrentThemeName = 'Light'
+				$themeRepairName = 'Light'
+			}
+			elseif ($Theme -eq $Script:DarkTheme)
+			{
+				$Script:CurrentThemeName = 'Dark'
+				$themeRepairName = 'Dark'
+			}
+			else
+			{
+				$Script:CurrentThemeName = 'Custom'
+			}
+			$Theme = Repair-GuiThemePalette -Theme $Theme -ThemeName $themeRepairName
+			$Script:CurrentTheme = $Theme
+			$bc = New-SafeBrushConverter -Context 'Set-GUITheme'
 
 		$Form.Background  = $bc.ConvertFromString($Theme.WindowBg)
 		$Form.Foreground  = $bc.ConvertFromString($Theme.TextPrimary)
@@ -792,7 +2979,11 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		$TitleText.Foreground = $bc.ConvertFromString($Theme.TextPrimary)
 		$StatusText.Foreground = $bc.ConvertFromString($Theme.TextSecondary)
 		$ScanLabel.Foreground = $bc.ConvertFromString($Theme.TextSecondary)
-		$ChkTheme.Foreground = $bc.ConvertFromString($Theme.TextSecondary)
+		Set-HeaderToggleControlsStyle
+		Set-SearchInputStyle
+		Set-FilterControlStyle
+		Set-StaticButtonStyle
+		Update-PrimaryTabVisuals
 
 		# Rebuild content for current tab to pick up colors
 		if ($null -ne $Script:CurrentPrimaryTab)
@@ -812,67 +3003,241 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 			[hashtable]$Tweak
 		)
 
-		# Build a richer tooltip that explains what the tweak does and how the
-		# Standard preset will treat it.
-		$richText = if ([string]::IsNullOrWhiteSpace($TooltipText)) {
-			"This option changes a Windows setting."
-		} else {
-			$TooltipText.Trim()
+		$bc = New-SafeBrushConverter -Context 'New-InfoIcon'
+		$theme = $Script:CurrentTheme
+
+		$stackPanel = New-Object System.Windows.Controls.StackPanel
+		$stackPanel.Margin = [System.Windows.Thickness]::new(4, 3, 4, 3)
+		$stackPanel.MaxWidth = 320
+
+		# Description (bold)
+		$tb = New-Object System.Windows.Controls.TextBlock
+		$tb.Text = if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'This option changes a Windows setting.' } else { $TooltipText.Trim() }
+		$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+		$tb.FontWeight = [System.Windows.FontWeights]::SemiBold
+		$tb.FontSize = 12
+		$stackPanel.Children.Add($tb) | Out-Null
+
+		# Detail text
+		if ($Tweak -and $Tweak.ContainsKey('Detail') -and -not [string]::IsNullOrWhiteSpace($Tweak.Detail))
+		{
+			$tb = New-Object System.Windows.Controls.TextBlock
+			$tb.Text = $Tweak.Detail.Trim()
+			$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+			$tb.FontSize = 11
+			$tb.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
+			$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+			$stackPanel.Children.Add($tb) | Out-Null
 		}
+
 		if ($Tweak)
 		{
-			$standardHint = switch ($Tweak.Type)
-			{
-				'Toggle' { if ([bool]$Tweak.Default) { 'Standard preset: selected' } else { 'Standard preset: not selected' } }
-				'Action' { if ([bool]$Tweak.Default) { 'Standard preset: selected' } else { 'Standard preset: not selected' } }
-				'Choice' {
-					if ([string]::IsNullOrWhiteSpace([string]$Tweak.Default)) { 'Standard preset: no automatic choice' }
-					else { "Standard preset: $($Tweak.Default)" }
-				}
-				default { $null }
+			# Separator
+			$sep = New-Object System.Windows.Controls.Separator
+			$sep.Margin = [System.Windows.Thickness]::new(0, 6, 0, 6)
+			$stackPanel.Children.Add($sep) | Out-Null
+
+			$addSectionHeader = {
+				param([string]$Text)
+				$section = New-Object System.Windows.Controls.TextBlock
+				$section.Text = $Text.ToUpperInvariant()
+				$section.FontSize = 10
+				$section.FontWeight = [System.Windows.FontWeights]::Bold
+				$section.Foreground = $bc.ConvertFromString($theme.SectionLabel)
+				$section.Margin = [System.Windows.Thickness]::new(0, 0, 0, 3)
+				$stackPanel.Children.Add($section) | Out-Null
 			}
 
+			# Toggle / Choice / Action lines
+			& $addSectionHeader 'Behavior'
 			switch ($Tweak.Type)
 			{
 				'Toggle' {
 					$onLabel  = if ($Tweak.OnParam)  { $Tweak.OnParam  } else { 'Enable' }
 					$offLabel = if ($Tweak.OffParam) { $Tweak.OffParam } else { 'Disable' }
-					$richText += "`n`nIf checked: $onLabel`nIf unchecked: $offLabel"
+					$tb = New-Object System.Windows.Controls.TextBlock
+					$tb.Text = "Checked: $onLabel"
+					$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+					$tb.FontSize = 11
+					$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+					$stackPanel.Children.Add($tb) | Out-Null
+					$tb = New-Object System.Windows.Controls.TextBlock
+					$tb.Text = "Unchecked: $offLabel"
+					$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+					$tb.FontSize = 11
+					$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+					$stackPanel.Children.Add($tb) | Out-Null
 				}
 				'Choice' {
 					$displayOpts = if ($Tweak.DisplayOptions) { $Tweak.DisplayOptions } else { $Tweak.Options }
-					$optList = ($displayOpts -join ', ')
-					$richText += "`n`nAvailable choices: $optList"
-					if ($Tweak.WinDefault) { $richText += "`nWindows default: $($Tweak.WinDefault)" }
+					$tb = New-Object System.Windows.Controls.TextBlock
+					$tb.Text = "Choices: $($displayOpts -join ', ')"
+					$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+					$tb.FontSize = 11
+					$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+					$stackPanel.Children.Add($tb) | Out-Null
 				}
 				'Action' {
-					$richText += "`n`nIf checked: this action runs when you click Run Tweaks`nIf unchecked: this action is skipped"
+					$tb = New-Object System.Windows.Controls.TextBlock
+					$tb.Text = 'Checked: this action runs when you click Run Tweaks'
+					$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+					$tb.FontSize = 11
+					$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+					$stackPanel.Children.Add($tb) | Out-Null
+					$tb = New-Object System.Windows.Controls.TextBlock
+					$tb.Text = 'Unchecked: this action is skipped'
+					$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+					$tb.FontSize = 11
+					$tb.Foreground = $bc.ConvertFromString($theme.TextSecondary)
+					$stackPanel.Children.Add($tb) | Out-Null
 				}
 			}
 
-			if ($standardHint)
+			$winDefText = if ($Tweak.ContainsKey('WinDefaultDesc') -and -not [string]::IsNullOrWhiteSpace($Tweak.WinDefaultDesc)) {
+				$Tweak.WinDefaultDesc
+			} elseif ($Tweak.ContainsKey('WinDefault') -and $null -ne $Tweak.WinDefault -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.WinDefault)) {
+				[string]$Tweak.WinDefault
+			} else {
+				$null
+			}
+			if ($winDefText)
 			{
-				$richText += "`n$standardHint"
+				$sepDefault = New-Object System.Windows.Controls.Separator
+				$sepDefault.Margin = [System.Windows.Thickness]::new(0, 6, 0, 6)
+				$stackPanel.Children.Add($sepDefault) | Out-Null
+				& $addSectionHeader 'Default'
+				$tb = New-Object System.Windows.Controls.TextBlock
+				$tb.Text = $winDefText
+				$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+				$tb.FontSize = 11
+				$tb.Foreground = $bc.ConvertFromString($theme.TextMuted)
+				$stackPanel.Children.Add($tb) | Out-Null
 			}
 
+			$sepRisk = New-Object System.Windows.Controls.Separator
+			$sepRisk.Margin = [System.Windows.Thickness]::new(0, 6, 0, 6)
+			$stackPanel.Children.Add($sepRisk) | Out-Null
+			& $addSectionHeader 'Risk'
+			$riskLevel = if ([string]::IsNullOrWhiteSpace($Tweak.Risk)) { 'Low' } else { [string]$Tweak.Risk }
+			$riskRow = New-Object System.Windows.Controls.StackPanel
+			$riskRow.Orientation = [System.Windows.Controls.Orientation]::Horizontal
+			$riskLbl = New-Object System.Windows.Controls.TextBlock
+			$riskLbl.Text = 'Level: '
+			$riskLbl.Foreground = $bc.ConvertFromString($theme.TextMuted)
+			$riskLbl.FontSize = 11
+			$riskRow.Children.Add($riskLbl) | Out-Null
+			$riskVal = New-Object System.Windows.Controls.TextBlock
+			$riskVal.Text = if ($riskLevel -eq 'Low') { 'Low Risk' } elseif ($riskLevel -eq 'High') { 'High Risk' } else { 'Medium Risk' }
+			$riskVal.FontWeight = [System.Windows.FontWeights]::SemiBold
+			$riskVal.FontSize = 11
+			if ($riskLevel -eq 'High')
+			{
+				$riskVal.Foreground = $bc.ConvertFromString($theme.RiskHighBadge)
+			}
+			elseif ($riskLevel -eq 'Medium')
+			{
+				$riskVal.Foreground = $bc.ConvertFromString($theme.RiskMediumBadge)
+			}
+			else
+			{
+				$riskVal.Foreground = $bc.ConvertFromString($theme.LowRiskBadge)
+			}
+			$riskRow.Children.Add($riskVal) | Out-Null
+			$stackPanel.Children.Add($riskRow) | Out-Null
+
+			# Caution reason
 			if ($Tweak.Caution -and $Tweak.CautionReason)
 			{
-				$richText += "`n`nWhy this needs care: $($Tweak.CautionReason)"
+				$tb = New-Object System.Windows.Controls.TextBlock
+				$tb.Text = "Why this needs care: $($Tweak.CautionReason)"
+				$tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+				$tb.FontSize = 11
+				$tb.Foreground = $bc.ConvertFromString($theme.CautionText)
+				$tb.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
+				$stackPanel.Children.Add($tb) | Out-Null
+			}
+
+			# Restore row
+			if ($Tweak.ContainsKey('Restorable'))
+			{
+				$sep2 = New-Object System.Windows.Controls.Separator
+				$sep2.Margin = [System.Windows.Thickness]::new(0, 6, 0, 4)
+				$stackPanel.Children.Add($sep2) | Out-Null
+
+				$restoreRow = New-Object System.Windows.Controls.StackPanel
+				$restoreRow.Orientation = [System.Windows.Controls.Orientation]::Horizontal
+
+				$lbl = New-Object System.Windows.Controls.TextBlock
+				$lbl.Text = 'Restore: '
+				$lbl.Foreground = $bc.ConvertFromString($theme.TextMuted)
+				$lbl.FontSize = 11
+				$restoreRow.Children.Add($lbl) | Out-Null
+
+				$val = New-Object System.Windows.Controls.TextBlock
+				$val.FontWeight = [System.Windows.FontWeights]::SemiBold
+				$val.FontSize = 11
+				if ($Tweak.Restorable)
+				{
+					$val.Text = 'Possible'
+					$val.Foreground = $bc.ConvertFromString($theme.ToggleOn)
+				}
+				else
+				{
+					$val.Text = 'Not possible - this change is permanent'
+					$val.Foreground = $bc.ConvertFromString($theme.ToggleOff)
+				}
+				$restoreRow.Children.Add($val) | Out-Null
+				$stackPanel.Children.Add($restoreRow) | Out-Null
 			}
 		}
 
 		$icon = New-Object System.Windows.Controls.TextBlock
 		$icon.Text = [char]0x24D8  # ⓘ
 		$icon.FontSize = 14
-		$icon.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+		$icon.Foreground = $bc.ConvertFromString($theme.AccentBlue)
 		$icon.VerticalAlignment = "Center"
 		$icon.Margin = [System.Windows.Thickness]::new(6, 0, 0, 0)
 		$icon.Cursor = [System.Windows.Input.Cursors]::Help
 
 		$tip = New-Object System.Windows.Controls.ToolTip
-		$tip.Content = $richText
-		$tip.MaxWidth = 400
+		$tip.Content = $stackPanel
+		$tip.MaxWidth = 360
+		$tip.Padding = [System.Windows.Thickness]::new(8, 6, 8, 6)
+		$tip.Background = $bc.ConvertFromString($theme.CardBg)
+		$tip.Foreground = $bc.ConvertFromString($theme.TextPrimary)
+		$tip.BorderBrush = $bc.ConvertFromString($theme.CardBorder)
+		$tip.BorderThickness = [System.Windows.Thickness]::new(1)
+		$tip.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Custom
+		$tip.HasDropShadow = $true
+		$tip.StaysOpen = $true
+		$tip.CustomPopupPlacementCallback = {
+			param (
+				[System.Windows.Size]$popupSize,
+				[System.Windows.Size]$targetSize,
+				[System.Windows.Point]$offset
+			)
+
+			$horizontalGap = 12
+			$verticalGap = 8
+			$belowPoint = [System.Windows.Point]::new(($targetSize.Width + $horizontalGap), $verticalGap)
+			$leftBelowPoint = [System.Windows.Point]::new((-$popupSize.Width - $horizontalGap), $verticalGap)
+			$abovePoint = [System.Windows.Point]::new(($targetSize.Width + $horizontalGap), (-$popupSize.Height + $targetSize.Height - $verticalGap))
+			$leftAbovePoint = [System.Windows.Point]::new((-$popupSize.Width - $horizontalGap), (-$popupSize.Height + $targetSize.Height - $verticalGap))
+
+			return @(
+				[System.Windows.Controls.Primitives.CustomPopupPlacement]::new($belowPoint, [System.Windows.Controls.Primitives.PopupPrimaryAxis]::Horizontal),
+				[System.Windows.Controls.Primitives.CustomPopupPlacement]::new($leftBelowPoint, [System.Windows.Controls.Primitives.PopupPrimaryAxis]::Horizontal),
+				[System.Windows.Controls.Primitives.CustomPopupPlacement]::new($abovePoint, [System.Windows.Controls.Primitives.PopupPrimaryAxis]::Vertical),
+				[System.Windows.Controls.Primitives.CustomPopupPlacement]::new($leftAbovePoint, [System.Windows.Controls.Primitives.PopupPrimaryAxis]::Vertical)
+			)
+		}.GetNewClosure()
 		$icon.ToolTip = $tip
+
+		# Close tooltip when mouse leaves the icon
+		$icon.Add_MouseLeave({
+			if ($tip.IsOpen) { $tip.IsOpen = $false }
+		}.GetNewClosure())
+
 		return $icon
 	}
 
@@ -881,7 +3246,7 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ()
 		$border = New-Object System.Windows.Controls.Border
-		$border.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.ImpactBadgeBg)
+		$border.Background = ConvertTo-GuiBrush -Color $Script:CurrentTheme.ImpactBadgeBg -Context 'New-ImpactBadge/Background'
 		$border.CornerRadius = [System.Windows.CornerRadius]::new(3)
 		$border.Padding = [System.Windows.Thickness]::new(6, 1, 6, 1)
 		$border.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
@@ -891,8 +3256,75 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		$txt.Text = "Impact"
 		$txt.FontSize = 10
 		$txt.FontWeight = [System.Windows.FontWeights]::SemiBold
-		$txt.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.ImpactBadge)
+		$txt.Foreground = ConvertTo-GuiBrush -Color $Script:CurrentTheme.ImpactBadge -Context 'New-ImpactBadge/Foreground'
 
+		$border.Child = $txt
+		return $border
+	}
+
+	function New-RiskBadge
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([string]$Level)
+		$bc = New-SafeBrushConverter -Context 'New-RiskBadge'
+		$border = New-Object System.Windows.Controls.Border
+		$border.CornerRadius = [System.Windows.CornerRadius]::new(4)
+		$border.Padding = [System.Windows.Thickness]::new(7, 2, 7, 2)
+		$border.Margin = [System.Windows.Thickness]::new(6, 0, 0, 0)
+		$border.VerticalAlignment = "Center"
+		$border.BorderThickness = [System.Windows.Thickness]::new(1)
+
+		$txt = New-Object System.Windows.Controls.TextBlock
+		$txt.FontSize = 10
+		$txt.FontWeight = [System.Windows.FontWeights]::SemiBold
+		$riskLevel = if ([string]::IsNullOrWhiteSpace($Level)) { 'Low' } else { [string]$Level }
+
+		if ($riskLevel -eq 'High')
+		{
+			$border.Background = $bc.ConvertFromString($Script:CurrentTheme.RiskHighBadgeBg)
+			$border.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.RiskHighBadge)
+			$txt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.RiskHighBadge)
+			$txt.Text = "High Risk"
+		}
+		elseif ($riskLevel -eq 'Medium')
+		{
+			$border.Background = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadgeBg)
+			$border.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadge)
+			$txt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadge)
+			$txt.Text = "Medium Risk"
+		}
+		else
+		{
+			$border.Background = $bc.ConvertFromString($Script:CurrentTheme.LowRiskBadgeBg)
+			$border.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.LowRiskBadge)
+			$txt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.LowRiskBadge)
+			$txt.Text = "Low Risk"
+		}
+
+		$border.Child = $txt
+		return $border
+	}
+
+	function New-StatusPill
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([string]$Text)
+		if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+		$bc = New-SafeBrushConverter -Context 'New-StatusPill'
+		$border = New-Object System.Windows.Controls.Border
+		$border.Background = $bc.ConvertFromString($Script:CurrentTheme.StatusPillBg)
+		$border.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.StatusPillBorder)
+		$border.BorderThickness = [System.Windows.Thickness]::new(1)
+		$border.CornerRadius = [System.Windows.CornerRadius]::new(999)
+		$border.Margin = [System.Windows.Thickness]::new(12, 8, 12, 0)
+		$border.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
+		$border.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left
+
+		$txt = New-Object System.Windows.Controls.TextBlock
+		$txt.Text = $Text
+		$txt.FontSize = 11
+		$txt.FontWeight = [System.Windows.FontWeights]::SemiBold
+		$txt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.StatusPillText)
 		$border.Child = $txt
 		return $border
 	}
@@ -905,9 +3337,57 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		$lbl.Text = $Text.ToUpper()
 		$lbl.FontSize = 11
 		$lbl.FontWeight = [System.Windows.FontWeights]::Bold
-		$lbl.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.SectionLabel)
+		$lbl.Foreground = ConvertTo-GuiBrush -Color $Script:CurrentTheme.SectionLabel -Context 'New-SectionHeader/Foreground'
 		$lbl.Margin = [System.Windows.Thickness]::new(12, 16, 0, 6)
 		return $lbl
+	}
+
+	function New-SearchResultsSummary
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[string]$Query,
+			[int]$MatchCount
+		)
+
+		$bc = New-SafeBrushConverter -Context 'New-SectionHeaderCard'
+		$border = New-Object System.Windows.Controls.Border
+		$border.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
+		$border.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.ActiveTabBorder)
+		$border.BorderThickness = [System.Windows.Thickness]::new(1)
+		$border.CornerRadius = [System.Windows.CornerRadius]::new(8)
+		$border.Margin = [System.Windows.Thickness]::new(8, 12, 8, 6)
+		$border.Padding = [System.Windows.Thickness]::new(16, 14, 16, 14)
+
+		$stack = New-Object System.Windows.Controls.StackPanel
+		$stack.Orientation = 'Vertical'
+
+		$heading = New-Object System.Windows.Controls.TextBlock
+		$heading.Text = 'SEARCH RESULTS'
+		$heading.FontSize = 11
+		$heading.FontWeight = [System.Windows.FontWeights]::Bold
+		$heading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.SectionLabel)
+		$heading.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4)
+		$stack.Children.Add($heading) | Out-Null
+
+		$summary = New-Object System.Windows.Controls.TextBlock
+		$summary.Text = "Showing $MatchCount tweak $(if ($MatchCount -eq 1) { 'match' } else { 'matches' }) for '$Query' across all tabs."
+		$summary.TextWrapping = 'Wrap'
+		$summary.FontSize = 13
+		$summary.FontWeight = [System.Windows.FontWeights]::SemiBold
+		$summary.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+		$stack.Children.Add($summary) | Out-Null
+
+		$hint = New-Object System.Windows.Controls.TextBlock
+		$hint.Text = 'Clear the search box to return to the normal tab view.'
+		$hint.TextWrapping = 'Wrap'
+		$hint.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
+		$hint.FontSize = 11
+		$hint.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$stack.Children.Add($hint) | Out-Null
+
+		$border.Child = $stack
+		return $border
 	}
 
 	function New-CautionSection
@@ -915,7 +3395,7 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ([array]$CautionTweaks)
 		if ($CautionTweaks.Count -eq 0) { return $null }
-		$bc = [System.Windows.Media.BrushConverter]::new()
+		$bc = New-SafeBrushConverter -Context 'New-WhyThisMattersBlock'
 
 		$border = New-Object System.Windows.Controls.Border
 		$border.Background = $bc.ConvertFromString($Script:CurrentTheme.CautionBg)
@@ -928,13 +3408,46 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		$stack = New-Object System.Windows.Controls.StackPanel
 		$stack.Orientation = "Vertical"
 
+		$headerGrid = New-Object System.Windows.Controls.Grid
+		$headerGrid.Margin = [System.Windows.Thickness]::new(0, 0, 0, 4)
+		$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition)) | Out-Null
+		$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+
+		$headerStack = New-Object System.Windows.Controls.StackPanel
+		$headerStack.Orientation = 'Vertical'
+		[System.Windows.Controls.Grid]::SetColumn($headerStack, 0)
+
 		$header = New-Object System.Windows.Controls.TextBlock
 		$header.Text = "CAUTION"
 		$header.FontSize = 12
 		$header.FontWeight = [System.Windows.FontWeights]::Bold
 		$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.CautionText)
-		$header.Margin = [System.Windows.Thickness]::new(0, 0, 0, 6)
-		$stack.Children.Add($header) | Out-Null
+		$headerStack.Children.Add($header) | Out-Null
+
+		$summary = New-Object System.Windows.Controls.TextBlock
+		$summary.Text = "$($CautionTweaks.Count) tweak$(if ($CautionTweaks.Count -eq 1) { '' } else { 's' }) need extra care in this section."
+		$summary.FontSize = 11
+		$summary.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$summary.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
+		$headerStack.Children.Add($summary) | Out-Null
+
+		$headerGrid.Children.Add($headerStack) | Out-Null
+
+		$toggleButton = New-Object System.Windows.Controls.Button
+		$toggleButton.Content = 'Show details'
+		$toggleButton.FontSize = 11
+		$toggleButton.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
+		$toggleButton.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+		$toggleButton.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+		Set-ButtonChrome -Button $toggleButton -Variant 'Subtle' -Compact
+		[System.Windows.Controls.Grid]::SetColumn($toggleButton, 1)
+		$headerGrid.Children.Add($toggleButton) | Out-Null
+
+		$stack.Children.Add($headerGrid) | Out-Null
+
+		$detailsPanel = New-Object System.Windows.Controls.StackPanel
+		$detailsPanel.Orientation = 'Vertical'
+		$detailsPanel.Visibility = [System.Windows.Visibility]::Collapsed
 
 		foreach ($ct in $CautionTweaks)
 		{
@@ -954,82 +3467,129 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 			$desc.Text = $reason
 			$item.Inlines.Add($desc) | Out-Null
 
-			$stack.Children.Add($item) | Out-Null
+			$detailsPanel.Children.Add($item) | Out-Null
 		}
+
+		$toggleButton.Add_Click({
+			$showDetails = ($detailsPanel.Visibility -ne [System.Windows.Visibility]::Visible)
+			$detailsPanel.Visibility = if ($showDetails) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+			$toggleButton.Content = if ($showDetails) { 'Hide details' } else { 'Show details' }
+		}.GetNewClosure())
+
+		$stack.Children.Add($detailsPanel) | Out-Null
 
 		$border.Child = $stack
 		return $border
 	}
 
-	function Add-ExecutionLogLine
-	{
+		function Add-ExecutionLogLine
+		{
 		param (
 			[string]$Text,
 			[string]$Level = 'INFO'
 		)
 
-		if ([string]::IsNullOrWhiteSpace($Text) -or -not $Script:ExecutionLogBox) { return }
+		if ([string]::IsNullOrWhiteSpace($Text) -or -not $Script:ExecutionLogBox -or -not $Script:ExecutionLogBox.Document) { return }
 
+		$bc = New-SafeBrushConverter -Context 'Add-ExecutionLogLine'
 		$timestamp = Get-Date -Format 'HH:mm:ss'
-		$line = "[{0}] [{1}] {2}" -f $timestamp, $Level.ToUpperInvariant(), $Text
-		$Script:ExecutionLogBox.AppendText($line + [Environment]::NewLine)
-		# Only auto-scroll if the user hasn't scrolled up
-		$vertOff = $Script:ExecutionLogBox.VerticalOffset
-		$vpH     = $Script:ExecutionLogBox.ViewportHeight
-		$extH    = $Script:ExecutionLogBox.ExtentHeight
-		if (($vertOff + $vpH) -ge ($extH - 30))
+
+		$para = New-Object System.Windows.Documents.Paragraph
+		$para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 2)
+		$para.FontFamily = New-Object System.Windows.Media.FontFamily('Consolas')
+		$para.FontSize = 12
+
+		$tsRun = New-Object System.Windows.Documents.Run
+		$tsRun.Text = "[$timestamp] "
+		$tsRun.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
+		$para.Inlines.Add($tsRun) | Out-Null
+
+		$levelRun = New-Object System.Windows.Documents.Run
+		$levelRun.Text = "[$($Level.ToUpperInvariant())] "
+		$levelRun.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
+		$para.Inlines.Add($levelRun) | Out-Null
+
+		$contentRun = New-Object System.Windows.Documents.Run
+		$contentRun.Text = $Text
+		$contentColor = switch ($Level.ToUpperInvariant())
+		{
+			'ERROR'   { $Script:CurrentTheme.CautionText }
+			'WARNING' { $Script:CurrentTheme.RiskMediumBadge }
+			default   { $Script:CurrentTheme.TextPrimary }
+		}
+		$contentRun.Foreground = $bc.ConvertFromString($contentColor)
+		$para.Inlines.Add($contentRun) | Out-Null
+
+		$Script:ExecutionLogBox.Document.Blocks.Add($para) | Out-Null
+
+		$vO = $Script:ExecutionLogBox.VerticalOffset
+		$vH = $Script:ExecutionLogBox.ViewportHeight
+		$eH = $Script:ExecutionLogBox.ExtentHeight
+		if (($vO + $vH) -ge ($eH - 30))
 		{
 			$Script:ExecutionLogBox.ScrollToEnd()
 		}
-		$Form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [Action]{})
-	}
-
-	# Scriptblock variable so .GetNewClosure() closures (timer, drainEntry) capture it correctly.
-	# Named functions are NOT captured by GetNewClosure — only variables are.
-	$updateProgressFn = {
-		param (
-			[int]$Completed,
-			[int]$Total,
-			[string]$CurrentAction,
-			[bool]$Indeterminate = $false,   # kept for call-site compat; ignored once Total > 0
-			# Sub-task progress (e.g. a download inside a tweak function)
-			[int]$SubCompleted  = -1,
-			[int]$SubTotal      = -1,
-			[string]$SubAction  = $null,
-			[bool]$ClearSub     = $false
-		)
-
-		if ($Script:ExecutionProgressBar)
-		{
-			if ($Total -gt 0)
-			{
-				# Always show real fill once we know the total
-				$Script:ExecutionProgressBar.IsIndeterminate = $false
-				$Script:ExecutionProgressBar.Maximum = $Total
-				$Script:ExecutionProgressBar.Value   = [Math]::Min($Completed, $Total)
-			}
-			else
-			{
-				# Pre-run: no total yet — show indeterminate stripe
-				$Script:ExecutionProgressBar.IsIndeterminate = $true
-			}
+			$Form.Dispatcher.Invoke([System.Action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
 		}
 
-		if ($Script:ExecutionProgressText)
+		function Test-ExecutionSkipMessage
 		{
-			if ($Total -gt 0)
-			{
-				$Script:ExecutionProgressText.Text = "{0}/{1} completed" -f $Completed, $Total
-				if (-not [string]::IsNullOrWhiteSpace($CurrentAction))
-				{
-					$Script:ExecutionProgressText.Text += " - $CurrentAction"
-				}
-			}
-			else
-			{
-				$Script:ExecutionProgressText.Text = if ($CurrentAction) { $CurrentAction } else { "Preparing run..." }
-			}
+			param(
+				[string]$Message
+			)
+
+			if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
+
+			return ($Message -match '(?i)\bskipping\b|\bskipped\b')
 		}
+
+		    # Scriptblock stored in Script: scope so all closures and timer ticks can access it directly.
+    # Simple: takes completed count, total count, and what's currently running.
+    $Script:UpdateProgressFn = {
+        param (
+            [int]$Completed,
+            [int]$Total,
+            [string]$CurrentAction,
+            [int]$SubCompleted = -1,
+            [int]$SubTotal = 0,
+            [string]$SubAction = $null,
+            [switch]$ClearSub
+        )
+
+        if ($Script:ExecutionProgressBar)
+        {
+            if ($Total -gt 0)
+            {
+                $Script:ExecutionProgressBar.Maximum = $Total
+                $Script:ExecutionProgressIndeterminate = ($Completed -le 0 -and $CurrentAction -notin @('Done', 'Aborted'))
+                $Script:ExecutionProgressBar.IsIndeterminate = $Script:ExecutionProgressIndeterminate
+                $Script:ExecutionProgressBar.Value   = [Math]::Min($Completed, $Total)
+            }
+            else
+            {
+                $Script:ExecutionProgressIndeterminate = $false
+                $Script:ExecutionProgressBar.IsIndeterminate = $false
+                $Script:ExecutionProgressBar.Value = 0
+            }
+        }
+
+        if ($Script:ExecutionProgressText)
+        {
+            if ($Total -gt 0)
+            {
+                $pct = [Math]::Round(($Completed / $Total) * 100)
+                $text = "{0}/{1} ({2}%)" -f $Completed, $Total, $pct
+                if (-not [string]::IsNullOrWhiteSpace($CurrentAction))
+                {
+                    $text += " - $CurrentAction"
+                }
+                $Script:ExecutionProgressText.Text = $text
+            }
+            else
+            {
+                $Script:ExecutionProgressText.Text = if ($CurrentAction) { $CurrentAction } else { 'Preparing...' }
+            }
+        }
 
 		# Sub-progress bar (downloads, installs, etc. reported by tweak functions)
 		if ($Script:ExecutionSubProgressBar)
@@ -1054,7 +3614,7 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 			}
 			elseif ($SubCompleted -ge 0 -and $SubTotal -le 0)
 			{
-				# Unknown total — show indeterminate sub-bar
+				# Unknown total - show indeterminate sub-bar
 				$Script:ExecutionSubProgressBar.Visibility = [System.Windows.Visibility]::Visible
 				$Script:ExecutionSubProgressBar.IsIndeterminate = $true
 				if ($Script:ExecutionSubProgressText)
@@ -1069,191 +3629,360 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	function Invoke-GuiEvents
 	{
 		$frame = New-Object System.Windows.Threading.DispatcherFrame
-		$null = $Form.Dispatcher.BeginInvoke(
-			[System.Windows.Threading.DispatcherPriority]::Background,
-			[System.Windows.Threading.DispatcherOperationCallback]{
-				param($state)
-				$state.Continue = $false
-				return $null
-			},
-			$frame
-		)
+$null = $Form.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherOperationCallback]{
+                param($state)
+                $state.Continue = $false
+                return $null
+        },
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        $frame
+)
 		[System.Windows.Threading.Dispatcher]::PushFrame($frame)
 	}
 
-	function Request-RunAbort
-	{
+	$Script:ForceCloseExecutionFn = {
+		$timerToStop = $Script:ExecutionRunTimer
+		$workerToStop = $Script:ExecutionWorker
+
+		Clear-UILogHandler
+		Remove-Variable -Name 'GUIRunState' -Scope Global -ErrorAction SilentlyContinue
+
+		if ($Script:RunState)
+		{
+			$Script:RunState['AbortRequested'] = $true
+			$Script:RunState['AbortRequestedAt'] = Get-Date
+			$Script:RunState['AbortedRun'] = $true
+			$Script:RunState['Done'] = $true
+		}
+
+		if ($timerToStop)
+		{
+			try { $timerToStop.Stop() } catch { $null = $_ }
+		}
+
+		$Script:ExecutionRunTimer = $null
+		$Script:ExecutionWorker = $null
+		$Script:ExecutionRunPowerShell = $null
+		$Script:ExecutionRunspace = $null
+		$Script:BgPS = $null
+		$Script:BgAsync = $null
+		$Script:RunInProgress = $false
+		$Script:SuppressRunClosePrompt = $true
+
+		if ($Script:MainForm)
+		{
+			try
+			{
+$null = $Script:MainForm.Dispatcher.BeginInvoke(
+        [System.Action]{
+                try { $Script:MainForm.Close() } catch { $null = $_ }
+                try
+                {
+                        if ([System.Windows.Application]::Current)
+                        {
+                                [System.Windows.Application]::Current.Shutdown()
+                        }
+                }
+                catch { $null = $_ }
+        },
+        [System.Windows.Threading.DispatcherPriority]::Send
+)
+			}
+			catch
+			{
+				try { $Script:MainForm.Close() } catch { $null = $_ }
+			}
+		}
+
+		if ($workerToStop)
+		{
+			GUIExecution\Stop-GuiExecutionWorkerAsync -Worker $workerToStop
+		}
+	}
+
+	$Script:RequestRunAbortFn = {
+		param(
+			[switch]$ExitNow
+		)
+
 		if (-not $Script:RunInProgress -or $Script:AbortRequested) { return }
 
-		# Set the flag immediately so the next Invoke-GuiEvents cycle picks it up.
-		# No confirmation dialog — it was slowing things down and blocking the UI.
 		$Script:AbortRequested = $true
 		if ($Script:AbortRunButton)
 		{
 			$Script:AbortRunButton.Content = "Aborting..."
 			$Script:AbortRunButton.IsEnabled = $false
 		}
-		$StatusText.Text = "Abort requested. Will stop after the current step finishes."
-		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
-		Add-ExecutionLogLine -Text 'Abort requested by user - will stop after current step.' -Level 'WARNING'
-	}
-
-	function Enter-ExecutionView
-	{
-		param ([string]$Title)
-
-		$bc = [System.Windows.Media.BrushConverter]::new()
-		$Script:ExecutionPreviousContent = $ContentScroll.Content
-		$Script:ExecutionPreviousScrollMode = $ContentScroll.VerticalScrollBarVisibility
-
-		# Use a Grid so the header/progress stay fixed and only the log scrolls
-		$outerGrid = New-Object System.Windows.Controls.Grid
-		$outerGrid.Margin = [System.Windows.Thickness]::new(12)
-		$rowHeader = New-Object System.Windows.Controls.RowDefinition
-		$rowHeader.Height = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto)
-		$rowLog = New-Object System.Windows.Controls.RowDefinition
-		$rowLog.Height = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
-		$outerGrid.RowDefinitions.Add($rowHeader) | Out-Null
-		$outerGrid.RowDefinitions.Add($rowLog) | Out-Null
-
-		# Top section: heading + subheading + progress bar + abort button
-		$topPanel = New-Object System.Windows.Controls.StackPanel
-		$topPanel.Orientation = 'Vertical'
-		[System.Windows.Controls.Grid]::SetRow($topPanel, 0)
-
-		$heading = New-Object System.Windows.Controls.TextBlock
-		$heading.Text = $Title
-		$heading.FontSize = 18
-		$heading.FontWeight = [System.Windows.FontWeights]::Bold
-		$heading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-		$heading.Margin = [System.Windows.Thickness]::new(0,0,0,6)
-		$topPanel.Children.Add($heading) | Out-Null
-
-		$subheading = New-Object System.Windows.Controls.TextBlock
-		$subheading.Text = "Progress will appear here live. Please keep this window open until completion."
-		$subheading.FontSize = 12
-		$subheading.TextWrapping = "Wrap"
-		$subheading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-		$subheading.Margin = [System.Windows.Thickness]::new(0,0,0,12)
-		$topPanel.Children.Add($subheading) | Out-Null
-
-		$progressGrid = New-Object System.Windows.Controls.Grid
-		$progressGrid.Margin = [System.Windows.Thickness]::new(0,0,0,12)
-		$progressCol1 = New-Object System.Windows.Controls.ColumnDefinition
-		$progressCol1.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
-		$progressCol2 = New-Object System.Windows.Controls.ColumnDefinition
-		$progressCol2.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto)
-		$progressGrid.ColumnDefinitions.Add($progressCol1) | Out-Null
-		$progressGrid.ColumnDefinitions.Add($progressCol2) | Out-Null
-
-		$progressStack = New-Object System.Windows.Controls.StackPanel
-		$progressStack.Orientation = 'Vertical'
-		[System.Windows.Controls.Grid]::SetColumn($progressStack, 0)
-
-		$progressBar = New-Object System.Windows.Controls.ProgressBar
-		$progressBar.Minimum = 0
-		$progressBar.Maximum = 1
-		$progressBar.Value = 0
-		$progressBar.Height = 16
-		$progressBar.Margin = [System.Windows.Thickness]::new(0,0,12,4)
-		$progressStack.Children.Add($progressBar) | Out-Null
-
-		# Sub-task progress bar (shown only when a tweak function reports its own progress)
-		$subProgressBar = New-Object System.Windows.Controls.ProgressBar
-		$subProgressBar.Minimum = 0
-		$subProgressBar.Maximum = 100
-		$subProgressBar.Value = 0
-		$subProgressBar.Height = 8
-		$subProgressBar.Margin = [System.Windows.Thickness]::new(0,0,12,2)
-		$subProgressBar.Opacity = 0.75
-		$subProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
-		$progressStack.Children.Add($subProgressBar) | Out-Null
-
-		$subProgressText = New-Object System.Windows.Controls.TextBlock
-		$subProgressText.FontSize = 11
-		$subProgressText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.AccentBlue)
-		$subProgressText.Margin = [System.Windows.Thickness]::new(0,0,0,2)
-		$subProgressText.Visibility = [System.Windows.Visibility]::Collapsed
-		$progressStack.Children.Add($subProgressText) | Out-Null
-
-		$progressText = New-Object System.Windows.Controls.TextBlock
-		$progressText.FontSize = 12
-		$progressText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-		$progressText.Text = 'Preparing run...'
-		$progressStack.Children.Add($progressText) | Out-Null
-		$progressGrid.Children.Add($progressStack) | Out-Null
-
-		$abortBtn = New-Object System.Windows.Controls.Button
-		$abortBtn.Content = 'Abort'
-		$abortBtn.Padding = [System.Windows.Thickness]::new(14,8,14,8)
-		$abortBtn.Margin = [System.Windows.Thickness]::new(8,0,0,0)
-		$abortBtn.Cursor = [System.Windows.Input.Cursors]::Hand
-		[System.Windows.Controls.Grid]::SetColumn($abortBtn, 1)
-		$abortBtn.Add_Click({ Request-RunAbort }.GetNewClosure())
-		$progressGrid.Children.Add($abortBtn) | Out-Null
-
-		$topPanel.Children.Add($progressGrid) | Out-Null
-		$outerGrid.Children.Add($topPanel) | Out-Null
-
-		# Bottom section: scrollable log box (fills remaining space)
-		$logBox = New-Object System.Windows.Controls.TextBox
-		$logBox.IsReadOnly = $true
-		$logBox.AcceptsReturn = $true
-		$logBox.TextWrapping = 'Wrap'
-		$logBox.VerticalScrollBarVisibility = 'Auto'
-		$logBox.HorizontalScrollBarVisibility = 'Disabled'
-		$logBox.BorderThickness = [System.Windows.Thickness]::new(0)
-		$logBox.Padding = [System.Windows.Thickness]::new(12)
-		$logBox.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
-		$logBox.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-		$logBox.FontFamily = 'Consolas'
-		$logBox.FontSize = 12
-		[System.Windows.Controls.Grid]::SetRow($logBox, 1)
-		$outerGrid.Children.Add($logBox) | Out-Null
-
-		# Disable outer ScrollViewer scrolling — the logBox handles its own
-		$ContentScroll.VerticalScrollBarVisibility = 'Disabled'
-		$ContentScroll.Content = $outerGrid
-		$Script:ExecutionLogBox = $logBox
-		$Script:ExecutionLastConsoleAction = $null
-		$Script:ExecutionProgressBar = $progressBar
-		$Script:ExecutionProgressText = $progressText
-		$Script:ExecutionSubProgressBar = $subProgressBar
-		$Script:ExecutionSubProgressText = $subProgressText
-		$Script:ExecutionProgressIndeterminate = $true
-		$Script:AbortRunButton = $abortBtn
-		$Script:AbortRequested = $false
-		& $updateProgressFn -Completed 0 -Total 0 -CurrentAction 'Preparing run...' -Indeterminate $true
-	}
-
-	function Exit-ExecutionView
-	{
-		$Script:ExecutionLogBox = $null
-		$Script:ExecutionLastConsoleAction = $null
-		$Script:ExecutionProgressBar = $null
-		$Script:ExecutionProgressText = $null
-		$Script:ExecutionSubProgressBar = $null
-		$Script:ExecutionSubProgressText = $null
-		$Script:ExecutionProgressIndeterminate = $false
-		$Script:AbortRunButton = $null
-		$Script:AbortRequested = $false
-		$Script:ExecutionPreviousContent = $null
-
-		# Restore the outer ScrollViewer scrolling mode
-		$ContentScroll.VerticalScrollBarVisibility = 'Auto'
-
-		if ($Script:CurrentPrimaryTab)
+		if ($BtnRun)
 		{
-			Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
+			$BtnRun.Content = if ($ExitNow) { "Exiting..." } else { "Stopping..." }
+			$BtnRun.IsEnabled = $false
+		}
+		$StatusText.Text = if ($ExitNow) { "Exit requested. Closing WinUtil now..." } else { "Abort requested. Waiting for the current step to stop..." }
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
+		LogWarning 'Abort requested by user - waiting for the current step to stop.'
+
+		if ($Script:RunState)
+		{
+			$Script:RunState['AbortRequested'] = $true
+			$Script:RunState['AbortRequestedAt'] = Get-Date
+			$Script:RunState['AbortedRun'] = $true
+		}
+
+		if ($ExitNow)
+		{
+			LogWarning 'Exit requested by user - closing WinUtil now.'
+			& $Script:ForceCloseExecutionFn
+			return
 		}
 	}
+
+	$Script:PromptRunAbortFn = {
+		if (-not $Script:RunInProgress -or $Script:AbortRequested) { return }
+
+		$Script:AbortDialogShowing = $true
+		try
+		{
+			$choice = Show-ThemedDialog -Title 'Abort Run' `
+			-Message "Stop the current run now?`n`nReturn to Tweaks aborts the run and keeps the app open. Exit Now force-stops the run and closes Win10_11Util immediately." `
+			-Buttons @('Return to Tweaks', 'Exit Now', 'Cancel') `
+			-AccentButton 'Return to Tweaks' `
+			-DestructiveButton 'Exit Now'
+			Write-Host ("Abort dialog choice: '{0}'" -f $(if ($null -eq $choice) { '<null>' } else { [string]$choice }))
+		}
+		finally
+		{
+			$Script:AbortDialogShowing = $false
+		}
+
+		if (-not $Script:RunInProgress)
+		{
+			# Run completed while the dialog was open — nothing to abort
+			return
+		}
+
+		switch ($choice)
+		{
+			'Return to Tweaks'
+			{
+				$Script:RunAbortDisposition = 'Return'
+				& $Script:RequestRunAbortFn
+			}
+			'Exit Now'
+			{
+				$Script:RunAbortDisposition = 'Exit'
+				& $Script:RequestRunAbortFn -ExitNow
+			}
+			default
+			{
+				$Script:RunAbortDisposition = $null
+			}
+		}
+	}
+
+   function Enter-ExecutionView
+    {
+        param ([string]$Title)
+
+	        $bc = New-SafeBrushConverter -Context 'Enter-ExecutionView'
+        $Script:ExecutionPreviousContent = $ContentScroll.Content
+        $Script:ExecutionPreviousScrollMode = $ContentScroll.VerticalScrollBarVisibility
+
+        # Use a Grid so the header/progress stay fixed and only the log scrolls
+        $outerGrid = New-Object System.Windows.Controls.Grid
+        $outerGrid.Margin = [System.Windows.Thickness]::new(12)
+        $rowHeader = New-Object System.Windows.Controls.RowDefinition
+        $rowHeader.Height = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto)
+        $rowLog = New-Object System.Windows.Controls.RowDefinition
+        $rowLog.Height = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+        $outerGrid.RowDefinitions.Add($rowHeader) | Out-Null
+        $outerGrid.RowDefinitions.Add($rowLog) | Out-Null
+
+        # Top section: heading + subheading + progress bar + abort button
+        $topPanel = New-Object System.Windows.Controls.StackPanel
+        $topPanel.Orientation = 'Vertical'
+        [System.Windows.Controls.Grid]::SetRow($topPanel, 0)
+
+        $heading = New-Object System.Windows.Controls.TextBlock
+        $heading.Text = $Title
+        $heading.FontSize = 18
+        $heading.FontWeight = [System.Windows.FontWeights]::Bold
+        $heading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+        $heading.Margin = [System.Windows.Thickness]::new(0,0,0,6)
+        $topPanel.Children.Add($heading) | Out-Null
+
+        $subheading = New-Object System.Windows.Controls.TextBlock
+        $subheading.Text = "Progress will appear here live. Please keep this window open until completion."
+        $subheading.FontSize = 12
+        $subheading.TextWrapping = "Wrap"
+        $subheading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+        $subheading.Margin = [System.Windows.Thickness]::new(0,0,0,12)
+        $topPanel.Children.Add($subheading) | Out-Null
+
+        $progressGrid = New-Object System.Windows.Controls.Grid
+        $progressGrid.Margin = [System.Windows.Thickness]::new(0,0,0,12)
+        $progressCol1 = New-Object System.Windows.Controls.ColumnDefinition
+        $progressCol1.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+        $progressCol2 = New-Object System.Windows.Controls.ColumnDefinition
+        $progressCol2.Width = [System.Windows.GridLength]::new(124, [System.Windows.GridUnitType]::Pixel)
+        $progressGrid.ColumnDefinitions.Add($progressCol1) | Out-Null
+        $progressGrid.ColumnDefinitions.Add($progressCol2) | Out-Null
+
+        $progressStack = New-Object System.Windows.Controls.StackPanel
+        $progressStack.Orientation = 'Vertical'
+        $progressStack.Margin = [System.Windows.Thickness]::new(0,0,12,0)
+        [System.Windows.Controls.Grid]::SetColumn($progressStack, 0)
+
+        # Single progress bar - determinate, 0 to Total
+        $progressBar = New-Object System.Windows.Controls.ProgressBar
+        $progressBar.Minimum = 0
+        $progressBar.Maximum = 1
+        $progressBar.Value = 0
+        $progressBar.Height = 18
+        $progressBar.MinWidth = 200
+        $progressBar.IsIndeterminate = $false
+        $progressBar.Margin = [System.Windows.Thickness]::new(0,0,0,6)
+        $progressBar.HorizontalAlignment = 'Stretch'
+        $progressStack.Children.Add($progressBar) | Out-Null
+
+        # Single status line: "3/12 - Installing PowerShell 7"
+        $progressText = New-Object System.Windows.Controls.TextBlock
+        $progressText.FontSize = 12
+        $progressText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+        $progressText.Text = 'Preparing...'
+        $progressText.TextWrapping = 'NoWrap'
+        $progressText.TextTrimming = 'CharacterEllipsis'
+        $progressText.HorizontalAlignment = 'Stretch'
+        $progressStack.Children.Add($progressText) | Out-Null
+        $progressGrid.Children.Add($progressStack) | Out-Null
+
+        $abortBtnHost = New-Object System.Windows.Controls.Border
+        $abortBtnHost.Padding = [System.Windows.Thickness]::new(0)
+        $abortBtnHost.HorizontalAlignment = 'Right'
+        $abortBtnHost.VerticalAlignment = 'Top'
+        [System.Windows.Controls.Grid]::SetColumn($abortBtnHost, 1)
+
+        $abortBtn = New-Object System.Windows.Controls.Button
+        $abortBtn.Content = 'Abort'
+        $abortBtn.MinWidth = 104
+        $abortBtn.Height = 40
+        $abortBtn.Padding = [System.Windows.Thickness]::new(18,8,18,8)
+        $abortBtn.HorizontalAlignment = 'Stretch'
+        $abortBtn.VerticalAlignment = 'Top'
+        $abortBtn.Cursor = [System.Windows.Input.Cursors]::Hand
+        $abortBtn.TabIndex = 0
+        $abortBtn.Add_Click({ & $Script:PromptRunAbortFn })
+        Set-ButtonChrome -Button $abortBtn -Variant 'Danger'
+        $abortBtnHost.Child = $abortBtn
+        $progressGrid.Children.Add($abortBtnHost) | Out-Null
+
+        $topPanel.Children.Add($progressGrid) | Out-Null
+        $outerGrid.Children.Add($topPanel) | Out-Null
+
+        # Bottom section: scrollable rich log box (fills remaining space)
+        $logBox = New-Object System.Windows.Controls.RichTextBox
+        $logBox.IsReadOnly = $true
+        $logBox.VerticalScrollBarVisibility = 'Auto'
+        $logBox.HorizontalScrollBarVisibility = 'Disabled'
+        $logBox.BorderThickness = [System.Windows.Thickness]::new(0)
+        $logBox.Padding = [System.Windows.Thickness]::new(12)
+        $logBox.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
+        $logBox.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+        $logBox.FontFamily = New-Object System.Windows.Media.FontFamily('Consolas')
+        $logBox.FontSize = 12
+        $logBox.TabIndex = 1
+        $flowDoc = New-Object System.Windows.Documents.FlowDocument
+        $flowDoc.PagePadding = [System.Windows.Thickness]::new(0)
+        $flowDoc.LineHeight = 1
+        $logBox.Document = $flowDoc
+        [System.Windows.Controls.Grid]::SetRow($logBox, 1)
+        $outerGrid.Children.Add($logBox) | Out-Null
+
+        # Disable outer ScrollViewer scrolling - the logBox handles its own
+        $ContentScroll.VerticalScrollBarVisibility = 'Disabled'
+        $ContentScroll.Content = $outerGrid
+        $Script:ExecutionLogBox = $logBox
+        $Script:ExecutionLastConsoleAction = $null
+        $Script:ExecutionProgressBar = $progressBar
+        $Script:ExecutionProgressText = $progressText
+        $Script:AbortRunButton = $abortBtn
+        $Script:AbortRequested = $false
+        $Script:RunAbortDisposition = $null
+        $Script:ExecutionWorker = $null
+        $Script:ExecutionRunspace = $null
+        $Script:ExecutionRunPowerShell = $null
+        $Script:ExecutionRunTimer = $null
+        $Script:ExecutionTimerErrorShown = $false
+        $Script:SuppressRunClosePrompt = $false
+        $Script:BgPS = $null
+        $Script:BgAsync = $null
+        # Hide filter bar and tab bar during execution
+        $PrimaryTabs.Visibility = [System.Windows.Visibility]::Collapsed
+        $HeaderBorder.Visibility = [System.Windows.Visibility]::Collapsed
+        # Hide bottom action buttons during execution
+        if ($ActionButtonBar) { $ActionButtonBar.Visibility = [System.Windows.Visibility]::Collapsed }
+        if ($BtnPreviewRun) { $BtnPreviewRun.Visibility = [System.Windows.Visibility]::Collapsed }
+        if ($StatusText) { $StatusText.Visibility = [System.Windows.Visibility]::Collapsed }
+        $abortBtn.Focus() | Out-Null
+    }
+
+	    function Exit-ExecutionView
+	    {
+			Write-Host "[Exit-ExecutionView] ENTERED - restoring GUI"
+	        $Script:ExecutionLogBox = $null
+	        $Script:ExecutionLastConsoleAction = $null
+        $Script:ExecutionProgressBar = $null
+        $Script:ExecutionProgressText = $null
+        $Script:AbortRunButton = $null
+        $Script:AbortRequested = $false
+        $Script:RunAbortDisposition = $null
+        $Script:ExecutionWorker = $null
+        $Script:ExecutionRunspace = $null
+        $Script:ExecutionRunPowerShell = $null
+        $Script:ExecutionRunTimer = $null
+        $Script:ExecutionTimerErrorShown = $false
+	        $Script:BgPS = $null
+	        $Script:BgAsync = $null
+	        $Script:ExecutionPreviousContent = $null
+	        $Script:ExecutionCurrentSummaryKey = $null
+	        $Script:ExecutionMode = $null
+
+	        # Restore the outer ScrollViewer scrolling mode
+	        $ContentScroll.VerticalScrollBarVisibility = 'Auto'
+
+        # Reset run state
+        $Script:RunInProgress = $false
+
+        # Restore filter bar and tab bar
+        $PrimaryTabs.Visibility = [System.Windows.Visibility]::Visible
+        $PrimaryTabs.IsEnabled = $true
+        $HeaderBorder.Visibility = [System.Windows.Visibility]::Visible
+        # Restore bottom action buttons
+        if ($ActionButtonBar) { $ActionButtonBar.Visibility = [System.Windows.Visibility]::Visible }
+        if ($BtnPreviewRun) { $BtnPreviewRun.Visibility = [System.Windows.Visibility]::Visible; $BtnPreviewRun.IsEnabled = $true }
+        if ($StatusText) { $StatusText.Visibility = [System.Windows.Visibility]::Visible }
+        # Re-enable controls
+        if ($BtnRun) { $BtnRun.Content = 'Run Tweaks'; $BtnRun.IsEnabled = $true }
+        if ($BtnDefaults) { $BtnDefaults.IsEnabled = $true }
+        Set-GuiActionButtonsEnabled -Enabled $true
+        if ($ChkScan) { $ChkScan.IsEnabled = $true }
+        if ($ChkTheme) { $ChkTheme.IsEnabled = $true }
+        Set-SearchControlsEnabled -Enabled $true
+
+        if ($Script:CurrentPrimaryTab)
+        {
+            Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
+        }
+		Write-Host "[Exit-ExecutionView] COMPLETED - GUI restored"
+    }
 
 	function Invoke-GuiSystemScan
 	{
 		$Script:ScanEnabled = $true
 		$StatusText.Text = "Scanning system state..."
 		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
-		$Form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [Action]{})
+		$Form.Dispatcher.Invoke([System.Action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
 
 		$matchCount = 0
 		$scannable  = 0
@@ -1308,6 +4037,977 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 
 		if ($Script:CurrentPrimaryTab) { Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab }
 	}
+
+	function Get-SelectedTweakRunList
+	{
+		$selectedTweaks = [System.Collections.Generic.List[hashtable]]::new()
+
+		for ($ri = 0; $ri -lt $Script:TweakManifest.Count; $ri++)
+		{
+			$rt = $Script:TweakManifest[$ri]
+			$rctl = $Script:Controls[$ri]
+			if (-not $rctl -or -not $rctl.IsEnabled) { continue }
+
+				switch ($rt.Type)
+				{
+					'Toggle'
+					{
+						if ($rctl.IsChecked)
+						{
+							$selectedParam = $rt.OnParam
+							if ([string]::IsNullOrWhiteSpace([string]$selectedParam)) { continue }
+							$selectedTweaks.Add(@{
+								Key       = [string]$ri
+							Index     = $ri
+							Name      = $rt.Name
+							Function  = $rt.Function
+							Type      = 'Toggle'
+							Category  = $rt.Category
+							Risk      = $rt.Risk
+							RequiresRestart = [bool]$rt.RequiresRestart
+							Selection = [string]$selectedParam
+							OnParam   = [string]$selectedParam
+							ExtraArgs = $null
+						})
+					}
+				}
+				'Choice'
+				{
+					$selIdx = $rctl.SelectedIndex
+					if ($selIdx -ge 0)
+					{
+						$displayOpts = if ($rt.DisplayOptions) { $rt.DisplayOptions } else { $rt.Options }
+						$selectedTweaks.Add(@{
+							Key       = [string]$ri
+							Index     = $ri
+							Name      = $rt.Name
+							Function  = $rt.Function
+							Type      = 'Choice'
+							Category  = $rt.Category
+							Risk      = $rt.Risk
+							RequiresRestart = [bool]$rt.RequiresRestart
+							Selection = [string]$displayOpts[$selIdx]
+							Value     = $rt.Options[$selIdx]
+							ExtraArgs = $rt.ExtraArgs
+						})
+					}
+				}
+				'Action'
+				{
+					if ($rctl.IsChecked)
+					{
+						$selectedTweaks.Add(@{
+							Key       = [string]$ri
+							Index     = $ri
+							Name      = $rt.Name
+							Function  = $rt.Function
+							Type      = 'Action'
+							Category  = $rt.Category
+							Risk      = $rt.Risk
+							RequiresRestart = [bool]$rt.RequiresRestart
+							Selection = if ($rt.Name) { [string]$rt.Name } else { 'Run action' }
+							ExtraArgs = $rt.ExtraArgs
+						})
+					}
+				}
+			}
+		}
+
+		return $selectedTweaks
+	}
+
+	function Get-WindowsDefaultRunList
+	{
+		$defaultTweaks = [System.Collections.Generic.List[hashtable]]::new()
+
+		for ($ri = 0; $ri -lt $Script:TweakManifest.Count; $ri++)
+		{
+			$rt = $Script:TweakManifest[$ri]
+			$rctl = $Script:Controls[$ri]
+			if (-not $rctl) { continue }
+			if ($null -ne $rt.Restorable -and -not $rt.Restorable) { continue }
+
+			switch ($rt.Type)
+			{
+				'Toggle'
+				{
+					$defaultParam = if ([bool]$rt.WinDefault) { $rt.OnParam } else { $rt.OffParam }
+					if ([string]::IsNullOrWhiteSpace([string]$defaultParam)) { continue }
+
+					$defaultTweaks.Add(@{
+						Key             = [string]$ri
+						Index           = $ri
+						Name            = $rt.Name
+						Function        = $rt.Function
+						Type            = 'Toggle'
+						Category        = $rt.Category
+						Risk            = $rt.Risk
+						RequiresRestart = [bool]$rt.RequiresRestart
+						Selection       = if ([bool]$rt.WinDefault) { 'Windows default: Enabled' } else { 'Windows default: Disabled' }
+						OnParam         = $defaultParam
+						WinDefault      = [bool]$rt.WinDefault
+						ExtraArgs       = $null
+					})
+				}
+				'Choice'
+				{
+					if ([string]::IsNullOrWhiteSpace([string]$rt.WinDefault)) { continue }
+					$defaultIndex = [array]::IndexOf($rt.Options, $rt.WinDefault)
+					if ($defaultIndex -lt 0) { continue }
+
+					$displayOpts = if ($rt.DisplayOptions) { $rt.DisplayOptions } else { $rt.Options }
+					$defaultTweaks.Add(@{
+						Key             = [string]$ri
+						Index           = $ri
+						Name            = $rt.Name
+						Function        = $rt.Function
+						Type            = 'Choice'
+						Category        = $rt.Category
+						Risk            = $rt.Risk
+						RequiresRestart = [bool]$rt.RequiresRestart
+						Selection       = "Windows default: $([string]$displayOpts[$defaultIndex])"
+						Value           = $rt.Options[$defaultIndex]
+						WinDefault      = [string]$rt.WinDefault
+						WinDefaultIndex = $defaultIndex
+						ExtraArgs       = $rt.ExtraArgs
+					})
+				}
+				'Action'
+				{
+					if (-not $rt.WinDefault) { continue }
+
+					$defaultTweaks.Add(@{
+						Key             = [string]$ri
+						Index           = $ri
+						Name            = $rt.Name
+						Function        = $rt.Function
+						Type            = 'Action'
+						Category        = $rt.Category
+						Risk            = $rt.Risk
+						RequiresRestart = [bool]$rt.RequiresRestart
+						Selection       = 'Run Windows default action'
+						WinDefault      = [bool]$rt.WinDefault
+						ExtraArgs       = $rt.ExtraArgs
+					})
+				}
+			}
+		}
+
+		return $defaultTweaks
+	}
+
+	function Confirm-HighRiskTweakRun
+	{
+		param ([object[]]$SelectedTweaks)
+
+		$highRiskTweaks = @(
+			@($SelectedTweaks) |
+				Where-Object { $_ -and [string]$_.Risk -eq 'High' }
+		)
+		if ($highRiskTweaks.Count -eq 0) { return $true }
+
+		$preview = @($highRiskTweaks | Select-Object -First 10)
+		$listText = if ($preview.Count -gt 0) {
+			($preview | ForEach-Object { "- [{0}] {1}" -f [string]$_.Category, [string]$_.Name }) -join "`n"
+		} else {
+			'- Review the selected tweaks before continuing.'
+		}
+		if ($highRiskTweaks.Count -gt $preview.Count)
+		{
+			$listText += "`n- and $($highRiskTweaks.Count - $preview.Count) more..."
+		}
+
+		$message = "You selected $($highRiskTweaks.Count) high-risk tweak$(if ($highRiskTweaks.Count -eq 1) { '' } else { 's' }).`n`nThese changes may be destructive, aggressive, or harder to undo.`n`nHigh-risk selections:`n$listText"
+		$choice = Show-ThemedDialog -Title 'Confirm High-Risk Tweaks' `
+			-Message $message `
+			-Buttons @('Cancel', 'Run High-Risk Tweaks') `
+			-DestructiveButton 'Run High-Risk Tweaks'
+
+		return ($choice -eq 'Run High-Risk Tweaks')
+	}
+
+	function Get-ExecutionPreviewResults
+	{
+		param ([object[]]$SelectedTweaks)
+
+		$previewResults = New-Object System.Collections.ArrayList
+		$order = 0
+		foreach ($tweak in @($SelectedTweaks))
+		{
+			$order++
+			$actionDesc = switch ([string]$tweak.Type)
+			{
+				'Toggle' { "Set {0}" -f $(if ($tweak.OnParam) { [string]$tweak.OnParam } else { 'Enabled' }) }
+				'Choice' { "Apply setting: {0}" -f [string]$tweak.Selection }
+				'Action' { "Run one-time action" }
+				default  { [string]$tweak.Selection }
+			}
+			$detailParts = @("Preview only. No changes were applied.", "Action: $actionDesc")
+			if ([bool]$tweak.RequiresRestart)
+			{
+				$detailParts += 'May require a restart after the real run.'
+			}
+			if ([string]$tweak.Risk -eq 'High')
+			{
+				$detailParts += 'High-risk tweak. Review carefully before running.'
+			}
+
+			[void]$previewResults.Add([PSCustomObject]@{
+				Key             = [string]$tweak.Key
+				Order           = $order
+				Name            = [string]$tweak.Name
+				Category        = [string]$tweak.Category
+				Risk            = [string]$tweak.Risk
+				Type            = [string]$tweak.Type
+				Selection       = [string]$tweak.Selection
+				RequiresRestart = [bool]$tweak.RequiresRestart
+				Status          = 'Preview'
+				Detail          = ($detailParts -join ' ')
+			})
+		}
+
+		return @($previewResults | Sort-Object Order)
+	}
+
+	function Write-ExecutionPreviewToLog
+	{
+		param ([object[]]$Results)
+
+		$results = @($Results)
+		$selectedCount = $results.Count
+		$highRiskCount = @($results | Where-Object Risk -eq 'High').Count
+		$restartCount = @($results | Where-Object RequiresRestart).Count
+
+		LogInfo "Preview summary: Selected=$selectedCount, HighRisk=$highRiskCount, RequiresRestart=$restartCount. No changes were applied."
+
+		foreach ($result in $results)
+		{
+			$selectionLabel = if ([string]::IsNullOrWhiteSpace([string]$result.Selection)) { '' } else { " | $($result.Selection)" }
+			$detailSuffix = if ([string]::IsNullOrWhiteSpace([string]$result.Detail)) { '' } else { " | $($result.Detail)" }
+			LogInfo ("Preview item | [{0}] {1}{2}{3}" -f $result.Category, $result.Name, $selectionLabel, $detailSuffix)
+		}
+	}
+
+	function Initialize-ExecutionSummary
+	{
+		param ([object[]]$SelectedTweaks)
+
+		$Script:ExecutionSummaryRecords = New-Object System.Collections.ArrayList
+		$Script:ExecutionSummaryLookup = @{}
+		$Script:ExecutionCurrentSummaryKey = $null
+
+		$order = 0
+		foreach ($tweak in @($SelectedTweaks))
+		{
+			$order++
+			$record = [PSCustomObject]@{
+				Key       = [string]$tweak.Key
+				Order     = $order
+				Name      = [string]$tweak.Name
+				Category  = [string]$tweak.Category
+				Risk      = [string]$tweak.Risk
+				Type      = [string]$tweak.Type
+				Selection = [string]$tweak.Selection
+				Status    = 'Pending'
+				Detail    = $null
+			}
+			[void]$Script:ExecutionSummaryRecords.Add($record)
+			$Script:ExecutionSummaryLookup[[string]$tweak.Key] = $record
+		}
+	}
+
+	function Set-ExecutionSummaryStatus
+	{
+		param (
+			[string]$Key,
+			[string]$Status,
+			[string]$Detail = $null
+		)
+
+		if ([string]::IsNullOrWhiteSpace($Key)) { return }
+		$record = $Script:ExecutionSummaryLookup[$Key]
+		if (-not $record) { return }
+
+		$record.Status = $Status
+		if (-not [string]::IsNullOrWhiteSpace($Detail))
+		{
+			$record.Detail = $Detail.Trim()
+		}
+		elseif ($Status -eq 'Success')
+		{
+			$record.Detail = $null
+		}
+		elseif ($Status -eq 'Skipped' -and [string]::IsNullOrWhiteSpace([string]$record.Detail))
+		{
+			$record.Detail = 'Skipped because the system already matched the requested state.'
+		}
+	}
+
+	function Complete-ExecutionSummary
+	{
+		param (
+			[bool]$AbortedRun = $false,
+			[string]$FatalError = $null
+		)
+
+		foreach ($record in @($Script:ExecutionSummaryRecords))
+		{
+			if ($record.Status -in @('Pending', 'Running'))
+			{
+				$record.Status = 'Not Run'
+				if ([string]::IsNullOrWhiteSpace([string]$record.Detail))
+				{
+					$record.Detail = if ($AbortedRun) {
+						'Run was aborted before this tweak completed.'
+					}
+					elseif (-not [string]::IsNullOrWhiteSpace($FatalError)) {
+						'Run stopped before this tweak could complete because of a fatal error.'
+					}
+					else {
+						'This tweak did not produce a final result.'
+					}
+				}
+			}
+		}
+	}
+
+	function Get-ExecutionSummaryResults
+	{
+		return @($Script:ExecutionSummaryRecords | Sort-Object Order)
+	}
+
+	function Write-ExecutionSummaryToLog
+	{
+		param (
+			[object[]]$Results,
+			[bool]$AbortedRun = $false,
+			[string]$FatalError = $null
+		)
+
+		$results = @($Results)
+		$successCount = @($results | Where-Object Status -eq 'Success').Count
+		$failedCount = @($results | Where-Object Status -eq 'Failed').Count
+		$skippedCount = @($results | Where-Object Status -eq 'Skipped').Count
+		$notRunCount = @($results | Where-Object Status -eq 'Not Run').Count
+
+		$summaryLine = "Execution summary: Success=$successCount, Failed=$failedCount, Skipped=$skippedCount, NotRun=$notRunCount."
+		if ($AbortedRun)
+		{
+			LogWarning "$summaryLine Run aborted by user."
+		}
+		elseif (-not [string]::IsNullOrWhiteSpace($FatalError))
+		{
+			LogError "$summaryLine Fatal error: $FatalError"
+		}
+		elseif ($failedCount -gt 0 -or $notRunCount -gt 0)
+		{
+			LogWarning $summaryLine
+		}
+		else
+		{
+			LogInfo $summaryLine
+		}
+
+		foreach ($result in $results)
+		{
+			$detailSuffix = if ([string]::IsNullOrWhiteSpace([string]$result.Detail)) { '' } else { " | $($result.Detail)" }
+			$selectionLabel = if ([string]::IsNullOrWhiteSpace([string]$result.Selection)) { '' } else { " | $($result.Selection)" }
+			$line = "Run summary | $($result.Status) | [$($result.Category)] $($result.Name)$selectionLabel$detailSuffix"
+			switch ($result.Status)
+			{
+				'Failed' { LogError $line }
+				'Skipped' { LogWarning $line }
+				'Not Run' { LogWarning $line }
+				default { LogInfo $line }
+			}
+		}
+	}
+
+	function Sync-DefaultsControlsFromExecutionSummary
+	{
+		param ([object[]]$Results)
+
+		foreach ($result in @($Results | Where-Object Status -eq 'Success'))
+		{
+			if ([string]::IsNullOrWhiteSpace([string]$result.Key)) { continue }
+
+			$ctlKey = [int]$result.Key
+			$ctl = $Script:Controls[$ctlKey]
+			$twk = $Script:TweakManifest[$ctlKey]
+			if (-not $ctl -or -not $twk) { continue }
+
+			if ($ctl.PSObject.Properties['IsChecked'])
+			{
+				$ctl.IsChecked = [bool]$twk.WinDefault
+			}
+			elseif ($ctl.PSObject.Properties['SelectedIndex'])
+			{
+				$winDefIdx = [array]::IndexOf($twk.Options, $twk.WinDefault)
+				if ($winDefIdx -ge 0) { $ctl.SelectedIndex = $winDefIdx }
+			}
+		}
+	}
+
+	function Complete-GuiExecutionRun
+	{
+		param (
+			[ValidateSet('Run', 'Defaults')]
+			[string]$Mode,
+			[int]$CompletedCount,
+			[bool]$AbortedRun = $false,
+			[string]$FatalError = $null,
+			[object[]]$ExecutionSummary,
+			[string]$LogPath
+		)
+
+		$executionSummary = @($ExecutionSummary)
+		$successCount = @($executionSummary | Where-Object Status -eq 'Success').Count
+		$failedCount = @($executionSummary | Where-Object Status -eq 'Failed').Count
+		$skippedCount = @($executionSummary | Where-Object Status -eq 'Skipped').Count
+		$notRunCount = @($executionSummary | Where-Object Status -eq 'Not Run').Count
+
+		if ($Mode -eq 'Defaults')
+		{
+			$summaryCountsText = "Success: $successCount. Failed: $failedCount. Skipped: $skippedCount."
+			if ($notRunCount -gt 0) { $summaryCountsText += " Not run: $notRunCount." }
+
+			Sync-DefaultsControlsFromExecutionSummary -Results $executionSummary
+			if ($Script:CurrentPrimaryTab)
+			{
+				Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
+			}
+
+			$finalLabel = if ($AbortedRun) { 'Aborted' } elseif ($FatalError) { 'Failed' } elseif ($failedCount -gt 0) { 'Done With Errors' } else { 'Done' }
+			& $Script:UpdateProgressFn -Completed $CompletedCount -Total $Script:TotalRunnableTweaks -CurrentAction $finalLabel
+
+			if ($AbortedRun)
+			{
+				$rawRunAbortDisposition = if ($null -eq $Script:RunAbortDisposition) { '<null>' } else { [string]$Script:RunAbortDisposition }
+				$runAbortDisposition = if ([string]::IsNullOrWhiteSpace([string]$Script:RunAbortDisposition)) { 'Return' } else { [string]$Script:RunAbortDisposition }
+				Write-Host ("[Complete-Defaults] AbortedRun=true, RunAbortDisposition={0}, EffectiveDisposition={1}" -f $rawRunAbortDisposition, $runAbortDisposition)
+				$StatusText.Text = "Windows defaults restore aborted. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText"
+				$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
+
+				if ($runAbortDisposition -eq 'Exit')
+				{
+					$Script:MainForm.Close()
+				}
+				else
+				{
+					Exit-ExecutionView
+				}
+				return
+			}
+
+			if ($FatalError)
+			{
+				$StatusText.Text = "Windows defaults restore failed. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText Review the summary dialog or log file."
+				$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
+			}
+			elseif ($failedCount -gt 0)
+			{
+				$StatusText.Text = "Windows defaults restore finished with errors. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText Review the summary dialog or log file."
+				$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
+			}
+			else
+			{
+				$StatusText.Text = "Windows defaults restored. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText"
+				$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.ToggleOn)
+			}
+
+			if ($FatalError -or $failedCount -gt 0 -or $notRunCount -gt 0)
+			{
+				$dlgTitle = if ($FatalError) { 'Defaults Restore Failed' } else { 'Defaults Restore Finished With Errors' }
+				$dlgMessage = if ($FatalError) {
+					"The defaults restore stopped because of an unexpected error.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText`n`nFatal error:`n$FatalError"
+				}
+				else {
+					"Windows defaults restore finished with errors.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText"
+				}
+				Show-ExecutionSummaryDialog -Title $dlgTitle `
+					-SummaryText $dlgMessage `
+					-Results $executionSummary `
+					-LogPath $LogPath `
+					-Buttons @('Close') | Out-Null
+			}
+
+			Exit-ExecutionView
+			return
+		}
+
+		$summaryCountsText = "Success: $successCount. Failed: $failedCount. Skipped: $skippedCount."
+		if ($notRunCount -gt 0) { $summaryCountsText += " Not run: $notRunCount." }
+
+		$finalLabel = if ($AbortedRun) { 'Aborted' } elseif ($FatalError) { 'Failed' } elseif ($failedCount -gt 0) { 'Done With Errors' } else { 'Done' }
+		& $Script:UpdateProgressFn -Completed $CompletedCount -Total $Script:TotalRunnableTweaks -CurrentAction $finalLabel
+
+		$StatusText.Text = if ($AbortedRun) {
+			"Run aborted. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText"
+		} elseif ($FatalError) {
+			"Run failed. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText Review the summary dialog or log file."
+		} elseif ($failedCount -gt 0) {
+			"Run finished with errors. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText Review the summary dialog or log file."
+		} else {
+			"Run complete. Completed $CompletedCount of $Script:TotalRunnableTweaks. $summaryCountsText"
+		}
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($(if ($AbortedRun -or $FatalError -or $failedCount -gt 0) { $Script:CurrentTheme.CautionText } else { $Script:CurrentTheme.ToggleOn }))
+
+		if ($AbortedRun)
+		{
+			$rawRunAbortDisposition = if ($null -eq $Script:RunAbortDisposition) { '<null>' } else { [string]$Script:RunAbortDisposition }
+			$runAbortDisposition = if ([string]::IsNullOrWhiteSpace([string]$Script:RunAbortDisposition)) { 'Return' } else { [string]$Script:RunAbortDisposition }
+			Write-Host ("[Complete-Run] AbortedRun=true, RunAbortDisposition={0}, EffectiveDisposition={1}" -f $rawRunAbortDisposition, $runAbortDisposition)
+			if ($runAbortDisposition -eq 'Exit')
+			{
+				$Script:MainForm.Close()
+			}
+			else
+			{
+				Exit-ExecutionView
+			}
+			return
+		}
+
+		$dlgTitle = if ($FatalError) {
+			'Run Failed'
+		} elseif ($failedCount -gt 0) {
+			'Run Finished With Errors'
+		} else {
+			'Run Complete'
+		}
+		$dlgMsg = if ($FatalError) {
+			"The run stopped because of an unexpected error.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText`n`nFatal error:`n$FatalError"
+		} elseif ($failedCount -gt 0) {
+			"Selected tweaks finished running with errors.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText"
+		} elseif ($skippedCount -gt 0) {
+			"Selected tweaks have finished running.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText"
+		} else {
+			"Selected tweaks have finished running successfully.`n`nCompleted $CompletedCount of $Script:TotalRunnableTweaks.`n$summaryCountsText"
+		}
+		$nextStep = Show-ExecutionSummaryDialog -Title $dlgTitle `
+			-SummaryText $dlgMsg `
+			-Results $executionSummary `
+			-LogPath $LogPath `
+			-Buttons @('Close', 'Exit')
+
+		if ($nextStep -eq 'Close')
+		{
+			Exit-ExecutionView
+			$ChkScan.IsChecked = $true
+			Invoke-GuiSystemScan
+		}
+		else
+		{
+			$Script:MainForm.Close()
+		}
+	}
+
+	function Start-GuiExecutionRun
+	{
+		param (
+			[object[]]$TweakList,
+			[ValidateSet('Run', 'Defaults')]
+			[string]$Mode,
+			[string]$ExecutionTitle
+		)
+
+		$tweakList = @($TweakList)
+		if ($tweakList.Count -eq 0) { return }
+
+		Initialize-ExecutionSummary -SelectedTweaks $tweakList
+		$Global:Error.Clear()
+		$Script:ExecutionMode = $Mode
+
+		$StatusText.Text = if ($Mode -eq 'Defaults') { 'Restoring Windows defaults...' } else { 'Running selected tweaks...' }
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+			$Form.Dispatcher.Invoke([System.Action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
+
+		Stop-Foreground
+		if ($Mode -eq 'Defaults')
+		{
+			Save-GuiUndoSnapshot
+		}
+
+		$Script:RunInProgress = $true
+		$PrimaryTabs.IsEnabled = $false
+		$BtnRun.Content = 'Pause'
+		$BtnRun.IsEnabled = $true
+		if ($BtnPreviewRun) { $BtnPreviewRun.IsEnabled = $false }
+		$BtnDefaults.IsEnabled = $false
+		Set-GuiActionButtonsEnabled -Enabled $false
+		$ChkScan.IsEnabled = $false
+		$ChkTheme.IsEnabled = $false
+		Set-SearchControlsEnabled -Enabled $false
+		Enter-ExecutionView -Title $ExecutionTitle
+		$Script:AbortRequested = $false
+
+		$Script:TotalRunnableTweaks = $tweakList.Count
+		$Script:CurrentTweakDisplayName = $null
+		& $Script:UpdateProgressFn -Completed 0 -Total $Script:TotalRunnableTweaks -CurrentAction 'Starting...'
+
+		$Script:RunState = [hashtable]::Synchronized(@{
+			Paused           = $false
+			AbortRequested   = $false
+			AbortRequestedAt = [datetime]::MinValue
+			Done             = $false
+			AbortedRun       = $false
+			CompletedCount   = 0
+			ErrorCount       = 0
+			FatalError       = $null
+			ForceStopIssued  = $false
+			CurrentTweak     = ''
+			FailureDetails   = [System.Collections.ArrayList]::new()
+			LogQueue         = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
+			SkippedTweaks    = [hashtable]::Synchronized(@{})
+			AppliedFunctions = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+		})
+
+		$Script:AppendLogFn = {
+			param($Text, $Level = 'INFO')
+			if (-not $Script:ExecutionLogBox -or -not $Script:ExecutionLogBox.Document) { return }
+			$cleanText = ($Text -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
+			if ([string]::IsNullOrWhiteSpace($cleanText)) { return }
+
+			$bc = [System.Windows.Media.BrushConverter]::new()
+			$timestamp = Get-Date -Format 'HH:mm:ss'
+
+			$para = New-Object System.Windows.Documents.Paragraph
+			$para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 2)
+			$para.FontFamily = New-Object System.Windows.Media.FontFamily('Consolas')
+			$para.FontSize = 12
+
+			$tsRun = New-Object System.Windows.Documents.Run
+			$tsRun.Text = "[$timestamp] "
+			$tsRun.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
+			$para.Inlines.Add($tsRun) | Out-Null
+
+			$contentRun = New-Object System.Windows.Documents.Run
+			$contentRun.Text = $cleanText
+			$contentColor = switch ($Level.ToUpperInvariant())
+			{
+				'SUCCESS' { $Script:CurrentTheme.ToggleOn }
+				'SKIP'    { $Script:CurrentTheme.TextMuted }
+				'ERROR'   { $Script:CurrentTheme.CautionText }
+				'WARNING' { $Script:CurrentTheme.RiskMediumBadge }
+				default   { $Script:CurrentTheme.TextPrimary }
+			}
+			$contentRun.Foreground = $bc.ConvertFromString($contentColor)
+			$para.Inlines.Add($contentRun) | Out-Null
+
+			$Script:ExecutionLogBox.Document.Blocks.Add($para) | Out-Null
+
+			$vO = $Script:ExecutionLogBox.VerticalOffset
+			$vH = $Script:ExecutionLogBox.ViewportHeight
+			$eH = $Script:ExecutionLogBox.ExtentHeight
+			if (($vO + $vH) -ge ($eH - 30)) { $Script:ExecutionLogBox.ScrollToEnd() }
+		}
+
+		$Script:DrainEntry = {
+			param($entry)
+			switch ($entry.Kind)
+			{
+				'Log'
+				{
+					if (Test-ExecutionSkipMessage -Message $entry.Message)
+					{
+						$skipKey = if (-not [string]::IsNullOrWhiteSpace($Script:ExecutionCurrentSummaryKey)) { $Script:ExecutionCurrentSummaryKey } else { $null }
+						if (-not [string]::IsNullOrWhiteSpace($skipKey))
+						{
+							$skipDetail = if ($entry.PSObject.Properties['Message']) { [string]$entry.Message } else { 'Skipped because the system already matched the requested state.' }
+							$Script:RunState['SkippedTweaks'][$skipKey] = $skipDetail
+							Set-ExecutionSummaryStatus -Key $skipKey -Status 'Skipped' -Detail $skipDetail
+						}
+						return
+					}
+				}
+				'_TweakStarted'
+				{
+					$Script:RunState['CurrentTweak'] = $entry.Name
+					$Script:ExecutionCurrentSummaryKey = if ($entry.PSObject.Properties['Key']) { [string]$entry.Key } else { $null }
+					if (-not [string]::IsNullOrWhiteSpace($Script:ExecutionCurrentSummaryKey))
+					{
+						if ($Script:RunState['SkippedTweaks'].ContainsKey($Script:ExecutionCurrentSummaryKey))
+						{
+							$null = $Script:RunState['SkippedTweaks'].Remove($Script:ExecutionCurrentSummaryKey)
+						}
+						Set-ExecutionSummaryStatus -Key $Script:ExecutionCurrentSummaryKey -Status 'Running'
+					}
+					$Script:ExecutionLastConsoleAction = $null
+					& $Script:UpdateProgressFn -Completed $Script:RunState['CompletedCount'] -Total $Script:TotalRunnableTweaks -CurrentAction $entry.Name
+				}
+				'_TweakCompleted'
+				{
+					$completedStatus = if ([string]::IsNullOrWhiteSpace($entry.Status)) { 'success' } else { $entry.Status.ToLowerInvariant() }
+					$completedName = ($entry.Name -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
+					$completedKey = if ($entry.PSObject.Properties['Key']) { [string]$entry.Key } else { $null }
+					$wasSkipped = $false
+					$skipDetail = $null
+					if ($entry.PSObject.Properties['Count'])
+					{
+						$Script:RunState['CompletedCount'] = [int]$entry.Count
+					}
+					if (-not [string]::IsNullOrWhiteSpace($completedKey) -and $Script:RunState['SkippedTweaks'].ContainsKey($completedKey))
+					{
+						$wasSkipped = $true
+						$skipDetail = [string]$Script:RunState['SkippedTweaks'][$completedKey]
+						$null = $Script:RunState['SkippedTweaks'].Remove($completedKey)
+					}
+					if (-not [string]::IsNullOrWhiteSpace($completedName))
+					{
+						if ($wasSkipped)
+						{
+							& $Script:AppendLogFn ("{0} - skipped" -f $completedName) 'SKIP'
+						}
+						else
+						{
+							$displayStatus = if ($completedStatus -eq 'success') { 'success' } else { 'failed' }
+							$completedLevel = if ($displayStatus -eq 'failed') { 'ERROR' } else { 'SUCCESS' }
+							& $Script:AppendLogFn ("{0} - {1}!" -f $completedName, $displayStatus) $completedLevel
+						}
+					}
+					if (-not [string]::IsNullOrWhiteSpace($completedKey))
+					{
+						if ($wasSkipped)
+						{
+							Set-ExecutionSummaryStatus -Key $completedKey -Status 'Skipped' -Detail $skipDetail
+						}
+						elseif ($completedStatus -eq 'success')
+						{
+							Set-ExecutionSummaryStatus -Key $completedKey -Status 'Success'
+						}
+						else
+						{
+							Set-ExecutionSummaryStatus -Key $completedKey -Status 'Failed'
+						}
+					}
+					$Script:ExecutionCurrentSummaryKey = $null
+					$Script:ExecutionLastConsoleAction = $null
+					& $Script:UpdateProgressFn -Completed $Script:RunState['CompletedCount'] -Total $Script:TotalRunnableTweaks -CurrentAction $completedName
+				}
+				'_TweakFailed'
+				{
+					$failedKey = if ($entry.PSObject.Properties['Key']) { [string]$entry.Key } else { $null }
+					if (-not [string]::IsNullOrWhiteSpace($failedKey) -and $Script:RunState['SkippedTweaks'].ContainsKey($failedKey))
+					{
+						$null = $Script:RunState['SkippedTweaks'].Remove($failedKey)
+					}
+					if (-not [string]::IsNullOrWhiteSpace($entry.Name))
+					{
+						[void]$Script:RunState['FailureDetails'].Add([PSCustomObject]@{
+							Name  = $entry.Name
+							Error = if ($entry.PSObject.Properties['Error']) { $entry.Error } else { $null }
+						})
+					}
+					if (-not [string]::IsNullOrWhiteSpace($failedKey))
+					{
+						Set-ExecutionSummaryStatus -Key $failedKey -Status 'Failed' -Detail $(if ($entry.PSObject.Properties['Error']) { [string]$entry.Error } else { $null })
+					}
+					& $Script:UpdateProgressFn -Completed $Script:RunState['CompletedCount'] -Total $Script:TotalRunnableTweaks -CurrentAction $Script:RunState['CurrentTweak']
+				}
+				'_RunError'
+				{
+					$Script:RunState['FatalError'] = if ([string]::IsNullOrWhiteSpace($entry.Error)) { 'Unexpected fatal run error.' } else { [string]$entry.Error }
+					LogError "Fatal run error: $($entry.Error)"
+				}
+				'_RunNotice'
+				{
+				}
+				'ConsoleAction'
+				{
+					$cleanAct = ($entry.Action -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
+					$Script:ExecutionLastConsoleAction = $cleanAct
+					& $Script:UpdateProgressFn -Completed $Script:RunState['CompletedCount'] -Total $Script:TotalRunnableTweaks -CurrentAction $cleanAct
+				}
+				'ConsoleStatus'
+				{
+					$Script:ExecutionLastConsoleAction = $null
+				}
+				'ConsoleComplete'
+				{
+					$Script:ExecutionLastConsoleAction = $null
+				}
+				'_SubProgress'
+				{
+					$subAct = if ($entry.PSObject.Properties['Action']) { $entry.Action } else { $null }
+					$subPct = if ($entry.PSObject.Properties['Percent']) { [int]$entry.Percent } else { -1 }
+					$subComp = if ($entry.PSObject.Properties['Completed']) { [int]$entry.Completed } else { 0 }
+					$subTot = if ($entry.PSObject.Properties['Total']) { [int]$entry.Total } else { 0 }
+					if ($subPct -lt 0 -and $subTot -gt 0) { $subPct = [Math]::Round(($subComp / $subTot) * 100) }
+					$detail = if ($subAct -and $subPct -ge 0) { "{0} ({1}%)" -f $subAct, $subPct }
+						elseif ($subAct) { $subAct }
+						elseif ($subPct -ge 0) { "{0}%" -f $subPct }
+						else { $null }
+					if ($detail)
+					{
+						& $Script:UpdateProgressFn -Completed $Script:RunState['CompletedCount'] -Total $Script:TotalRunnableTweaks -CurrentAction $detail
+					}
+				}
+			}
+		}
+
+		Set-Variable -Name 'GUIRunState' -Scope Global -Value $Script:RunState['LogQueue']
+		Set-UILogHandler { param($entry) $Script:RunState['LogQueue'].Enqueue($entry) }
+
+		LogInfo "Starting tweak execution (mode: $Mode)"
+
+		$bgModuleDir   = Split-Path $PSScriptRoot -Parent
+		$bgLoaderPath  = Join-Path $bgModuleDir 'Win10_11Util.psm1'
+		$bgRootDir     = Split-Path $bgModuleDir -Parent
+		$bgLocDir      = Join-Path $bgRootDir 'Localizations'
+		$bgUICulture   = $PSUICulture
+		$bgLogFilePath = $Global:LogFilePath
+
+		$Script:ExecutionWorker = GUIExecution\Start-GuiExecutionWorker `
+			-RunState $Script:RunState `
+			-TweakList $tweakList `
+			-Mode $Mode `
+			-LoaderPath $bgLoaderPath `
+			-LocalizationDirectory $bgLocDir `
+			-UICulture $bgUICulture `
+			-LogFilePath $bgLogFilePath
+		$Script:BgPS = $Script:ExecutionWorker.PowerShell
+		$Script:BgAsync = $Script:ExecutionWorker.AsyncResult
+		$Script:ExecutionRunspace = $Script:ExecutionWorker.Runspace
+		$Script:ExecutionRunPowerShell = $Script:ExecutionWorker.PowerShell
+
+		$Script:ExecutionPumpTickFn = {
+			try
+			{
+				if (-not $Script:RunInProgress -or -not $Script:RunState) { return }
+
+				if ($Script:AbortRequested -and -not $Script:RunState['AbortRequested'])
+				{
+					$Script:RunState['AbortRequested'] = $true
+					$Script:RunState['AbortRequestedAt'] = Get-Date
+				}
+
+				if (
+					$Script:RunState['AbortRequested'] -and
+					-not $Script:RunState['Done'] -and
+					-not $Script:RunState['ForceStopIssued'] -and
+					$Script:RunState['AbortRequestedAt'] -ne [datetime]::MinValue -and
+					((Get-Date) - $Script:RunState['AbortRequestedAt']).TotalSeconds -ge 2
+				)
+				{
+					$Script:RunState['ForceStopIssued'] = $true
+					$Script:RunState['AbortedRun'] = $true
+					$Script:RunState['LogQueue'].Enqueue([PSCustomObject]@{
+						Kind = '_RunNotice'
+						Level = 'WARNING'
+						Message = 'Abort requested - stopping the current operation now.'
+					})
+					$bgPsToStop = $Script:BgPS
+					if ($bgPsToStop)
+					{
+						GUIExecution\Request-GuiExecutionWorkerStop -PowerShellInstance $bgPsToStop
+					}
+				}
+
+				$qEntry = $null
+				while ($Script:RunState['LogQueue'].TryDequeue([ref]$qEntry))
+				{
+					& $Script:DrainEntry $qEntry
+					$qEntry = $null
+				}
+
+				$completed = [int]$Script:RunState['CompletedCount']
+				$currentAction = if (-not [string]::IsNullOrWhiteSpace($Script:RunState['CurrentTweak'])) { $Script:RunState['CurrentTweak'] } else { 'Working...' }
+				& $Script:UpdateProgressFn -Completed $completed -Total $Script:TotalRunnableTweaks -CurrentAction $currentAction
+
+				if ($Script:BgAsync -and -not $Script:BgAsync.IsCompleted -and -not $Script:RunState['Done']) { return }
+
+				# Do not complete the run while the abort dialog is showing to prevent stacked dialogs
+				if ($Script:AbortDialogShowing) { return }
+
+				if ($Script:ExecutionRunTimer)
+				{
+					try { $Script:ExecutionRunTimer.Stop() } catch { $null = $_ }
+					try { $Script:ExecutionRunTimer.Dispose() } catch { $null = $_ }
+				}
+
+				$qEntry = $null
+				while ($Script:RunState['LogQueue'].TryDequeue([ref]$qEntry))
+				{
+					& $Script:DrainEntry $qEntry
+					$qEntry = $null
+				}
+
+				GUIExecution\Complete-GuiExecutionWorker -Worker $Script:ExecutionWorker
+				$Script:ExecutionWorker = $null
+				$Script:ExecutionRunspace = $null
+				$Script:ExecutionRunPowerShell = $null
+				$Script:ExecutionRunTimer = $null
+				$Script:BgPS = $null
+				$Script:BgAsync = $null
+
+				foreach ($fn in $Script:RunState['AppliedFunctions']) { $Script:AppliedTweaks.Add($fn) | Out-Null }
+
+				Clear-UILogHandler
+				Remove-Variable -Name 'GUIRunState' -Scope Global -ErrorAction SilentlyContinue
+				$Script:RunInProgress = $false
+				$Script:CurrentTweakDisplayName = $null
+				$PrimaryTabs.IsEnabled = $true
+				$BtnRun.Content = 'Run Tweaks'
+				$BtnRun.IsEnabled = $true
+				if ($BtnPreviewRun) { $BtnPreviewRun.IsEnabled = $true }
+				$BtnDefaults.IsEnabled = $true
+				Set-GuiActionButtonsEnabled -Enabled $true
+				$ChkScan.IsEnabled = $true
+				$ChkTheme.IsEnabled = $true
+				Set-SearchControlsEnabled -Enabled $true
+
+				$completedCount = [int]$Script:RunState['CompletedCount']
+				$abortedRun = $Script:RunState['AbortedRun']
+				$fatalError = if ([string]::IsNullOrWhiteSpace($Script:RunState['FatalError'])) { $null } else { [string]$Script:RunState['FatalError'] }
+				$logPath = $Global:LogFilePath
+				Write-Host "[Timer] Run done. mode=$($Script:ExecutionMode), aborted=$abortedRun, disposition=$($Script:RunAbortDisposition), completed=$completedCount"
+				Complete-ExecutionSummary -AbortedRun:$abortedRun -FatalError $fatalError
+				$executionSummary = @(Get-ExecutionSummaryResults)
+				Write-ExecutionSummaryToLog -Results $executionSummary -AbortedRun:$abortedRun -FatalError $fatalError
+				try
+				{
+					Complete-GuiExecutionRun -Mode $Script:ExecutionMode `
+						-CompletedCount $completedCount `
+						-AbortedRun:$abortedRun `
+						-FatalError $fatalError `
+						-ExecutionSummary $executionSummary `
+						-LogPath $logPath
+				}
+				catch
+				{
+					Write-Host "[Timer] Complete-GuiExecutionRun FAILED: $($_.Exception.Message)"
+					LogError ("Complete-GuiExecutionRun failed: {0}" -f $_.Exception.Message)
+					# Ensure the GUI is restored even if the completion handler fails
+					try { Exit-ExecutionView } catch { $null = $_ }
+				}
+			}
+			catch
+			{
+				if (-not $Script:ExecutionTimerErrorShown)
+				{
+					$Script:ExecutionTimerErrorShown = $true
+					Write-Host "[Timer] OUTER CATCH: $($_.Exception.Message)"
+					LogError ("Execution UI update failed: {0}" -f $_.Exception.Message)
+					try { $StatusText.Text = "Execution UI update failed. See the run log for details." } catch { $null = $_ }
+					try { $StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText) } catch { $null = $_ }
+					# Last resort: restore GUI if it's still in execution view
+					if ($Script:RunInProgress -eq $false -or $Script:AbortRequested)
+					{
+						try { Exit-ExecutionView } catch { $null = $_ }
+					}
+				}
+			}
+		}
+
+		$runTimer = New-Object System.Windows.Threading.DispatcherTimer
+		$runTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+		$runTimer.Add_Tick({
+			& $Script:ExecutionPumpTickFn
+		})
+		$Script:ExecutionRunTimer = $runTimer
+		$runTimer.Start()
+		& $Script:ExecutionPumpTickFn
+	}
 	#endregion
 
 	#region Build controls for a set of tweaks
@@ -1347,40 +5047,1269 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	# Pending linked states for tweaks whose target tab is not yet built
 	$Script:PendingLinkedChecks   = [System.Collections.Generic.HashSet[string]]::new()
 	$Script:PendingLinkedUnchecks = [System.Collections.Generic.HashSet[string]]::new()
+	$Script:ApplyingGuiPreset     = $false  # suppress linked sync while applying an explicit preset
 	# Applied-this-session tracking for system scan
 	$Script:AppliedTweaks = [System.Collections.Generic.HashSet[string]]::new()
 	function New-PresetButton
 	{
 		param(
 			[string]$Label,
-			[string]$BackgroundColor = $null
+			[ValidateSet('Primary', 'Danger', 'Secondary', 'Subtle')]
+			[string]$Variant = 'Secondary',
+			[switch]$Compact,
+			[switch]$Muted
 		)
 
-		$bc = [System.Windows.Media.BrushConverter]::new()
 		$button = New-Object System.Windows.Controls.Button
 		$button.Content = $Label
-		$button.Padding = [System.Windows.Thickness]::new(18, 10, 18, 10)
-		$button.Margin = [System.Windows.Thickness]::new(4, 0, 4, 0)
-		$button.MinWidth = 170
-		$button.Cursor = [System.Windows.Input.Cursors]::Hand
-		$button.FontSize = 12
-		$button.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-
-		$tmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-		$bd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-		$bd.Name = "Bd"
-		$bd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(4))
-		$bd.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(18, 10, 18, 10))
-		$bd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($(if ($BackgroundColor) { $BackgroundColor } else { $Script:CurrentTheme.TabBg })))
-		$bd.SetValue([System.Windows.Controls.Border]::BorderBrushProperty, $bc.ConvertFromString($Script:CurrentTheme.BorderColor))
-		$bd.SetValue([System.Windows.Controls.Border]::BorderThicknessProperty, [System.Windows.Thickness]::new(1))
-		$cp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-		$cp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-		$bd.AppendChild($cp)
-		$tmpl.VisualTree = $bd
-		$button.Template = $tmpl
-
+		$button.Padding = if ($Compact) { [System.Windows.Thickness]::new(10, 4, 10, 4) } else { [System.Windows.Thickness]::new(12, 6, 12, 6) }
+		$button.Margin = [System.Windows.Thickness]::new(3, 0, 3, 0)
+		$button.FontSize = 11
+		Set-ButtonChrome -Button $button -Variant $Variant -Compact:$Compact -Muted:$Muted
 		return $button
+	}
+
+	function New-WhyThisMattersButton
+	{
+		<#
+		.SYNOPSIS
+		Returns a secondary outline button that toggles a hint border, or $null if no hint text.
+		The caller must add the returned .Tag (Border) to the parent layout.
+		#>
+			param (
+				[hashtable]$Tweak,
+				[int]$LeftIndent = 28
+			)
+
+		$hintText = if ($Tweak -and $Tweak.ContainsKey('WhyThisMatters') -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.WhyThisMatters)) {
+			[string]$Tweak.WhyThisMatters
+		} else { $null }
+		if ([string]::IsNullOrWhiteSpace($hintText)) { return $null }
+
+		$bc = New-SafeBrushConverter -Context 'New-WhyThisMattersButton'
+		if (-not $Script:WhyThisMattersButtonTemplate)
+		{
+			$linkTemplateXaml = @'
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type Button}">
+    <Border Background="{TemplateBinding Background}"
+            BorderBrush="{TemplateBinding BorderBrush}"
+            BorderThickness="{TemplateBinding BorderThickness}"
+            CornerRadius="5"
+            Padding="{TemplateBinding Padding}"
+            SnapsToDevicePixels="True">
+        <ContentPresenter HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          RecognizesAccessKey="True" />
+    </Border>
+</ControlTemplate>
+'@
+			$linkTemplateReader = New-Object System.Xml.XmlNodeReader ([xml]$linkTemplateXaml)
+			$Script:WhyThisMattersButtonTemplate = [System.Windows.Markup.XamlReader]::Load($linkTemplateReader)
+		}
+
+		$btn = New-Object System.Windows.Controls.Button
+		$btn.Content = 'Why this matters'
+		$btn.FontSize = 10
+		$btn.FontWeight = [System.Windows.FontWeights]::SemiBold
+		$btn.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$btn.Background = [System.Windows.Media.Brushes]::Transparent
+		$btn.BorderBrush = [System.Windows.Media.Brushes]::Transparent
+		$btn.BorderThickness = [System.Windows.Thickness]::new(0)
+		$btn.Padding = [System.Windows.Thickness]::new(6, 1, 6, 1)
+		$btn.Cursor = [System.Windows.Input.Cursors]::Hand
+		$btn.VerticalAlignment = 'Center'
+		$btn.HorizontalAlignment = 'Right'
+		$btn.FocusVisualStyle = $null
+		$btn.Template = $Script:WhyThisMattersButtonTemplate
+
+		# Expandable hint border (stored in Tag for caller to add to layout)
+		$hintBorder = New-Object System.Windows.Controls.Border
+		$hintBorder.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+		$hintBorder.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.ActiveTabBorder)
+		$hintBorder.BorderThickness = [System.Windows.Thickness]::new(1)
+		$hintBorder.CornerRadius = [System.Windows.CornerRadius]::new(6)
+		$hintBorder.Padding = [System.Windows.Thickness]::new(10, 7, 10, 7)
+		$hintBorder.Margin = [System.Windows.Thickness]::new($LeftIndent, 3, 8, 0)
+		$hintBorder.Visibility = [System.Windows.Visibility]::Collapsed
+
+		$hintTextBlock = New-Object System.Windows.Controls.TextBlock
+		$hintTextBlock.Text = $hintText
+		$hintTextBlock.TextWrapping = 'Wrap'
+		$hintTextBlock.FontSize = 11
+		$hintTextBlock.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$hintBorder.Child = $hintTextBlock
+
+		$btn.Tag = $hintBorder
+
+		$btnRef = $btn
+		$borderRef = $hintBorder
+		$hoverBg = $bc.ConvertFromString($Script:CurrentTheme.TabHoverBg)
+		$pressBg = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+		$normalFg = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$activeFg = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+		$btn.Add_MouseEnter({
+			$btnRef.Background = $hoverBg
+			$btnRef.Foreground = $activeFg
+		}.GetNewClosure())
+		$btn.Add_MouseLeave({
+			$btnRef.Background = [System.Windows.Media.Brushes]::Transparent
+			$btnRef.Foreground = $normalFg
+		}.GetNewClosure())
+		$btn.Add_PreviewMouseLeftButtonDown({
+			$btnRef.Background = $pressBg
+		}.GetNewClosure())
+		$btn.Add_Click({
+			$isVisible = ($borderRef.Visibility -eq [System.Windows.Visibility]::Visible)
+			$borderRef.Visibility = if ($isVisible) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+			$btnRef.Content = if ($isVisible) { 'Why this matters' } else { 'Hide' }
+			$btnRef.Foreground = if ($isVisible) { $normalFg } else { $activeFg }
+		}.GetNewClosure())
+
+		return $btn
+	}
+
+	function New-WhyThisMattersBlock
+	{
+		param (
+			[hashtable]$Tweak,
+			[int]$LeftIndent = 0
+		)
+
+		$hintText = if ($Tweak -and $Tweak.ContainsKey('WhyThisMatters') -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.WhyThisMatters)) {
+			[string]$Tweak.WhyThisMatters
+		}
+		else {
+			$null
+		}
+		if ([string]::IsNullOrWhiteSpace($hintText)) { return $null }
+
+		$bc = New-SafeBrushConverter -Context 'New-WhyThisMattersToggle'
+		$stack = New-Object System.Windows.Controls.StackPanel
+		$stack.Orientation = 'Vertical'
+		$stack.Margin = [System.Windows.Thickness]::new($LeftIndent, 6, 8, 0)
+
+		$toggle = New-PresetButton -Label 'Why this matters' -Variant 'Subtle' -Compact -Muted
+		$toggle.Margin = [System.Windows.Thickness]::new(0)
+		$toggle.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Left
+		$stack.Children.Add($toggle) | Out-Null
+
+		$hintBorder = New-Object System.Windows.Controls.Border
+		$hintBorder.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+		$hintBorder.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.ActiveTabBorder)
+		$hintBorder.BorderThickness = [System.Windows.Thickness]::new(1)
+		$hintBorder.CornerRadius = [System.Windows.CornerRadius]::new(6)
+		$hintBorder.Padding = [System.Windows.Thickness]::new(10, 8, 10, 8)
+		$hintBorder.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
+		$hintBorder.Visibility = [System.Windows.Visibility]::Collapsed
+
+		$hintTextBlock = New-Object System.Windows.Controls.TextBlock
+		$hintTextBlock.Text = $hintText
+		$hintTextBlock.TextWrapping = 'Wrap'
+		$hintTextBlock.FontSize = 11
+		$hintTextBlock.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		$hintBorder.Child = $hintTextBlock
+		$stack.Children.Add($hintBorder) | Out-Null
+
+		$toggleRef = $toggle
+		$borderRef = $hintBorder
+		$toggle.Add_Click({
+			$isVisible = ($borderRef.Visibility -eq [System.Windows.Visibility]::Visible)
+			$borderRef.Visibility = if ($isVisible) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+			$toggleRef.Content = if ($isVisible) { 'Why this matters' } else { 'Hide why this matters' }
+		}.GetNewClosure())
+
+		return $stack
+	}
+
+	function Get-PrimaryTabManifestIndexes
+	{
+		param ([string]$PrimaryTab)
+
+		$indexes = @()
+		if ([string]::IsNullOrWhiteSpace($PrimaryTab)) { return $indexes }
+
+		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
+		{
+			if ($CategoryToPrimary[$Script:TweakManifest[$i].Category] -eq $PrimaryTab)
+			{
+				$indexes += $i
+			}
+		}
+
+		return $indexes
+	}
+
+	function Get-PresetTierRank
+	{
+		param ([string]$Tier)
+
+		$normalizedTier = if ([string]::IsNullOrWhiteSpace($Tier)) { 'Safe' } else { [string]$Tier }
+		switch -Regex ($normalizedTier.Trim())
+		{
+			'^\s*(aggressive|advanced)\s*$' { return 4 }
+			'^\s*balanced\s*$'              { return 3 }
+			'^\s*safe\s*$'                  { return 2 }
+			'^\s*minimal\s*$'               { return 1 }
+			default                         { return 2 }
+		}
+	}
+
+	function ConvertTo-GuiPresetName
+	{
+		param ([string]$PresetName)
+
+		$normalizedPresetName = if ([string]::IsNullOrWhiteSpace($PresetName)) { 'Safe' } else { [string]$PresetName }
+		switch -Regex ($normalizedPresetName.Trim())
+		{
+			'^\s*minimal\s*$'               { return 'Minimal' }
+			'^\s*balanced\s*$'              { return 'Balanced' }
+			'^\s*safe\s*$'                  { return 'Safe' }
+			'^\s*(advanced|aggressive)\s*$' { return 'Aggressive' }
+			default                         { return 'Safe' }
+		}
+	}
+
+	function Initialize-GuiSelectionStateStores
+	{
+		if (-not $Script:ExplicitPresetSelections)
+		{
+			$Script:ExplicitPresetSelections = [System.Collections.Generic.HashSet[string]]::new(
+				[System.StringComparer]::OrdinalIgnoreCase
+			)
+		}
+	}
+
+	function Resolve-GuiPresetFilePath
+	{
+		param([Parameter(Mandatory)][string]$PresetName)
+
+		if ([string]::IsNullOrWhiteSpace($PresetName)) { return $null }
+
+		$candidateRoots = @()
+		if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiPresetDirectoryPath))
+		{
+			$candidateRoots += $Script:GuiPresetDirectoryPath
+		}
+		if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiModuleBasePath))
+		{
+			$candidateRoots += (Join-Path -Path $Script:GuiModuleBasePath -ChildPath 'Data\Presets')
+		}
+		if (-not [string]::IsNullOrWhiteSpace([string]$PSScriptRoot))
+		{
+			$candidateRoots += (Join-Path -Path $PSScriptRoot -ChildPath 'Data\Presets')
+			$candidateRoots += (Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath 'Data\Presets')
+		}
+
+		foreach ($root in $candidateRoots | Select-Object -Unique)
+		{
+			if ([string]::IsNullOrWhiteSpace([string]$root)) { continue }
+
+			$jsonPath = Join-Path -Path $root -ChildPath ("{0}.json" -f $PresetName)
+			if (Test-Path -LiteralPath $jsonPath -PathType Leaf -ErrorAction SilentlyContinue)
+			{
+				return $jsonPath
+			}
+
+			$path = Join-Path -Path $root -ChildPath ("{0}.txt" -f $PresetName)
+			if (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue)
+			{
+				return $path
+			}
+		}
+
+		return $null
+	}
+
+	function Get-GuiPresetEntries
+	{
+		param([Parameter(Mandatory)][string]$PresetName)
+
+		$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+		$presetPath = Resolve-GuiPresetFilePath -PresetName $PresetName
+		if ([string]::IsNullOrWhiteSpace([string]$presetPath))
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Get-GuiPresetEntries' -Message ("Preset '{0}' could not be resolved to a JSON or TXT file." -f $PresetName)
+			}
+			throw "Preset file '$PresetName.json' or '$PresetName.txt' was not found under Data\Presets."
+		}
+
+		if ($writeGuiPresetDebugScript)
+		{
+			$presetFormat = if ([System.IO.Path]::GetExtension($presetPath).Equals('.json', [System.StringComparison]::OrdinalIgnoreCase)) { 'JSON' } else { 'Text' }
+			& $writeGuiPresetDebugScript -Context 'Get-GuiPresetEntries' -Message ("Loading preset '{0}' from '{1}' ({2})." -f $PresetName, $presetPath, $presetFormat)
+		}
+
+		$entries = New-Object System.Collections.Generic.List[object]
+		$addParsedLine = {
+			param([string]$Line)
+
+			$trimmed = ([string]$Line).Trim()
+			if ([string]::IsNullOrWhiteSpace($trimmed)) { return }
+			if ($trimmed.StartsWith('#')) { return }
+
+			$parts = @($trimmed -split '\s+', 2)
+			$functionName = $parts[0].Trim()
+			if ([string]::IsNullOrWhiteSpace($functionName)) { return }
+
+			$argumentText = ''
+			if ($parts.Count -gt 1) { $argumentText = $parts[1].Trim() }
+
+			$entries.Add([pscustomobject]@{
+				FunctionName = $functionName
+				ArgumentText = $argumentText
+				RawLine      = $trimmed
+			}) | Out-Null
+		}
+
+		if ([System.IO.Path]::GetExtension($presetPath).Equals('.json', [System.StringComparison]::OrdinalIgnoreCase))
+		{
+			$presetData = Get-Content -LiteralPath $presetPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+			$rawEntries = [System.Collections.Generic.List[object]]::new()
+			if ($presetData -and $presetData.PSObject.Properties['Entries'])
+			{
+				foreach ($e in $presetData.Entries) { if ($null -ne $e) { [void]$rawEntries.Add($e) } }
+			}
+			elseif ($presetData -is [System.Collections.IEnumerable] -and -not ($presetData -is [string]))
+			{
+				foreach ($e in $presetData) { if ($null -ne $e) { [void]$rawEntries.Add($e) } }
+			}
+
+			foreach ($rawEntry in $rawEntries)
+			{
+				if ($null -eq $rawEntry) { continue }
+
+				if ($rawEntry -is [string])
+				{
+					& $addParsedLine $rawEntry
+					continue
+				}
+
+				$commandLine = $null
+				if ($rawEntry.PSObject.Properties['Command'] -and -not [string]::IsNullOrWhiteSpace([string]$rawEntry.Command))
+				{
+					$commandLine = [string]$rawEntry.Command
+				}
+				else
+				{
+					$functionName = $null
+					if ($rawEntry.PSObject.Properties['Function']) { $functionName = [string]$rawEntry.Function }
+					$typeName = $null
+					if ($rawEntry.PSObject.Properties['Type']) { $typeName = [string]$rawEntry.Type }
+
+					switch -Regex ($typeName)
+					{
+						'^Toggle$'
+						{
+							$state = $null
+							if ($rawEntry.PSObject.Properties['State']) { $state = [string]$rawEntry.State } elseif ($rawEntry.PSObject.Properties['Value']) { $state = [string]$rawEntry.Value }
+							if ($state -match '^(?i:on|true|1)$')
+							{
+								$commandLine = '{0} -Enable' -f $functionName
+							}
+							elseif ($state -match '^(?i:off|false|0)$')
+							{
+								$commandLine = '{0} -Disable' -f $functionName
+							}
+							elseif ($functionName)
+							{
+								$commandLine = $functionName
+							}
+						}
+						'^Choice$'
+						{
+							$choiceValue = $null
+							if ($rawEntry.PSObject.Properties['Value']) { $choiceValue = [string]$rawEntry.Value } elseif ($rawEntry.PSObject.Properties['SelectedValue']) { $choiceValue = [string]$rawEntry.SelectedValue }
+							if (-not [string]::IsNullOrWhiteSpace($choiceValue) -and $functionName)
+							{
+								$commandLine = '{0} -{1}' -f $functionName, $choiceValue
+							}
+						}
+						'^Action$'
+						{
+							if ($functionName)
+							{
+								$commandLine = $functionName
+							}
+						}
+						default
+						{
+							if ($functionName)
+							{
+								$commandLine = $functionName
+							}
+						}
+					}
+				}
+
+				& $addParsedLine $commandLine
+			}
+		}
+		else
+		{
+			foreach ($rawLine in [System.IO.File]::ReadAllLines($presetPath))
+			{
+				& $addParsedLine $rawLine
+			}
+		}
+
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Get-GuiPresetEntries' -Message ("Loaded {0} preset entr{1} from '{2}'." -f $entries.Count, $(if ($entries.Count -eq 1) { 'y' } else { 'ies' }), $presetPath)
+		}
+
+		return ,($entries.ToArray())
+	}
+
+	function Set-GuiPresetSelection
+	{
+		param([Parameter(Mandatory)][string]$PresetName)
+
+		$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+		if ($Script:GuiPresetDebugScript) { $writeGuiPresetDebugScript = $Script:GuiPresetDebugScript }
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Received preset request '{0}' on current tab '{1}'." -f $PresetName, $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+		}
+		if ([string]::IsNullOrWhiteSpace([string]$Script:CurrentPrimaryTab) -or $Script:CurrentPrimaryTab -eq $Script:SearchResultsTabTag)
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Ignoring preset '{0}' because there is no active primary tab or the search-results tab is selected." -f $PresetName)
+			}
+			return
+		}
+
+		$setTabPresetScript = ${function:Set-TabPreset}
+		if (-not $setTabPresetScript)
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Could not dispatch preset '{0}' because Set-TabPreset is unavailable." -f $PresetName)
+			}
+			return
+		}
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Dispatching preset '{0}' to Set-TabPreset for tab '{1}'." -f $PresetName, $Script:CurrentPrimaryTab)
+		}
+		try
+		{
+			& $setTabPresetScript -PrimaryTab $Script:CurrentPrimaryTab -PresetTier $PresetName
+		}
+		catch
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Set-TabPreset failed for preset '{0}' on tab '{1}': {2}" -f $PresetName, $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }), $_.Exception.Message)
+			}
+			throw
+		}
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-GuiPresetSelection' -Message ("Completed preset dispatch for '{0}'." -f $PresetName)
+		}
+	}
+
+	function Test-TweakMatchesPresetTier
+	{
+		param (
+			[hashtable]$Tweak,
+			[string]$Tier
+		)
+
+		if (-not $Tweak) { return $false }
+		$getPresetTierRankScript = ${function:Get-PresetTierRank}
+		if (-not $getPresetTierRankScript) { return $false }
+		return ((& $getPresetTierRankScript -Tier $Tweak.PresetTier) -le (& $getPresetTierRankScript -Tier $Tier))
+	}
+
+	function Get-GuiPresetCommandsPath
+	{
+		param ([string]$PresetName)
+
+		$convertToGuiPresetNameScript = ${function:ConvertTo-GuiPresetName}
+		$normalizedPresetName = if ($convertToGuiPresetNameScript)
+		{
+			& $convertToGuiPresetNameScript -PresetName $PresetName
+		}
+		else
+		{
+			if ([string]::IsNullOrWhiteSpace($PresetName)) { 'Safe' } else { [string]$PresetName }
+		}
+		$presetDirectory = Join-Path -Path (Split-Path $PSScriptRoot -Parent) -ChildPath 'Data\Presets'
+		if (-not (Test-Path -LiteralPath $presetDirectory))
+		{
+			return $null
+		}
+
+		$jsonPath = Join-Path -Path $presetDirectory -ChildPath ("{0}.json" -f $normalizedPresetName)
+		if (Test-Path -LiteralPath $jsonPath)
+		{
+			return $jsonPath
+		}
+
+		$candidatePath = Join-Path -Path $presetDirectory -ChildPath ("{0}.txt" -f $normalizedPresetName)
+		if (Test-Path -LiteralPath $candidatePath)
+		{
+			return $candidatePath
+		}
+
+		return $null
+	}
+
+	function Import-GuiPresetSelectionMap
+	{
+		param ([string]$PresetName)
+
+		$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+		$getGuiPresetCommandsPathScript = ${function:Get-GuiPresetCommandsPath}
+		$presetCommandsPath = $null
+		if ($getGuiPresetCommandsPathScript)
+		{
+			$presetCommandsPath = & $getGuiPresetCommandsPathScript -PresetName $PresetName
+		}
+		if ([string]::IsNullOrWhiteSpace($presetCommandsPath) -or -not (Test-Path -LiteralPath $presetCommandsPath))
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Import-GuiPresetSelectionMap' -Message ("Preset '{0}' resolved to no file path." -f $PresetName)
+			}
+			return [pscustomobject]@{
+				Path = $null
+				Entries = @{}
+				UnmatchedEntries = @()
+			}
+		}
+
+		$manifestByFunction = @{}
+		foreach ($tweak in $Script:TweakManifest)
+		{
+			if ($tweak -and -not [string]::IsNullOrWhiteSpace([string]$tweak.Function))
+			{
+				$manifestByFunction[[string]$tweak.Function] = $tweak
+			}
+		}
+
+		$selectionMap = @{}
+		$unmatchedEntries = [System.Collections.Generic.List[object]]::new()
+		$lineNumber = 0
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Import-GuiPresetSelectionMap' -Message ("Parsing preset map for '{0}' from '{1}'." -f $PresetName, $presetCommandsPath)
+		}
+		$presetEntryList = Get-GuiPresetEntries -PresetName $PresetName
+		if ($null -eq $presetEntryList) { $presetEntryList = @() }
+		foreach ($presetEntry in $presetEntryList)
+		{
+			$lineNumber++
+			$commandLine = ''
+			if ($presetEntry.PSObject.Properties['RawLine'] -and -not [string]::IsNullOrWhiteSpace([string]$presetEntry.RawLine)) { $commandLine = [string]$presetEntry.RawLine }
+			if ([string]::IsNullOrWhiteSpace($commandLine))
+			{
+				$commandLine = '{0} {1}' -f [string]$presetEntry.FunctionName, [string]$presetEntry.ArgumentText
+			}
+			$commandLine = $commandLine.Trim()
+			if ([string]::IsNullOrWhiteSpace($commandLine) -or $commandLine.StartsWith('#'))
+			{
+				continue
+			}
+
+			$tokens = @($commandLine -split '\s+')
+			if ($tokens.Count -eq 0) { continue }
+
+			$functionName = [string]$tokens[0]
+			if (-not $manifestByFunction.ContainsKey($functionName))
+			{
+				$reason = "No manifest entry matches '$functionName'."
+				[void]$unmatchedEntries.Add([pscustomobject]@{
+					LineNumber = $lineNumber
+					Command = $commandLine
+					Function = $functionName
+					Reason = $reason
+				})
+				if ($writeGuiPresetDebugScript)
+				{
+					& $writeGuiPresetDebugScript -Context 'Import-GuiPresetSelectionMap' -Message ("Line {0}: {1} -> no match ({2})." -f $lineNumber, $commandLine, $reason)
+				}
+				continue
+			}
+
+			$tweak = $manifestByFunction[$functionName]
+			$argName = $null
+			if ($tokens.Count -gt 1 -and $tokens[1].StartsWith('-')) { $argName = $tokens[1].Substring(1) }
+			$matchedEntry = $null
+			$reason = $null
+			$debugMessage = $null
+
+			switch ($tweak.Type)
+			{
+				'Toggle'
+				{
+					$state = $null
+					if (-not [string]::IsNullOrWhiteSpace([string]$tweak.OnParam) -and $argName -eq [string]$tweak.OnParam)
+					{
+						$state = 'On'
+					}
+					elseif (-not [string]::IsNullOrWhiteSpace([string]$tweak.OffParam) -and $argName -eq [string]$tweak.OffParam)
+					{
+						$state = 'Off'
+					}
+					elseif ($argName -eq 'Enable')
+					{
+						$state = 'On'
+					}
+					elseif ($argName -eq 'Disable' -or $argName -eq 'Hide')
+					{
+						$state = 'Off'
+					}
+					elseif ($argName -eq 'Show')
+					{
+						$state = 'On'
+					}
+
+					if ($state)
+					{
+						$matchedEntry = [pscustomobject]@{
+							Function = $functionName
+							Type = 'Toggle'
+							State = $state
+						}
+						$debugMessage = "Line {0}: {1} -> Toggle {2}." -f $lineNumber, $commandLine, $state
+					}
+					else
+					{
+						$expectedArgs = [System.Collections.Generic.List[string]]::new()
+						if (-not [string]::IsNullOrWhiteSpace([string]$tweak.OnParam)) { [void]$expectedArgs.Add("-$([string]$tweak.OnParam)") }
+						if (-not [string]::IsNullOrWhiteSpace([string]$tweak.OffParam)) { [void]$expectedArgs.Add("-$([string]$tweak.OffParam)") }
+						if (-not ($expectedArgs -contains '-Enable')) { [void]$expectedArgs.Add('-Enable') }
+						if (-not ($expectedArgs -contains '-Disable')) { [void]$expectedArgs.Add('-Disable') }
+						if (-not ($expectedArgs -contains '-Show')) { [void]$expectedArgs.Add('-Show') }
+						if (-not ($expectedArgs -contains '-Hide')) { [void]$expectedArgs.Add('-Hide') }
+
+						$reason = if ([string]::IsNullOrWhiteSpace($argName))
+						{
+							"Missing toggle argument. Expected one of: $($expectedArgs -join ', ')."
+						}
+						else
+						{
+							"Toggle argument '-$argName' does not map to '$functionName'. Expected one of: $($expectedArgs -join ', ')."
+						}
+
+						[void]$unmatchedEntries.Add([pscustomobject]@{
+							LineNumber = $lineNumber
+							Command = $commandLine
+							Function = $functionName
+							Reason = $reason
+						})
+						$debugMessage = "Line {0}: {1} -> no match ({2})." -f $lineNumber, $commandLine, $reason
+					}
+				}
+				'Choice'
+				{
+					$optList = if ($null -ne $tweak.Options -and $tweak.Options -is [System.Collections.IEnumerable] -and -not ($tweak.Options -is [string])) { [string[]]$tweak.Options } elseif ($null -ne $tweak.Options) { [string[]]@([string]$tweak.Options) } else { [string[]]@() }
+					if (-not [string]::IsNullOrWhiteSpace([string]$argName) -and $optList -contains $argName)
+					{
+						$matchedEntry = [pscustomobject]@{
+							Function = $functionName
+							Type = 'Choice'
+							Value = $argName
+						}
+						$debugMessage = "Line {0}: {1} -> Choice '{2}'." -f $lineNumber, $commandLine, $argName
+					}
+					else
+					{
+						$availableOptions = [string[]]($optList | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+						$reason = if ([string]::IsNullOrWhiteSpace([string]$argName))
+						{
+							"Missing choice value. Expected one of: $($availableOptions -join ', ')."
+						}
+						else
+						{
+							"Choice value '$argName' does not match '$functionName'. Expected one of: $($availableOptions -join ', ')."
+						}
+
+						[void]$unmatchedEntries.Add([pscustomobject]@{
+							LineNumber = $lineNumber
+							Command = $commandLine
+							Function = $functionName
+							Reason = $reason
+						})
+						$debugMessage = "Line {0}: {1} -> no match ({2})." -f $lineNumber, $commandLine, $reason
+					}
+				}
+				'Action'
+				{
+					$matchedEntry = [pscustomobject]@{
+						Function = $functionName
+						Type = 'Action'
+						Run = $true
+					}
+					$debugMessage = "Line {0}: {1} -> Action run." -f $lineNumber, $commandLine
+				}
+				default
+				{
+					$reason = "Unsupported tweak type '$($tweak.Type)'."
+					[void]$unmatchedEntries.Add([pscustomobject]@{
+						LineNumber = $lineNumber
+						Command = $commandLine
+						Function = $functionName
+						Reason = $reason
+					})
+					$debugMessage = "Line {0}: {1} -> no match ({2})." -f $lineNumber, $commandLine, $reason
+				}
+			}
+
+			if ($matchedEntry)
+			{
+				$selectionMap[$functionName] = $matchedEntry
+			}
+
+			if ($writeGuiPresetDebugScript -and $debugMessage)
+			{
+				& $writeGuiPresetDebugScript -Context 'Import-GuiPresetSelectionMap' -Message $debugMessage
+			}
+		}
+
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Import-GuiPresetSelectionMap' -Message ("Completed preset map parse for '{0}'. Matched={1}, Unmatched={2}." -f $PresetName, $selectionMap.Count, $unmatchedEntries.Count)
+		}
+
+		$unmatchedArray = [object[]]$unmatchedEntries.ToArray()
+		return [pscustomobject]@{
+			Path = $presetCommandsPath
+			Entries = $selectionMap
+			UnmatchedEntries = $unmatchedArray
+		}
+	}
+
+	function Get-GuiPresetDefinition
+	{
+		param ([string]$PresetName)
+
+		$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+		$convertToGuiPresetNameScript = ${function:ConvertTo-GuiPresetName}
+		$importGuiPresetSelectionMapScript = ${function:Import-GuiPresetSelectionMap}
+		$normalizedPresetName = if ([string]::IsNullOrWhiteSpace($PresetName)) { 'Safe' } else { [string]$PresetName }
+		if ($convertToGuiPresetNameScript)
+		{
+			$normalizedPresetName = [string](& $convertToGuiPresetNameScript -PresetName $PresetName)
+		}
+		$presetSelectionData = $null
+		if ($importGuiPresetSelectionMapScript)
+		{
+			$presetSelectionData = & $importGuiPresetSelectionMapScript -PresetName $normalizedPresetName
+		}
+		if (-not $presetSelectionData)
+		{
+			$presetSelectionData = [pscustomobject]@{
+				Path = $null
+				Entries = @{}
+				UnmatchedEntries = ([object[]]@())
+			}
+		}
+		$explicitSelections = @{}
+		if ($presetSelectionData -and $presetSelectionData.PSObject.Properties['Entries']) { $explicitSelections = $presetSelectionData.Entries }
+		$unmatchedEntries = [object[]]@()
+		if ($presetSelectionData -and $presetSelectionData.PSObject.Properties['UnmatchedEntries'] -and $null -ne $presetSelectionData.UnmatchedEntries) { $unmatchedEntries = [object[]]$presetSelectionData.UnmatchedEntries }
+		$sourcePath = $null
+		if ($presetSelectionData -and $presetSelectionData.PSObject.Properties['Path']) { $sourcePath = [string]$presetSelectionData.Path }
+		$selectionMode = 'Tier'
+		if (-not [string]::IsNullOrWhiteSpace($sourcePath)) { $selectionMode = 'Explicit' }
+
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Get-GuiPresetDefinition' -Message ("Resolved preset '{0}' -> normalized '{1}', mode={2}, source='{3}', entries={4}, unmatched={5}." -f $PresetName, $normalizedPresetName, $selectionMode, $(if ($sourcePath) { $sourcePath } else { '<none>' }), $explicitSelections.Count, $unmatchedEntries.Count)
+		}
+
+		return [pscustomobject]@{
+			Name = $normalizedPresetName
+			Tier = $normalizedPresetName
+			SelectionMode = $selectionMode
+			Entries = $explicitSelections
+			UnmatchedEntries = $unmatchedEntries
+			SourcePath = $sourcePath
+		}
+	}
+
+	function Set-FilterSelections
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[string]$Risk = 'All',
+			[string]$Category = 'All'
+		)
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$Script:RiskFilter = if ([string]::IsNullOrWhiteSpace($Risk)) { 'All' } else { $Risk }
+			if ($CmbRiskFilter)
+			{
+				if ($CmbRiskFilter.Items.Contains($Script:RiskFilter))
+				{
+					$CmbRiskFilter.SelectedItem = $Script:RiskFilter
+				}
+				else
+				{
+					$CmbRiskFilter.SelectedIndex = 0
+					$Script:RiskFilter = 'All'
+				}
+			}
+
+			$Script:CategoryFilter = if ([string]::IsNullOrWhiteSpace($Category)) { 'All' } else { $Category }
+			if ($CmbCategoryFilter)
+			{
+				if ($CmbCategoryFilter.Items.Contains($Script:CategoryFilter))
+				{
+					$CmbCategoryFilter.SelectedItem = $Script:CategoryFilter
+				}
+				else
+				{
+					$CmbCategoryFilter.SelectedIndex = 0
+					$Script:CategoryFilter = 'All'
+				}
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+	}
+
+	function Set-AdvancedModeState
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([bool]$Enabled)
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$Script:AdvancedMode = $Enabled
+			if ($ChkAdvancedMode)
+			{
+				$ChkAdvancedMode.IsChecked = $Enabled
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+	}
+
+	function Set-TabPreset
+	{
+		param (
+			[string]$PrimaryTab,
+			[string]$PresetTier
+		)
+
+		$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+		if ($Script:GuiPresetDebugScript) { $writeGuiPresetDebugScript = $Script:GuiPresetDebugScript }
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Begin preset apply: tab='{0}', requestedPreset='{1}'." -f $(if ($PrimaryTab) { $PrimaryTab } else { '<none>' }), $(if ($PresetTier) { $PresetTier } else { '<none>' }))
+		}
+
+		if ([string]::IsNullOrWhiteSpace($PrimaryTab) -or $PrimaryTab -eq $Script:SearchResultsTabTag)
+		{
+			if ($writeGuiPresetDebugScript)
+			{
+				& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Ignoring preset '{0}' because the primary tab is empty or search results are selected." -f $PresetTier)
+			}
+			return
+		}
+
+		$convertToGuiPresetNameScript = ${function:ConvertTo-GuiPresetName}
+		$getGuiPresetDefinitionScript = ${function:Get-GuiPresetDefinition}
+		$saveGuiUndoSnapshotScript = ${function:Save-GuiUndoSnapshot}
+		$setAdvancedModeStateScript = ${function:Set-AdvancedModeState}
+		$updateCategoryFilterListScript = ${function:Update-CategoryFilterList}
+		$setFilterSelectionsScript = ${function:Set-FilterSelections}
+		$testTweakMatchesPresetTierScript = ${function:Test-TweakMatchesPresetTier}
+		$syncLinkedStateCapture = $syncLinkedState
+
+		$normalizedPresetTier = & $convertToGuiPresetNameScript -PresetName $PresetTier
+		$presetDefinition = & $getGuiPresetDefinitionScript -PresetName $normalizedPresetTier
+		$usesExplicitPreset = ($presetDefinition.SelectionMode -eq 'Explicit')
+		$presetEntries = @{}
+		if ($usesExplicitPreset -and $presetDefinition.Entries) { $presetEntries = $presetDefinition.Entries }
+		$unmatchedPresetEntries = [object[]]@()
+		if ($usesExplicitPreset -and $presetDefinition.PSObject.Properties['UnmatchedEntries'] -and $null -ne $presetDefinition.UnmatchedEntries) { $unmatchedPresetEntries = [object[]]$presetDefinition.UnmatchedEntries }
+		Write-Host "[Set-TabPreset] mode=$($presetDefinition.SelectionMode), usesExplicit=$usesExplicitPreset, entriesType=$($presetEntries.GetType().Name), entriesCount=$($presetEntries.Count), hasUpdatePowershell=$($null -ne $presetEntries['Update-Powershell']), source=$($presetDefinition.SourcePath)"
+		if ($presetEntries.Count -gt 0) { Write-Host "[Set-TabPreset] keys: $($presetEntries.Keys -join ', ')" }
+
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Resolved preset apply: tab='{0}', normalizedPreset='{1}', mode={2}, source='{3}', entries={4}, unmatched={5}." -f $PrimaryTab, $presetDefinition.Name, $presetDefinition.SelectionMode, $(if ($presetDefinition.SourcePath) { $presetDefinition.SourcePath } else { '<none>' }), $presetEntries.Count, $unmatchedPresetEntries.Count)
+		}
+
+		& $saveGuiUndoSnapshotScript
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Saved undo snapshot for preset '{0}'." -f $presetDefinition.Name)
+		}
+
+		# Defensive state initialization for callback paths where script-scope stores may not exist yet.
+		if (-not $Script:ExplicitPresetSelections)
+		{
+			$Script:ExplicitPresetSelections = [System.Collections.Generic.HashSet[string]]::new(
+				[System.StringComparer]::OrdinalIgnoreCase
+			)
+		}
+		if (-not $Script:PendingLinkedChecks)
+		{
+			$Script:PendingLinkedChecks = [System.Collections.Generic.HashSet[string]]::new()
+		}
+		if (-not $Script:PendingLinkedUnchecks)
+		{
+			$Script:PendingLinkedUnchecks = [System.Collections.Generic.HashSet[string]]::new()
+		}
+
+		$Script:ExplicitPresetSelections.Clear()
+		$Script:PendingLinkedChecks.Clear()
+		$Script:PendingLinkedUnchecks.Clear()
+		if ($usesExplicitPreset)
+		{
+			foreach ($presetFunction in @($presetEntries.Keys))
+			{
+				if (-not [string]::IsNullOrWhiteSpace([string]$presetFunction))
+				{
+					[void]$Script:ExplicitPresetSelections.Add([string]$presetFunction)
+				}
+			}
+		}
+		$Script:ScanEnabled = $false
+		if ($ChkScan -and $ChkScan.IsChecked)
+		{
+			$ChkScan.IsChecked = $false
+		}
+
+		$previousApplyingGuiPreset = $Script:ApplyingGuiPreset
+		$Script:ApplyingGuiPreset = $usesExplicitPreset
+		try
+		{
+		$advancedModeWasEnabled = [bool]$Script:AdvancedMode
+		if ($presetDefinition.Name -eq 'Aggressive' -and -not $advancedModeWasEnabled)
+		{
+			& $setAdvancedModeStateScript -Enabled $true
+		}
+
+		& $updateCategoryFilterListScript -PrimaryTab $PrimaryTab
+		& $setFilterSelectionsScript -Risk 'All' -Category 'All'
+
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Reset shared UI state for preset '{0}'." -f $presetDefinition.Name)
+		}
+
+		$selectedCount = 0
+		$processedCount = 0
+		$visibleCount = 0
+		$hiddenCount = 0
+		$controlMissingCount = 0
+		$toggleCount = 0
+		$choiceCount = 0
+		$actionCount = 0
+		$stateChangeCount = 0
+		foreach ($index in 0..($Script:TweakManifest.Count - 1))
+		{
+			$processedCount++
+			$tweak = $Script:TweakManifest[$index]
+			$control = $Script:Controls[$index]
+			if (-not $control)
+			{
+				$controlMissingCount++
+				continue
+			}
+			$isVisible = $true
+			if ($tweak.VisibleIf)
+			{
+				try { $isVisible = [bool](& $tweak.VisibleIf) } catch { $isVisible = $false }
+			}
+			if ($isVisible)
+			{
+				$visibleCount++
+			}
+			else
+			{
+				$hiddenCount++
+			}
+			if ($control.PSObject.Properties['IsEnabled'])
+			{
+				$control.IsEnabled = $isVisible
+			}
+			if (-not $isVisible)
+			{
+				if ($control.PSObject.Properties['IsChecked'])
+				{
+					$control.IsChecked = $false
+				}
+				elseif ($control.PSObject.Properties['SelectedIndex'])
+				{
+					$control.SelectedIndex = -1
+				}
+				continue
+			}
+
+			switch ($tweak.Type)
+			{
+				'Toggle'
+				{
+					$toggleCount++
+					$presetEntry = $null
+					if ($usesExplicitPreset -and $null -ne $presetEntries[$tweak.Function]) { $presetEntry = $presetEntries[$tweak.Function] }
+					if ($usesExplicitPreset)
+					{
+						$includeInPreset = ($isVisible -and $null -ne $presetEntry)
+						$targetChecked = ($includeInPreset -and [string]$presetEntry.State -eq 'On')
+					}
+					else
+					{
+						$includeInPreset = ($isVisible -and (& $testTweakMatchesPresetTierScript -Tweak $tweak -Tier $presetDefinition.Tier))
+						$targetChecked = ($includeInPreset -and [bool]$tweak.Default)
+					}
+					$currentChecked = $false
+					if ($control.PSObject.Properties['IsChecked']) { $currentChecked = [bool]$control.IsChecked }
+					if ($currentChecked -ne [bool]$targetChecked) { $stateChangeCount++ }
+					if ($control.PSObject.Properties['IsChecked'])
+					{
+						$control.IsChecked = $targetChecked
+					}
+					Write-Host "[Preset-Toggle] $($tweak.Function) -> targetChecked=$targetChecked, includeInPreset=$includeInPreset, controlType=$($control.GetType().Name), hasIsChecked=$($null -ne $control.PSObject.Properties['IsChecked'])"
+					if ($includeInPreset)
+					{
+						if ($usesExplicitPreset)
+						{
+							[void]$Script:ExplicitPresetSelections.Add([string]$tweak.Function)
+							$selectedCount++
+						}
+						elseif ($targetChecked)
+						{
+							$selectedCount++
+						}
+					}
+					if ($tweak.LinkedWith -and $syncLinkedStateCapture)
+					{
+						& $syncLinkedStateCapture $tweak.LinkedWith $targetChecked
+					}
+				}
+				'Action'
+				{
+					$actionCount++
+					$presetEntry = $null
+					if ($usesExplicitPreset -and $null -ne $presetEntries[$tweak.Function]) { $presetEntry = $presetEntries[$tweak.Function] }
+					if ($usesExplicitPreset)
+					{
+						$includeInPreset = ($isVisible -and $null -ne $presetEntry -and [bool]$presetEntry.Run)
+						$targetChecked = $includeInPreset
+					}
+					else
+					{
+						$includeInPreset = ($isVisible -and (& $testTweakMatchesPresetTierScript -Tweak $tweak -Tier $presetDefinition.Tier))
+						$targetChecked = ($includeInPreset -and [bool]$tweak.Default)
+					}
+					$currentChecked = $false
+					if ($control.PSObject.Properties['IsChecked']) { $currentChecked = [bool]$control.IsChecked }
+					if ($currentChecked -ne [bool]$targetChecked) { $stateChangeCount++ }
+					if ($control.PSObject.Properties['IsChecked'])
+					{
+						$control.IsChecked = $targetChecked
+					}
+					Write-Host "[Preset-Action] $($tweak.Function) -> targetChecked=$targetChecked, includeInPreset=$includeInPreset, controlType=$($control.GetType().Name), hasIsChecked=$($null -ne $control.PSObject.Properties['IsChecked'])"
+					if ($targetChecked) { $selectedCount++ }
+					if ($tweak.LinkedWith -and $syncLinkedStateCapture)
+					{
+						& $syncLinkedStateCapture $tweak.LinkedWith $targetChecked
+					}
+				}
+				'Choice'
+				{
+					$choiceCount++
+					$targetSelectedIndex = -1
+					$choiceOptions = [object[]]@()
+					if ($null -eq $tweak.Options)
+					{
+						$choiceOptions = [object[]]@()
+					}
+					elseif ($tweak.Options -is [System.Array])
+					{
+						$choiceOptions = [object[]]$tweak.Options
+					}
+					elseif ($tweak.Options -is [System.Collections.IEnumerable] -and -not ($tweak.Options -is [string]))
+					{
+						$coList = [System.Collections.Generic.List[object]]::new()
+						foreach ($o in $tweak.Options) { [void]$coList.Add($o) }
+						$choiceOptions = [object[]]$coList.ToArray()
+					}
+					else
+					{
+						$choiceOptions = [object[]]@([string]$tweak.Options)
+					}
+
+					$presetEntry = $null
+					if ($usesExplicitPreset -and $null -ne $presetEntries[$tweak.Function]) { $presetEntry = $presetEntries[$tweak.Function] }
+					if ($usesExplicitPreset)
+					{
+						$includeInPreset = ($isVisible -and $null -ne $presetEntry)
+						if ($includeInPreset)
+						{
+							$targetSelectedIndex = [array]::IndexOf($choiceOptions, [string]$presetEntry.Value)
+						}
+					}
+					else
+					{
+						$includeInPreset = ($isVisible -and (& $testTweakMatchesPresetTierScript -Tweak $tweak -Tier $presetDefinition.Tier))
+						if ($includeInPreset)
+						{
+							$targetSelectedIndex = [array]::IndexOf($choiceOptions, $tweak.Default)
+						}
+					}
+					if ($targetSelectedIndex -ge $choiceOptions.Count) { $targetSelectedIndex = -1 }
+					$currentSelectedIndex = -1
+					if ($control.PSObject.Properties['SelectedIndex']) { $currentSelectedIndex = [int]$control.SelectedIndex }
+					if ($currentSelectedIndex -ne [int]$targetSelectedIndex) { $stateChangeCount++ }
+					if ($control.PSObject.Properties['SelectedIndex'])
+					{
+						$control.SelectedIndex = $targetSelectedIndex
+					}
+					if ($targetSelectedIndex -ge 0) { $selectedCount++ }
+				}
+			}
+		}
+
+		if ($usesExplicitPreset -and $unmatchedPresetEntries.Count -gt 0)
+		{
+			foreach ($unmatchedEntry in $unmatchedPresetEntries)
+			{
+				$warningText = "Preset '{0}' skipped line {1}: {2} [{3}]" -f `
+					$presetDefinition.Name, `
+					$unmatchedEntry.LineNumber, `
+					$unmatchedEntry.Command, `
+					$unmatchedEntry.Reason
+				if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+				{
+					LogWarning $warningText
+				}
+				else
+				{
+					Write-Warning $warningText
+				}
+			}
+		}
+
+		$skippedEntrySuffix = if ($usesExplicitPreset -and $unmatchedPresetEntries.Count -gt 0)
+		{
+			" - $($unmatchedPresetEntries.Count) preset entr$(if ($unmatchedPresetEntries.Count -eq 1) { 'y' } else { 'ies' }) skipped; see log."
+		}
+		else
+		{
+			''
+		}
+
+		$Script:PresetStatusMessage = "Preset applied: $($presetDefinition.Name) ($selectedCount tweaks selected)$skippedEntrySuffix"
+		$StatusText.Text = $Script:PresetStatusMessage
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($(if ($usesExplicitPreset -and $unmatchedPresetEntries.Count -gt 0) { $Script:CurrentTheme.CautionText } else { $Script:CurrentTheme.AccentBlue }))
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Status updated for preset '{0}': selected={1}, processed={2}, visible={3}, hidden={4}, missingControls={5}, toggles={6}, choices={7}, actions={8}, stateChanges={9}." -f $presetDefinition.Name, $selectedCount, $processedCount, $visibleCount, $hiddenCount, $controlMissingCount, $toggleCount, $choiceCount, $actionCount, $stateChangeCount)
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Updating primary tab visuals after preset '{0}'." -f $presetDefinition.Name)
+		}
+		Update-PrimaryTabVisuals
+		if ($writeGuiPresetDebugScript)
+		{
+			& $writeGuiPresetDebugScript -Context 'Set-TabPreset' -Message ("Completed preset apply for '{0}' on tab '{1}'." -f $presetDefinition.Name, $PrimaryTab)
+		}
+		}
+		finally
+		{
+			$Script:ApplyingGuiPreset = $previousApplyingGuiPreset
+		}
+	}
+
+	function Set-SecondaryActionGroupStyle
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		if (-not $Script:SecondaryActionGroupBorder) { return }
+		$bc = New-SafeBrushConverter -Context 'Set-SecondaryActionGroupStyle'
+		$Script:SecondaryActionGroupBorder.Background = $bc.ConvertFromString($Script:CurrentTheme.HeaderBg)
+		$Script:SecondaryActionGroupBorder.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.BorderColor)
+	}
+
+	function Set-StaticButtonStyle
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		Set-ButtonChrome -Button $BtnRun -Variant 'Primary'
+		if ($BtnPreviewRun) { Set-ButtonChrome -Button $BtnPreviewRun -Variant 'Secondary' }
+		Set-ButtonChrome -Button $BtnDefaults -Variant 'Danger'
+		if ($BtnHelp) { Set-ButtonChrome -Button $BtnHelp -Variant 'Subtle' -Compact -Muted }
+		Set-ButtonChrome -Button $BtnLog -Variant 'Subtle' -Compact -Muted
+		if ($BtnExportSettings) { Set-ButtonChrome -Button $BtnExportSettings -Variant 'Subtle' -Compact -Muted }
+		if ($BtnImportSettings) { Set-ButtonChrome -Button $BtnImportSettings -Variant 'Subtle' -Compact -Muted }
+		if ($BtnRestoreSnapshot) { Set-ButtonChrome -Button $BtnRestoreSnapshot -Variant 'Subtle' -Compact -Muted }
+		Set-SecondaryActionGroupStyle
+	}
+
+	function Set-StaticControlTabOrder
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		$tabIndex = 0
+		foreach ($control in @(
+			$BtnHelp,
+			$BtnLog,
+			$ChkScan,
+			$ChkAdvancedMode,
+			$ChkTheme,
+			$TxtSearch,
+			$BtnClearSearch,
+			$CmbRiskFilter,
+			$CmbCategoryFilter,
+			$BtnDefaults,
+			$BtnExportSettings,
+			$BtnImportSettings,
+			$BtnRestoreSnapshot,
+			$BtnPreviewRun,
+			$BtnRun
+		))
+		{
+			if (-not $control) { continue }
+			if ($control.PSObject.Properties['IsTabStop']) { $control.IsTabStop = $true }
+			if ($control.PSObject.Properties['TabIndex'])
+			{
+				$control.TabIndex = $tabIndex
+				$tabIndex++
+			}
+		}
+	}
+
+	function Save-CurrentTabScrollOffset
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		if (-not $ContentScroll -or -not $Script:CurrentPrimaryTab) { return }
+		$Script:TabScrollOffsets[$Script:CurrentPrimaryTab] = [double]$ContentScroll.VerticalOffset
+	}
+
+	function Restore-CurrentTabScrollOffset
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ([string]$TabKey)
+		if (-not $ContentScroll -or [string]::IsNullOrWhiteSpace($TabKey)) { return }
+		$offset = if ($Script:TabScrollOffsets.ContainsKey($TabKey)) { [double]$Script:TabScrollOffsets[$TabKey] } else { 0 }
+$null = $ContentScroll.Dispatcher.BeginInvoke(
+        [System.Action]{
+                try { $ContentScroll.ScrollToVerticalOffset($offset) } catch { $null = $_ }
+        },
+        [System.Windows.Threading.DispatcherPriority]::Render
+)
 	}
 	$syncLinkedState = {
 		param (
@@ -1389,6 +6318,7 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		)
 
 		if ([string]::IsNullOrWhiteSpace($TargetFunction)) { return }
+		if ($Script:ApplyingGuiPreset) { return }
 
 		$fidx = $Script:FunctionToIndex[$TargetFunction]
 		if ($null -eq $fidx) { return }
@@ -1401,73 +6331,81 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 
 		if ($IsChecked)
 		{
-			$Script:PendingLinkedUnchecks.Remove($TargetFunction) | Out-Null
-			$Script:PendingLinkedChecks.Add($TargetFunction) | Out-Null
+			if ($Script:PendingLinkedUnchecks) { $Script:PendingLinkedUnchecks.Remove($TargetFunction) | Out-Null }
+			if ($Script:PendingLinkedChecks) { $Script:PendingLinkedChecks.Add($TargetFunction) | Out-Null }
 		}
 		else
 		{
-			$Script:PendingLinkedChecks.Remove($TargetFunction) | Out-Null
-			$Script:PendingLinkedUnchecks.Add($TargetFunction) | Out-Null
+			if ($Script:PendingLinkedChecks) { $Script:PendingLinkedChecks.Remove($TargetFunction) | Out-Null }
+			if ($Script:PendingLinkedUnchecks) { $Script:PendingLinkedUnchecks.Add($TargetFunction) | Out-Null }
 		}
 	}
 
-	function Build-TweakRow
-	{
-		param ([int]$Index, [hashtable]$Tweak)
-		$bc = [System.Windows.Media.BrushConverter]::new()
+		function Build-TweakRow
+		{
+			param ([int]$Index, [hashtable]$Tweak)
+			$bc = New-SafeBrushConverter -Context 'Build-TweakRow'
+		$rowCardMargin = [System.Windows.Thickness]::new(8, 1, 8, 1)
+		$rowCardPadding = [System.Windows.Thickness]::new(10, 5, 10, 5)
+		$badgeSpacing = [System.Windows.Thickness]::new(2, 0, 0, 0)
 		if ($Tweak.VisibleIf)
 		{
 			try
 			{
 				if (-not [bool](& $Tweak.VisibleIf)) { return $null }
 			}
-			catch
-			{
-				return $null
+				catch
+				{
+					return $null
+				}
 			}
-		}
 
-		switch ($Tweak.Type)
-		{
+			switch ($Tweak.Type)
+			{
 			"Toggle"
 			{
 				$card = New-Object System.Windows.Controls.Border
 				$card.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
 				$card.CornerRadius = [System.Windows.CornerRadius]::new(6)
-				$card.Margin = [System.Windows.Thickness]::new(8, 3, 8, 3)
-				$card.Padding = [System.Windows.Thickness]::new(12, 8, 12, 8)
+				$card.Margin = $rowCardMargin
+				$card.Padding = $rowCardPadding
 
-				$grid = New-Object System.Windows.Controls.Grid
-				$col1 = New-Object System.Windows.Controls.ColumnDefinition
-				$col1.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
-				$col2 = New-Object System.Windows.Controls.ColumnDefinition
-				$col2.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto)
-				$grid.ColumnDefinitions.Add($col1) | Out-Null
-				$grid.ColumnDefinitions.Add($col2) | Out-Null
-
-				# Left side: name + description + info icon
 				$leftStack = New-Object System.Windows.Controls.StackPanel
 				$leftStack.Orientation = "Vertical"
 				$leftStack.VerticalAlignment = "Center"
-				[System.Windows.Controls.Grid]::SetColumn($leftStack, 0)
 
-				$nameRow = New-Object System.Windows.Controls.StackPanel
+				$headerGrid = New-Object System.Windows.Controls.Grid
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+
+					$cb = New-Object System.Windows.Controls.CheckBox
+					$cb.VerticalAlignment = "Center"
+					$cb.Margin = [System.Windows.Thickness]::new(0, 0, 10, 0)
+					# Get placeholder state if available
+					$placeholder = $Script:Controls[$Index]
+					$initialChecked = $false
+					if ($placeholder -and $placeholder.PSObject.Properties['IsChecked']) {
+						$initialChecked = [bool]$placeholder.IsChecked
+					}
+					$cb.IsChecked = $initialChecked
+					$cb.Tag = $Index
+					$cb.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+					[System.Windows.Controls.Grid]::SetColumn($cb, 0)
+				$headerGrid.Children.Add($cb) | Out-Null
+
+				$nameRow = New-Object System.Windows.Controls.WrapPanel
 				$nameRow.Orientation = "Horizontal"
-
-				$cb = New-Object System.Windows.Controls.CheckBox
-				$cb.VerticalAlignment = "Center"
-				$cb.IsChecked = [bool]$Tweak.Default
-				$cb.Tag = $Index
-				$cb.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-				$nameRow.Children.Add($cb) | Out-Null
+				$nameRow.VerticalAlignment = "Center"
+				[System.Windows.Controls.Grid]::SetColumn($nameRow, 1)
 
 				$nameTxt = New-Object System.Windows.Controls.TextBlock
 				$nameTxt.Text = $Tweak.Name
-				$nameTxt.FontSize = 13
+				$nameTxt.FontSize = 12
 				$nameTxt.FontWeight = [System.Windows.FontWeights]::SemiBold
 				$nameTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 				$nameTxt.VerticalAlignment = "Center"
-				$nameTxt.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0)
+				$nameTxt.Margin = [System.Windows.Thickness]::new(0)
 				$nameRow.Children.Add($nameTxt) | Out-Null
 
 				$nameRow.Children.Add((New-InfoIcon -TooltipText $Tweak.Description -Tweak $Tweak)) | Out-Null
@@ -1477,23 +6415,50 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 					$nameRow.Children.Add((New-ImpactBadge)) | Out-Null
 				}
 
-				$leftStack.Children.Add($nameRow) | Out-Null
+				$headerGrid.Children.Add($nameRow) | Out-Null
 
-				$descTxt = New-Object System.Windows.Controls.TextBlock
-				$descTxt.Text = if ($Tweak.Description) { $Tweak.Description } else { "Turns this feature on when checked and off when unchecked." }
-				$descTxt.FontSize = 11
-				$descTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-				$descTxt.Margin = [System.Windows.Thickness]::new(24, 2, 8, 0)
-				$descTxt.TextWrapping = "Wrap"
-				$leftStack.Children.Add($descTxt) | Out-Null
+				# Badges panel — right-aligned in title row
+				$badgesPanel = New-Object System.Windows.Controls.StackPanel
+				$badgesPanel.Orientation = 'Horizontal'
+				$badgesPanel.VerticalAlignment = 'Center'
+				$badgesPanel.HorizontalAlignment = 'Right'
+				[System.Windows.Controls.Grid]::SetColumn($badgesPanel, 2)
+				if ([bool]$Tweak.RequiresRestart)
+				{
+					$restartBadge = New-Object System.Windows.Controls.TextBlock
+					$restartBadge.Text = [char]0x21BB + ' Restart'
+					$restartBadge.FontSize = 10
+					$restartBadge.Foreground = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadge)
+					$restartBadge.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+					$restartBadge.Padding = [System.Windows.Thickness]::new(5, 1, 5, 1)
+					$restartBadge.Margin = $badgeSpacing
+					$restartBadge.VerticalAlignment = 'Center'
+					$badgesPanel.Children.Add($restartBadge) | Out-Null
+				}
+				$riskBadge = New-RiskBadge -Level $Tweak.Risk
+				if ($riskBadge)
+				{
+					$riskBadge.Margin = $badgeSpacing
+					$badgesPanel.Children.Add($riskBadge) | Out-Null
+				}
+				$headerGrid.Children.Add($badgesPanel) | Out-Null
 
-				# Status label showing Enabled/Disabled
+				$leftStack.Children.Add($headerGrid) | Out-Null
+
+				# Status + Why This Matters row
+				$statusRow = New-Object System.Windows.Controls.Grid
+				$statusRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+				$statusRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+				$statusRow.Margin = [System.Windows.Thickness]::new(28, 0, 0, 0)
+
+				# Status label showing Enabled/Disabled — left-aligned
 				$statusLbl = New-Object System.Windows.Controls.TextBlock
-				$statusLbl.FontSize = 11
-				$statusLbl.Margin = [System.Windows.Thickness]::new(24, 4, 0, 0)
-				# Capture colors as local strings; avoids empty-string error if $Script:CurrentTheme is null at closure-invocation time
-				$onColorCapture  = if ($Script:CurrentTheme -and $Script:CurrentTheme.ToggleOn)  { $Script:CurrentTheme.ToggleOn  } else { '#A6E3A1' }
-				$offColorCapture = if ($Script:CurrentTheme -and $Script:CurrentTheme.ToggleOff) { $Script:CurrentTheme.ToggleOff } else { '#F38BA8' }
+				$statusLbl.FontSize = 10
+				$statusLbl.FontWeight = [System.Windows.FontWeights]::Medium
+				$statusLbl.VerticalAlignment = 'Center'
+				[System.Windows.Controls.Grid]::SetColumn($statusLbl, 0)
+				$onColorCapture  = if ($Script:CurrentTheme -and $Script:CurrentTheme.StateEnabled)  { $Script:CurrentTheme.StateEnabled  } else { '#9FD6AA' }
+				$offColorCapture = if ($Script:CurrentTheme -and $Script:CurrentTheme.StateDisabled) { $Script:CurrentTheme.StateDisabled } else { '#98A0B7' }
 				# Apply pending linked-toggle state (target built after source was already checked)
 				if ($Script:PendingLinkedChecks.Contains($Tweak.Function))
 				{
@@ -1539,21 +6504,61 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 					catch { }
 				}
 
-				$leftStack.Children.Add($statusLbl) | Out-Null
+				$statusRow.Children.Add($statusLbl) | Out-Null
 
-				# Wire up checkbox change to update status label (uses captured local color strings)
-				$statusLblCapture = $statusLbl
-				$cb.Add_Checked({
-					$statusLblCapture.Text = "Enabled"
-					$statusLblCapture.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($onColorCapture)
-				}.GetNewClosure())
-				$cb.Add_Unchecked({
-					$statusLblCapture.Text = "Disabled"
-					$statusLblCapture.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($offColorCapture)
-				}.GetNewClosure())
-				# Wire linked toggles (e.g. PS7 install → PS7 telemetry)
-				if ($Tweak.LinkedWith)
+				# Why This Matters button — right-aligned
+				$whyBlock = New-WhyThisMattersButton -Tweak $Tweak
+				if ($whyBlock)
 				{
+					[System.Windows.Controls.Grid]::SetColumn($whyBlock, 1)
+					$statusRow.Children.Add($whyBlock) | Out-Null
+				}
+
+				$leftStack.Children.Add($statusRow) | Out-Null
+
+				$descTxt = New-Object System.Windows.Controls.TextBlock
+				$descTxt.Text = if ($Tweak.Description) { $Tweak.Description } else { "Turns this feature on when checked and off when unchecked." }
+				$descTxt.FontSize = 10
+				$descTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+				$descTxt.Margin = [System.Windows.Thickness]::new(28, 1, 6, 0)
+				$descTxt.TextWrapping = "Wrap"
+				$leftStack.Children.Add($descTxt) | Out-Null
+
+				# Add expandable hint content from Why This Matters button
+				if ($whyBlock -and $whyBlock.Tag)
+				{
+					$leftStack.Children.Add($whyBlock.Tag) | Out-Null
+				}
+
+					# Wire up checkbox change to update status label (uses captured local color strings)
+					$statusLblCapture = $statusLbl
+					$convertBrushCapture = ${function:ConvertTo-GuiBrush}.GetNewClosure()
+					$cb.Add_Checked({
+						if ($statusLblCapture) {
+							$statusLblCapture.Text = "Enabled"
+							$statusLblCapture.Foreground = & $convertBrushCapture -Color $onColorCapture -Context 'Build-TweakRow/StatusEnabled'
+						}
+					}.GetNewClosure())
+					$cb.Add_Unchecked({
+						if ($statusLblCapture) {
+							$statusLblCapture.Text = "Disabled"
+							$statusLblCapture.Foreground = & $convertBrushCapture -Color $offColorCapture -Context 'Build-TweakRow/StatusDisabled'
+						}
+					}.GetNewClosure())
+					$functionCapture = [string]$Tweak.Function
+					$cb.Add_Checked({
+						if ($Script:ExplicitPresetSelections) {
+							[void]$Script:ExplicitPresetSelections.Add($functionCapture)
+						}
+					}.GetNewClosure())
+					$cb.Add_Unchecked({
+						if ($Script:ExplicitPresetSelections) {
+							$Script:ExplicitPresetSelections.Remove($functionCapture) | Out-Null
+						}
+					}.GetNewClosure())
+					# Wire linked toggles (e.g. PS7 install → PS7 telemetry)
+					if ($Tweak.LinkedWith)
+					{
 					$linkedFuncCapture = $Tweak.LinkedWith
 					$syncLinkedStateCapture = $syncLinkedState
 					$cb.Add_Checked({
@@ -1564,18 +6569,18 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 					}.GetNewClosure())
 				}
 
-				$grid.Children.Add($leftStack) | Out-Null
-
-				$card.Child = $grid
-				# Preserve user's checked state if this control was already built on a previous tab visit
-				if ($Script:Controls.ContainsKey($Index)) {
-					$cb.IsChecked = $Script:Controls[$Index].IsChecked
-				}
+				$card.Child = $leftStack
+				Add-CardHoverEffects -Card $card -FocusSources @($cb)
 				if ($Tweak.LinkedWith)
 				{
 					# Sync the linked tweak after the row has restored its final checked state.
 					& $syncLinkedState $Tweak.LinkedWith ([bool]$cb.IsChecked)
 				}
+				# Dim unchecked rows
+				$card.Opacity = if ($cb.IsChecked) { 1.0 } else { 0.7 }
+				$cardRef = $card
+				$cb.Add_Checked({ $cardRef.Opacity = 1.0 }.GetNewClosure())
+				$cb.Add_Unchecked({ $cardRef.Opacity = 0.7 }.GetNewClosure())
 				$Script:Controls[$Index] = $cb
 				return $card
 			}
@@ -1584,8 +6589,8 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 				$card = New-Object System.Windows.Controls.Border
 				$card.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
 				$card.CornerRadius = [System.Windows.CornerRadius]::new(6)
-				$card.Margin = [System.Windows.Thickness]::new(8, 3, 8, 3)
-				$card.Padding = [System.Windows.Thickness]::new(12, 8, 12, 8)
+				$card.Margin = $rowCardMargin
+				$card.Padding = $rowCardPadding
 
 				$grid = New-Object System.Windows.Controls.Grid
 				$col1 = New-Object System.Windows.Controls.ColumnDefinition
@@ -1601,60 +6606,123 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 				$leftStack.VerticalAlignment = "Center"
 				[System.Windows.Controls.Grid]::SetColumn($leftStack, 0)
 
-				$nameRow = New-Object System.Windows.Controls.StackPanel
-				$nameRow.Orientation = "Horizontal"
+				$nameRow = New-Object System.Windows.Controls.Grid
+				$nameRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+				$nameRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+
+				$nameInner = New-Object System.Windows.Controls.StackPanel
+				$nameInner.Orientation = "Horizontal"
+				[System.Windows.Controls.Grid]::SetColumn($nameInner, 0)
 
 				$nameTxt = New-Object System.Windows.Controls.TextBlock
 				$nameTxt.Text = $Tweak.Name
-				$nameTxt.FontSize = 13
+				$nameTxt.FontSize = 12
 				$nameTxt.FontWeight = [System.Windows.FontWeights]::SemiBold
 				$nameTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 				$nameTxt.VerticalAlignment = "Center"
-				$nameRow.Children.Add($nameTxt) | Out-Null
+				$nameInner.Children.Add($nameTxt) | Out-Null
 
-				$nameRow.Children.Add((New-InfoIcon -TooltipText $Tweak.Description -Tweak $Tweak)) | Out-Null
+				$nameInner.Children.Add((New-InfoIcon -TooltipText $Tweak.Description -Tweak $Tweak)) | Out-Null
 
 				if ($Tweak.Caution)
 				{
-					$nameRow.Children.Add((New-ImpactBadge)) | Out-Null
+					$nameInner.Children.Add((New-ImpactBadge)) | Out-Null
 				}
+				$nameRow.Children.Add($nameInner) | Out-Null
+
+				# Badges panel — right-aligned
+				$choiceBadgesPanel = New-Object System.Windows.Controls.StackPanel
+				$choiceBadgesPanel.Orientation = 'Horizontal'
+				$choiceBadgesPanel.VerticalAlignment = 'Center'
+				$choiceBadgesPanel.HorizontalAlignment = 'Right'
+				[System.Windows.Controls.Grid]::SetColumn($choiceBadgesPanel, 1)
+				if ([bool]$Tweak.RequiresRestart)
+				{
+					$restartBadge = New-Object System.Windows.Controls.TextBlock
+					$restartBadge.Text = [char]0x21BB + ' Restart'
+					$restartBadge.FontSize = 10
+					$restartBadge.Foreground = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadge)
+					$restartBadge.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+					$restartBadge.Padding = [System.Windows.Thickness]::new(5, 1, 5, 1)
+					$restartBadge.Margin = $badgeSpacing
+					$restartBadge.VerticalAlignment = 'Center'
+					$choiceBadgesPanel.Children.Add($restartBadge) | Out-Null
+				}
+				$riskBadge = New-RiskBadge -Level $Tweak.Risk
+				if ($riskBadge)
+				{
+					$riskBadge.Margin = $badgeSpacing
+					$choiceBadgesPanel.Children.Add($riskBadge) | Out-Null
+				}
+				$nameRow.Children.Add($choiceBadgesPanel) | Out-Null
 
 				$leftStack.Children.Add($nameRow) | Out-Null
 
 				$descTxt = New-Object System.Windows.Controls.TextBlock
 				$descTxt.Text = $Tweak.Description
-				$descTxt.FontSize = 11
+				$descTxt.FontSize = 10
 				$descTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
-				$descTxt.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
+				$descTxt.Margin = [System.Windows.Thickness]::new(0, 1, 0, 0)
 				$descTxt.TextWrapping = "Wrap"
 				$leftStack.Children.Add($descTxt) | Out-Null
+
+					$whyBlock = New-WhyThisMattersButton -Tweak $Tweak -LeftIndent 0
+					if ($whyBlock)
+					{
+						$whyRow = New-Object System.Windows.Controls.Grid
+						$whyRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+						$whyRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+						$whyRow.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
+						[System.Windows.Controls.Grid]::SetColumn($whyBlock, 1)
+						$whyRow.Children.Add($whyBlock) | Out-Null
+						$leftStack.Children.Add($whyRow) | Out-Null
+						if ($whyBlock.Tag)
+						{
+							$leftStack.Children.Add($whyBlock.Tag) | Out-Null
+						}
+					}
 
 				$grid.Children.Add($leftStack) | Out-Null
 
 				# Right: ComboBox
 				$combo = New-Object System.Windows.Controls.ComboBox
-				$combo.MinWidth = 160
+				$combo.MinWidth = 220
 				$combo.VerticalAlignment = "Center"
-				$combo.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
+				$combo.Margin = [System.Windows.Thickness]::new(14, 0, 0, 0)
 				$combo.Tag = $Index
+				Set-ChoiceComboStyle -Combo $combo
 
-				$displayOpts = if ($Tweak.DisplayOptions) { $Tweak.DisplayOptions } else { $Tweak.Options }
-				$defaultIdx = -1
-				for ($oi = 0; $oi -lt $Tweak.Options.Count; $oi++)
+					$displayOpts = if ($Tweak.DisplayOptions) { $Tweak.DisplayOptions } else { $Tweak.Options }
+					for ($oi = 0; $oi -lt $Tweak.Options.Count; $oi++)
 				{
 					$combo.Items.Add($displayOpts[$oi]) | Out-Null
-					if ($Tweak.Options[$oi] -eq $Tweak.Default) { $defaultIdx = $oi }
-				}
-				$combo.SelectedIndex = $defaultIdx
+					}
+					# Get placeholder state if available
+					$placeholder = $Script:Controls[$Index]
+					$initialSelectedIndex = -1
+					if ($placeholder -and $placeholder.PSObject.Properties['SelectedIndex']) {
+						$initialSelectedIndex = [int]$placeholder.SelectedIndex
+					}
+					$combo.SelectedIndex = $initialSelectedIndex
+					$choiceFunctionCapture = [string]$Tweak.Function
+					$comboRef = $combo
+					$combo.Add_SelectionChanged({
+						if ($comboRef.SelectedIndex -ge 0) {
+							if ($Script:ExplicitPresetSelections) {
+								[void]$Script:ExplicitPresetSelections.Add($choiceFunctionCapture)
+							}
+						} else {
+							if ($Script:ExplicitPresetSelections) {
+								$Script:ExplicitPresetSelections.Remove($choiceFunctionCapture) | Out-Null
+							}
+						}
+					}.GetNewClosure())
 
-				[System.Windows.Controls.Grid]::SetColumn($combo, 1)
-				$grid.Children.Add($combo) | Out-Null
+					[System.Windows.Controls.Grid]::SetColumn($combo, 1)
+					$grid.Children.Add($combo) | Out-Null
 
 				$card.Child = $grid
-				# Preserve user's selection if this control was already built on a previous tab visit
-				if ($Script:Controls.ContainsKey($Index)) {
-					$combo.SelectedIndex = $Script:Controls[$Index].SelectedIndex
-				}
+				Add-CardHoverEffects -Card $card -FocusSources @($combo)
 				$Script:Controls[$Index] = $combo
 				return $card
 			}
@@ -1663,30 +6731,44 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 				$card = New-Object System.Windows.Controls.Border
 				$card.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
 				$card.CornerRadius = [System.Windows.CornerRadius]::new(6)
-				$card.Margin = [System.Windows.Thickness]::new(8, 3, 8, 3)
-				$card.Padding = [System.Windows.Thickness]::new(12, 8, 12, 8)
+				$card.Margin = $rowCardMargin
+				$card.Padding = $rowCardPadding
 
-				$nameRow = New-Object System.Windows.Controls.StackPanel
-				$nameRow.Orientation = "Horizontal"
+				$headerGrid = New-Object System.Windows.Controls.Grid
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+				$headerGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
 
-				$cb = New-Object System.Windows.Controls.CheckBox
-				$cb.VerticalAlignment = "Center"
-				# Apply pending linked-toggle state
-				$initAct = [bool]$Tweak.Default
-				if ($Script:PendingLinkedChecks.Contains($Tweak.Function))   { $initAct = $true;  $Script:PendingLinkedChecks.Remove($Tweak.Function)   | Out-Null }
-				elseif ($Script:PendingLinkedUnchecks.Contains($Tweak.Function)) { $initAct = $false; $Script:PendingLinkedUnchecks.Remove($Tweak.Function) | Out-Null }
-				$cb.IsChecked = $initAct
+					$cb = New-Object System.Windows.Controls.CheckBox
+					$cb.VerticalAlignment = "Center"
+					$cb.Margin = [System.Windows.Thickness]::new(0, 0, 10, 0)
+					# Get placeholder state if available
+					$placeholder = $Script:Controls[$Index]
+					$initialChecked = $false
+					if ($placeholder -and $placeholder.PSObject.Properties['IsChecked']) {
+						$initialChecked = [bool]$placeholder.IsChecked
+					}
+					if ($Script:PendingLinkedChecks -and $Script:PendingLinkedChecks.Contains($Tweak.Function))   { $initialChecked = $true;  $Script:PendingLinkedChecks.Remove($Tweak.Function)   | Out-Null }
+					elseif ($Script:PendingLinkedUnchecks -and $Script:PendingLinkedUnchecks.Contains($Tweak.Function)) { $initialChecked = $false; $Script:PendingLinkedUnchecks.Remove($Tweak.Function) | Out-Null }
+					Write-Host "[Build-Action] $($Tweak.Function) -> initialChecked=$initialChecked, placeholderFound=$($null -ne $placeholder), pendingCheck=$($Script:PendingLinkedChecks -and $Script:PendingLinkedChecks.Contains($Tweak.Function)), pendingUncheck=$($Script:PendingLinkedUnchecks -and $Script:PendingLinkedUnchecks.Contains($Tweak.Function))"
+					$cb.IsChecked = $initialChecked
 				$cb.Tag = $Index
 				$cb.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-				$nameRow.Children.Add($cb) | Out-Null
+				[System.Windows.Controls.Grid]::SetColumn($cb, 0)
+				$headerGrid.Children.Add($cb) | Out-Null
+
+				$nameRow = New-Object System.Windows.Controls.WrapPanel
+				$nameRow.Orientation = "Horizontal"
+				$nameRow.VerticalAlignment = "Center"
+				[System.Windows.Controls.Grid]::SetColumn($nameRow, 1)
 
 				$nameTxt = New-Object System.Windows.Controls.TextBlock
 				$nameTxt.Text = $Tweak.Name
-				$nameTxt.FontSize = 13
+				$nameTxt.FontSize = 12
 				$nameTxt.FontWeight = [System.Windows.FontWeights]::SemiBold
 				$nameTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 				$nameTxt.VerticalAlignment = "Center"
-				$nameTxt.Margin = [System.Windows.Thickness]::new(4, 0, 0, 0)
+				$nameTxt.Margin = [System.Windows.Thickness]::new(0)
 				$nameRow.Children.Add($nameTxt) | Out-Null
 
 				$nameRow.Children.Add((New-InfoIcon -TooltipText $Tweak.Description -Tweak $Tweak)) | Out-Null
@@ -1695,41 +6777,97 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 				{
 					$nameRow.Children.Add((New-ImpactBadge)) | Out-Null
 				}
+				$headerGrid.Children.Add($nameRow) | Out-Null
+
+				# Badges panel — right-aligned in title row
+				$badgesPanel = New-Object System.Windows.Controls.StackPanel
+				$badgesPanel.Orientation = 'Horizontal'
+				$badgesPanel.VerticalAlignment = 'Center'
+				$badgesPanel.HorizontalAlignment = 'Right'
+				[System.Windows.Controls.Grid]::SetColumn($badgesPanel, 2)
+				if ([bool]$Tweak.RequiresRestart)
+				{
+					$restartBadge = New-Object System.Windows.Controls.TextBlock
+					$restartBadge.Text = [char]0x21BB + ' Restart'
+					$restartBadge.FontSize = 10
+					$restartBadge.Foreground = $bc.ConvertFromString($Script:CurrentTheme.RiskMediumBadge)
+					$restartBadge.Background = $bc.ConvertFromString($Script:CurrentTheme.TabActiveBg)
+					$restartBadge.Padding = [System.Windows.Thickness]::new(5, 1, 5, 1)
+					$restartBadge.Margin = $badgeSpacing
+					$restartBadge.VerticalAlignment = 'Center'
+					$badgesPanel.Children.Add($restartBadge) | Out-Null
+				}
+				$riskBadge = New-RiskBadge -Level $Tweak.Risk
+				if ($riskBadge)
+				{
+					$riskBadge.Margin = $badgeSpacing
+					$badgesPanel.Children.Add($riskBadge) | Out-Null
+				}
+				$headerGrid.Children.Add($badgesPanel) | Out-Null
 
 				$descTxt = New-Object System.Windows.Controls.TextBlock
 				$descTxt.Text = if ($Tweak.Description) { $Tweak.Description } else { "Runs this action one time when selected." }
-				$descTxt.FontSize = 11
+				$descTxt.FontSize = 10
 				$descTxt.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-				$descTxt.Margin = [System.Windows.Thickness]::new(24, 2, 8, 0)
+				$descTxt.Margin = [System.Windows.Thickness]::new(28, 1, 6, 0)
 				$descTxt.TextWrapping = "Wrap"
 				$nameRowWithDesc = New-Object System.Windows.Controls.StackPanel
 				$nameRowWithDesc.Orientation = "Vertical"
-				$nameRowWithDesc.Children.Add($nameRow) | Out-Null
+				$nameRowWithDesc.Children.Add($headerGrid) | Out-Null
 				$nameRowWithDesc.Children.Add($descTxt) | Out-Null
 
+					$whyBlock = New-WhyThisMattersButton -Tweak $Tweak -LeftIndent 28
+					if ($whyBlock)
+					{
+						$whyRow = New-Object System.Windows.Controls.Grid
+						$whyRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star) })) | Out-Null
+						$whyRow.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Auto) })) | Out-Null
+						$whyRow.Margin = [System.Windows.Thickness]::new(28, 2, 0, 0)
+						[System.Windows.Controls.Grid]::SetColumn($whyBlock, 1)
+						$whyRow.Children.Add($whyBlock) | Out-Null
+						$nameRowWithDesc.Children.Add($whyRow) | Out-Null
+						if ($whyBlock.Tag)
+						{
+							$nameRowWithDesc.Children.Add($whyBlock.Tag) | Out-Null
+						}
+					}
+
 				# Wire linked toggles for Action type
-				if ($Tweak.LinkedWith)
-				{
-					$linkedFuncCapture = $Tweak.LinkedWith
-					$syncLinkedStateCapture = $syncLinkedState
-					$cb.Add_Checked({
+					if ($Tweak.LinkedWith)
+					{
+						$linkedFuncCapture = $Tweak.LinkedWith
+						$syncLinkedStateCapture = $syncLinkedState
+						$cb.Add_Checked({
 						& $syncLinkedStateCapture $linkedFuncCapture $true
 					}.GetNewClosure())
 					$cb.Add_Unchecked({
-						& $syncLinkedStateCapture $linkedFuncCapture $false
+							& $syncLinkedStateCapture $linkedFuncCapture $false
+						}.GetNewClosure())
+					}
+					$actionFunctionCapture = [string]$Tweak.Function
+					$cb.Add_Checked({
+						if ($Script:ExplicitPresetSelections) {
+							[void]$Script:ExplicitPresetSelections.Add($actionFunctionCapture)
+						}
 					}.GetNewClosure())
-				}
+					$cb.Add_Unchecked({
+						if ($Script:ExplicitPresetSelections) {
+							$Script:ExplicitPresetSelections.Remove($actionFunctionCapture) | Out-Null
+						}
+					}.GetNewClosure())
 
-				$card.Child = $nameRowWithDesc
-				# Preserve user's checked state if this control was already built on a previous tab visit
-				if ($Script:Controls.ContainsKey($Index)) {
-					$cb.IsChecked = $Script:Controls[$Index].IsChecked
-				}
+					$card.Child = $nameRowWithDesc
+				Add-CardHoverEffects -Card $card -FocusSources @($cb)
 				if ($Tweak.LinkedWith)
 				{
 					# Sync the linked tweak after the row has restored its final checked state.
 					& $syncLinkedState $Tweak.LinkedWith ([bool]$cb.IsChecked)
 				}
+				# Dim unchecked rows
+				$card.Opacity = if ($cb.IsChecked) { 1.0 } else { 0.7 }
+				$cardRef = $card
+				$cb.Add_Checked({ $cardRef.Opacity = 1.0 }.GetNewClosure())
+				$cb.Add_Unchecked({ $cardRef.Opacity = 0.7 }.GetNewClosure())
 				$Script:Controls[$Index] = $cb
 				return $card
 			}
@@ -1742,186 +6880,287 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	$Script:CurrentPrimaryTab = $null
 	$Script:SubTabControls = @{}
 
-	function Build-TabContent
+	function Update-MainContentPanelWidth
 	{
-		param ([string]$PrimaryTab)
-		$Script:CurrentPrimaryTab = $PrimaryTab
-		$bc = [System.Windows.Media.BrushConverter]::new()
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[System.Windows.FrameworkElement]$Panel
+		)
 
-		# Gather all manifest indexes for this primary tab
+		if (-not $Panel -or -not $ContentScroll) { return }
+
+		$viewportWidth = [double]$ContentScroll.ViewportWidth
+		if ($viewportWidth -le 0)
+		{
+			$viewportWidth = [double]$ContentScroll.ActualWidth
+		}
+		if ($viewportWidth -le 0) { return }
+
+		$horizontalPadding = 24
+		$targetWidth = [Math]::Max(0, ($viewportWidth - $horizontalPadding))
+		$Panel.Width = $targetWidth
+		$Panel.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Stretch
+	}
+
+			function Build-TabContent
+			{
+				param ([string]$PrimaryTab)
+				$Script:CurrentPrimaryTab = $PrimaryTab
+				$bc = New-SafeBrushConverter -Context 'Build-TabContent'
+				$isSearchResultsTab = ($PrimaryTab -eq $Script:SearchResultsTabTag)
+			$searchQuery = $Script:SearchText
+			if ($null -eq $searchQuery) { $searchQuery = '' }
+		$searchQuery = $searchQuery.Trim()
+
+		# Gather visible manifest indexes for this tab, or all tabs when the search-results view is active.
 		$catTweaks = [ordered]@{}
+		$matchCount = 0
 		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
 		{
 			$t = $Script:TweakManifest[$i]
 			$primTab = $CategoryToPrimary[$t.Category]
-			if ($primTab -ne $PrimaryTab) { continue }
+			if (-not (Test-TweakMatchesCurrentFilters -Tweak $t -PrimaryTab $PrimaryTab -SearchQuery $searchQuery -IsSearchResultsTab:$isSearchResultsTab))
+			{
+				continue
+			}
 
-			# Determine sub-category
-			$subCat = if ($t.SubCategory) { $t.SubCategory } elseif ($t.Category -ne $PrimaryTab) { $t.Category } else { "" }
-			if (-not $catTweaks.Contains($subCat)) { $catTweaks[$subCat] = @() }
-			$catTweaks[$subCat] += $i
+			# Determine sub-category relative to the tweak's owning primary tab.
+			$effectivePrimaryTab = if ($isSearchResultsTab) { $primTab } else { $PrimaryTab }
+			$subCat = if ($t.SubCategory) { $t.SubCategory } elseif ($t.Category -ne $effectivePrimaryTab) { $t.Category } else { "" }
+			$groupKey = if ($isSearchResultsTab)
+			{
+				if ([string]::IsNullOrWhiteSpace($subCat)) { $primTab } else { "{0} | {1}" -f $primTab, $subCat }
+			}
+			else
+			{
+				$subCat
+			}
+
+			if (-not $catTweaks.Contains($groupKey)) { $catTweaks[$groupKey] = @() }
+			$catTweaks[$groupKey] += $i
+			$matchCount++
 		}
 
 		$mainPanel = New-Object System.Windows.Controls.StackPanel
 		$mainPanel.Orientation = "Vertical"
 		$mainPanel.Background = $bc.ConvertFromString($Script:CurrentTheme.PanelBg)
+		$mainPanel.Margin = [System.Windows.Thickness]::new(0)
+		$mainPanel.HorizontalAlignment = 'Stretch'
 
-		$presetHeader = New-Object System.Windows.Controls.TextBlock
-		$presetHeader.Text = 'Recommended Selections:'
-		$presetHeader.FontSize = 13
-		$presetHeader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.AccentHover)
-		$presetHeader.Margin = [System.Windows.Thickness]::new(12, 12, 12, 6)
-		$mainPanel.Children.Add($presetHeader) | Out-Null
+		if ($isSearchResultsTab)
+		{
+			$mainPanel.Children.Add((New-SearchResultsSummary -Query $searchQuery -MatchCount $matchCount)) | Out-Null
+		}
+		else
+		{
+			$presetPanel = New-Object System.Windows.Controls.Border
+			$presetPanel.Background = $bc.ConvertFromString($Script:CurrentTheme.PresetPanelBg)
+			$presetPanel.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.PresetPanelBorder)
+			$presetPanel.BorderThickness = [System.Windows.Thickness]::new(1)
+			$presetPanel.CornerRadius = [System.Windows.CornerRadius]::new(10)
+			$presetPanel.Margin = [System.Windows.Thickness]::new(8, 12, 8, 8)
+			$presetPanel.Padding = [System.Windows.Thickness]::new(14, 12, 14, 12)
 
-		$presetBar = New-Object System.Windows.Controls.WrapPanel
-		$presetBar.Orientation = 'Horizontal'
-		$presetBar.Margin = [System.Windows.Thickness]::new(8, 0, 8, 8)
+			$presetPanelStack = New-Object System.Windows.Controls.StackPanel
+			$presetPanelStack.Orientation = 'Vertical'
 
-		$btnStandard = New-PresetButton -Label 'Standard' -BackgroundColor $Script:CurrentTheme.TabActiveBg
-		$manifestRef = $Script:TweakManifest
-		$controlsRef = $Script:Controls
-		$pendingChecksRef = $Script:PendingLinkedChecks
-		$pendingUnchecksRef = $Script:PendingLinkedUnchecks
-		$statusTextRef = $StatusText
-		$currentThemeRef = $Script:CurrentTheme
-		$btnStandard.Add_Click({
-			$pendingChecksRef.Clear()
-			$pendingUnchecksRef.Clear()
-			$Script:ScanEnabled = $false
+			$presetHeader = New-Object System.Windows.Controls.TextBlock
+			$presetHeader.Text = 'Recommended Selections'
+			$presetHeader.FontSize = 14
+			$presetHeader.FontWeight = [System.Windows.FontWeights]::Bold
+			$presetHeader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+			$presetPanelStack.Children.Add($presetHeader) | Out-Null
 
-			for ($pi = 0; $pi -lt $manifestRef.Count; $pi++)
+			$presetSubheading = New-Object System.Windows.Controls.TextBlock
+			$presetSubheading.Text = 'Use these shortcuts to start from a sensible baseline before fine-tuning individual tweaks.'
+			$presetSubheading.FontSize = 11
+			$presetSubheading.TextWrapping = 'Wrap'
+			$presetSubheading.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
+			$presetSubheading.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+			$presetPanelStack.Children.Add($presetSubheading) | Out-Null
+
+			$presetBar = New-Object System.Windows.Controls.WrapPanel
+			$presetBar.Orientation = 'Horizontal'
+			$presetBar.Margin = [System.Windows.Thickness]::new(0, 10, 0, 0)
+
+			# Capture preset functions before creating buttons
+			$writeGuiPresetDebugScript = ${function:Write-GuiPresetDebug}
+			$setGuiPresetSelectionScript = ${function:Set-GuiPresetSelection}
+			$showGuiRuntimeFailureScript = $Script:ShowGuiRuntimeFailureScript
+
+			# Minimal
+			$btnMinimal = New-PresetButton -Label 'Minimal' -Variant 'Secondary'
+			$btnMinimal.ToolTip = 'Selects a small set of safe housekeeping tweaks with no risk. Good starting point.'
+			$btnMinimal.Add_Click({
+				try {
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Minimal' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Minimal'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					& $setGuiPresetSelectionScript -PresetName 'Minimal'
+				}
+				catch {
+					if ($showGuiRuntimeFailureScript) {
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Minimal' -Exception $_.Exception -ShowDialog
+					} else {
+						Write-Warning "GUI event failed [Build-TabContent/Preset/Minimal]: $($_.Exception.Message)"
+					}
+				}
+			}.GetNewClosure())
+			$presetBar.Children.Add($btnMinimal) | Out-Null
+
+			# Safe (Primary)
+			$btnSafe = New-PresetButton -Label 'Safe' -Variant 'Primary'
+			$btnSafe.ToolTip = 'Selects all low-risk tweaks broadly recommended for most users.'
+			$btnSafe.Add_Click({
+				try {
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Safe' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Safe'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					& $setGuiPresetSelectionScript -PresetName 'Safe'
+				}
+				catch {
+					if ($showGuiRuntimeFailureScript) {
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Safe' -Exception $_.Exception -ShowDialog
+					} else {
+						Write-Warning "GUI event failed [Build-TabContent/Preset/Safe]: $($_.Exception.Message)"
+					}
+				}
+			}.GetNewClosure())
+			$presetBar.Children.Add($btnSafe) | Out-Null
+
+			# Balanced
+			$btnBalanced = New-PresetButton -Label 'Balanced' -Variant 'Secondary'
+			$btnBalanced.ToolTip = 'Selects all Safe tweaks plus medium-risk tweaks with broad benefit. Excludes app-specific and opinionated changes.'
+			$btnBalanced.Add_Click({
+				try {
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Balanced' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Balanced'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					& $setGuiPresetSelectionScript -PresetName 'Balanced'
+				}
+				catch {
+					if ($showGuiRuntimeFailureScript) {
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Balanced' -Exception $_.Exception -ShowDialog
+					} else {
+						Write-Warning "GUI event failed [Build-TabContent/Preset/Balanced]: $($_.Exception.Message)"
+					}
+				}
+			}.GetNewClosure())
+			$presetBar.Children.Add($btnBalanced) | Out-Null
+
+			# Aggressive (Danger)
+			$btnAggressive = New-PresetButton -Label 'Aggressive' -Variant 'Danger'
+			$btnAggressive.ToolTip = 'Selects all tweaks including high-risk changes. Recommended for advanced users only.'
+			$btnAggressive.Add_Click({
+				try {
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Aggressive' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Aggressive'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					& $setGuiPresetSelectionScript -PresetName 'Aggressive'
+				}
+				catch {
+					if ($showGuiRuntimeFailureScript) {
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Aggressive' -Exception $_.Exception -ShowDialog
+					} else {
+						Write-Warning "GUI event failed [Build-TabContent/Preset/Aggressive]: $($_.Exception.Message)"
+					}
+				}
+			}.GetNewClosure())
+			$presetBar.Children.Add($btnAggressive) | Out-Null
+
+			# System Scan
+			$btnScan = New-PresetButton -Label 'System Scan' -Variant 'Secondary'
+			$btnScan.ToolTip = 'Scans your system and recommends tweaks based on detected configuration.'
+			$chkScanRef = $ChkScan
+			$btnScan.Add_Click({
+				try {
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/SystemScan' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', enabling system scan." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					$chkScanRef.IsChecked = $true
+					$Script:PresetStatusMessage = 'System scan enabled.'
+				}
+				catch {
+					if ($showGuiRuntimeFailureScript) {
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/SystemScan' -Exception $_.Exception -ShowDialog
+					} else {
+						Write-Warning "GUI event failed [Build-TabContent/Preset/SystemScan]: $($_.Exception.Message)"
+					}
+				}
+			}.GetNewClosure())
+			$presetBar.Children.Add($btnScan) | Out-Null
+
+			$presetPanelStack.Children.Add($presetBar) | Out-Null
+
+			$Script:PresetStatusBadge = New-StatusPill -Text $Script:PresetStatusMessage
+			if ($Script:PresetStatusBadge)
 			{
-				$tweak = $manifestRef[$pi]
-				$ctl = $controlsRef[$pi]
-				if (-not $ctl) { continue }
-
-				$isVisible = $true
-				if ($tweak.VisibleIf)
-				{
-					try { $isVisible = [bool](& $tweak.VisibleIf) } catch { $isVisible = $false }
-				}
-				$ctl.IsEnabled = $isVisible
-				if (-not $isVisible)
-				{
-					if ($ctl.PSObject.Properties['IsChecked']) { $ctl.IsChecked = $false }
-					elseif ($ctl.PSObject.Properties['SelectedIndex']) { $ctl.SelectedIndex = -1 }
-					continue
-				}
-
-				switch ($tweak.Type)
-				{
-					'Toggle'
-					{
-						$ctl.IsChecked = [bool]$tweak.Default
-					}
-					'Action'
-					{
-						$ctl.IsChecked = [bool]$tweak.Default
-					}
-					'Choice'
-					{
-						$ctl.SelectedIndex = [array]::IndexOf($tweak.Options, $tweak.Default)
-					}
-				}
+				$presetPanelStack.Children.Add($Script:PresetStatusBadge) | Out-Null
 			}
 
-			$statusTextRef.Text = 'Standard selections loaded.'
-			$statusTextRef.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($currentThemeRef.AccentBlue)
-		}.GetNewClosure())
-		$presetBar.Children.Add($btnStandard) | Out-Null
+			$presetPanel.Child = $presetPanelStack
+			$mainPanel.Children.Add($presetPanel) | Out-Null
+		}
 
-		$btnScan = New-PresetButton -Label 'System Scan' -BackgroundColor $Script:CurrentTheme.TabBg
-		$chkScanRef = $ChkScan
-		$btnScan.Add_Click({
-			$chkScanRef.IsChecked = $true
-		}.GetNewClosure())
-		$presetBar.Children.Add($btnScan) | Out-Null
-
-		$mainPanel.Children.Add($presetBar) | Out-Null
+		if ($catTweaks.Count -eq 0)
+		{
+			$emptyState = New-Object System.Windows.Controls.Border
+			$emptyState.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
+			$emptyState.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.CardBorder)
+			$emptyState.BorderThickness = [System.Windows.Thickness]::new(1)
+			$emptyState.CornerRadius = [System.Windows.CornerRadius]::new(8)
+			$emptyState.Margin = [System.Windows.Thickness]::new(8, 12, 8, 8)
+			$emptyState.Padding = [System.Windows.Thickness]::new(20, 18, 20, 18)
+			$emptyText = New-Object System.Windows.Controls.TextBlock
+			$emptyText.Text = if ($isSearchResultsTab) { "No tweaks match '$searchQuery' across all tabs." } else { "No tweaks match '$searchQuery' in this tab." }
+			$emptyText.TextWrapping = 'Wrap'
+			$emptyText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+			$emptyState.Child = $emptyText
+			$mainPanel.Children.Add($emptyState) | Out-Null
+		}
 
 		# Collect all manifest indexes for this tab (for Select/Unselect All)
 		$allTabIndexes = @()
 		foreach ($subKey in $catTweaks.Keys) { $allTabIndexes += $catTweaks[$subKey] }
 
-		# Select All / Unselect All buttons
-		$selectionBar = New-Object System.Windows.Controls.WrapPanel
-		$selectionBar.Orientation = "Horizontal"
-		$selectionBar.Margin = [System.Windows.Thickness]::new(8, 8, 8, 2)
+		if ($allTabIndexes.Count -gt 0)
+		{
+			# Select All / Unselect All buttons
+			$selectionBar = New-Object System.Windows.Controls.WrapPanel
+			$selectionBar.Orientation = "Horizontal"
+			$selectionBar.Margin = [System.Windows.Thickness]::new(8, 8, 8, 2)
 
-		$btnSelectAll = New-Object System.Windows.Controls.Button
-		$btnSelectAll.Content = "Select All"
-		$btnSelectAll.Padding = [System.Windows.Thickness]::new(12, 4, 12, 4)
-		$btnSelectAll.Margin = [System.Windows.Thickness]::new(2, 2, 2, 2)
-		$btnSelectAll.Cursor = [System.Windows.Input.Cursors]::Hand
-		$btnSelectAll.FontSize = 11
-		$btnSelectAll.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-		$selAllTmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-		$selAllBd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-		$selAllBd.Name = "Bd"
-		$selAllBd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(4))
-		$selAllBd.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(12, 4, 12, 4))
-		$selAllBd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($Script:CurrentTheme.TabBg))
-		$selAllCp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-		$selAllCp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-		$selAllBd.AppendChild($selAllCp)
-		$selAllTmpl.VisualTree = $selAllBd
-		$btnSelectAll.Template = $selAllTmpl
+			$btnSelectAll = New-PresetButton -Label 'Select All' -Variant 'Subtle' -Compact
 
-		$capturedIndexesSA = [int[]]$allTabIndexes
-		$controlsRefSA = $Script:Controls
-		$btnSelectAll.Add_Click({
-			foreach ($idx in $capturedIndexesSA)
-			{
-				$ctl = $controlsRefSA[$idx]
-				if ($ctl -and $ctl.IsEnabled -and $ctl.PSObject.Properties['IsChecked'])
+			$capturedIndexesSA = [int[]]$allTabIndexes
+			$controlsRefSA = $Script:Controls
+			$btnSelectAll.Add_Click({
+				foreach ($idx in $capturedIndexesSA)
 				{
-					$ctl.IsChecked = $true
+					$ctl = $controlsRefSA[$idx]
+					if ($ctl -and $ctl.IsEnabled -and $ctl.PSObject.Properties['IsChecked'])
+					{
+						$ctl.IsChecked = $true
+					}
 				}
-			}
-		}.GetNewClosure())
-		$selectionBar.Children.Add($btnSelectAll) | Out-Null
+			}.GetNewClosure())
+			$selectionBar.Children.Add($btnSelectAll) | Out-Null
 
-		$btnUnselectAll = New-Object System.Windows.Controls.Button
-		$btnUnselectAll.Content = "Unselect All"
-		$btnUnselectAll.Padding = [System.Windows.Thickness]::new(12, 4, 12, 4)
-		$btnUnselectAll.Margin = [System.Windows.Thickness]::new(2, 2, 2, 2)
-		$btnUnselectAll.Cursor = [System.Windows.Input.Cursors]::Hand
-		$btnUnselectAll.FontSize = 11
-		$btnUnselectAll.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-		$unselAllTmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-		$unselAllBd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-		$unselAllBd.Name = "Bd"
-		$unselAllBd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(4))
-		$unselAllBd.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(12, 4, 12, 4))
-		$unselAllBd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($Script:CurrentTheme.TabBg))
-		$unselAllCp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-		$unselAllCp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-		$unselAllBd.AppendChild($unselAllCp)
-		$unselAllTmpl.VisualTree = $unselAllBd
-		$btnUnselectAll.Template = $unselAllTmpl
+			$btnUnselectAll = New-PresetButton -Label 'Unselect All' -Variant 'Subtle' -Compact
 
-		$capturedIndexesUA = [int[]]$allTabIndexes
-		$controlsRefUA = $Script:Controls
-		$btnUnselectAll.Add_Click({
-			foreach ($idx in $capturedIndexesUA)
-			{
-				$ctl = $controlsRefUA[$idx]
-				if ($ctl -and $ctl.IsEnabled -and $ctl.PSObject.Properties['IsChecked'])
+			$capturedIndexesUA = [int[]]$allTabIndexes
+			$controlsRefUA = $Script:Controls
+			$btnUnselectAll.Add_Click({
+				foreach ($idx in $capturedIndexesUA)
 				{
-					$ctl.IsChecked = $false
+					$ctl = $controlsRefUA[$idx]
+					if ($ctl -and $ctl.IsEnabled -and $ctl.PSObject.Properties['IsChecked'])
+					{
+						$ctl.IsChecked = $false
+					}
 				}
-			}
-		}.GetNewClosure())
-		$selectionBar.Children.Add($btnUnselectAll) | Out-Null
+			}.GetNewClosure())
+			$selectionBar.Children.Add($btnUnselectAll) | Out-Null
 
-		$mainPanel.Children.Add($selectionBar) | Out-Null
+			$mainPanel.Children.Add($selectionBar) | Out-Null
+		}
 
 		# Build all sub-sections
 		foreach ($subKey in $catTweaks.Keys)
 		{
 			$indexes = $catTweaks[$subKey]
 
-			if ($subKey -ne "" -and $catTweaks.Count -gt 1)
+			if ($isSearchResultsTab -or ($subKey -ne "" -and $catTweaks.Count -gt 1))
 			{
 				$mainPanel.Children.Add((New-SectionHeader -Text $subKey)) | Out-Null
 			}
@@ -1946,22 +7185,21 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 		}
 
 		$ContentScroll.Content = $mainPanel
+		Update-MainContentPanelWidth -Panel $mainPanel
+		Restore-CurrentTabScrollOffset -TabKey $PrimaryTab
 	}
 	#endregion
 
-	# Activate the main window normally on first show so it appears in front once ready.
-	$Form.ShowActivated = $true
 	$Script:RunInProgress = $false
-
-	# Hide the console immediately — it will only reappear when Run Tweaks is clicked
-	Hide-ConsoleWindow
 
 	$Form.Add_Closing({
 		param($windowSource, $e)
+		if ($Script:SuppressRunClosePrompt) { return }
 		if ($Script:RunInProgress)
 		{
 			$e.Cancel = $true
-			Request-RunAbort
+			# Trigger the abort prompt if user attempts to close while running
+			& $Script:PromptRunAbortFn
 		}
 	})
 
@@ -1970,27 +7208,64 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	{
 		# Check if any tweaks exist for this primary tab
 		$hasTweaks = $false
+		$tweakCount = 0
 		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
 		{
-			if ($CategoryToPrimary[$Script:TweakManifest[$i].Category] -eq $pKey) { $hasTweaks = $true; break }
+			if ($CategoryToPrimary[$Script:TweakManifest[$i].Category] -eq $pKey)
+			{
+				$hasTweaks = $true
+				$tweakCount++
+			}
 		}
 		if (-not $hasTweaks) { continue }
 
 		$tabItem = New-Object System.Windows.Controls.TabItem
-		$tabItem.Header = $pKey
+		$tabItem.Header = "$pKey ($tweakCount)"
 		$tabItem.Tag = $pKey
-		$tabItem.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.TextPrimary)
-		$tabItem.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.TabBg)
+		$tabItem.Foreground = ConvertTo-GuiBrush -Color $Script:CurrentTheme.TextPrimary -Context 'BuildPrimaryTabs/Foreground'
+		$tabItem.Background = ConvertTo-GuiBrush -Color $Script:CurrentTheme.TabBg -Context 'BuildPrimaryTabs/Background'
 		$tabItem.Padding = [System.Windows.Thickness]::new(12, 6, 12, 6)
 		$PrimaryTabs.Items.Add($tabItem) | Out-Null
+		Add-PrimaryTabHoverEffects -Tab $tabItem
 	}
+	Update-PrimaryTabVisuals
+
+	$Script:FilterUiUpdating = $true
+	try
+	{
+		if ($CmbRiskFilter)
+		{
+			$CmbRiskFilter.Items.Clear()
+			foreach ($riskOption in @('All', 'Low', 'Medium', 'High'))
+			{
+				[void]$CmbRiskFilter.Items.Add($riskOption)
+			}
+			$CmbRiskFilter.SelectedItem = $Script:RiskFilter
+		}
+		if ($ChkAdvancedMode)
+		{
+			$ChkAdvancedMode.IsChecked = $Script:AdvancedMode
+		}
+	}
+	finally
+	{
+		$Script:FilterUiUpdating = $false
+	}
+	Set-FilterControlStyle
 
 	$PrimaryTabs.Add_SelectionChanged({
 		$e = $args[1]
 		if ($e.Source -ne $PrimaryTabs) { return }
+		Save-CurrentTabScrollOffset
 		$selected = $PrimaryTabs.SelectedItem
 		if ($selected -and $selected.Tag)
 		{
+			if ([string]$selected.Tag -ne $Script:SearchResultsTabTag)
+			{
+				$Script:LastStandardPrimaryTab = [string]$selected.Tag
+			}
+			Update-CategoryFilterList -PrimaryTab ([string]$selected.Tag)
+			Update-PrimaryTabVisuals
 			Build-TabContent -PrimaryTab $selected.Tag
 		}
 	})
@@ -2005,6 +7280,77 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 
 	# Linked-toggle wiring is handled inline in Build-TweakRow (supports lazy tab building).
 
+	$refreshVisibleContent = {
+		if ($Script:RunInProgress -or $Script:FilterUiUpdating) { return }
+		$targetTab = if ($PrimaryTabs -and $PrimaryTabs.SelectedItem -and $PrimaryTabs.SelectedItem.Tag) {
+			[string]$PrimaryTabs.SelectedItem.Tag
+		}
+		elseif ($Script:CurrentPrimaryTab) {
+			[string]$Script:CurrentPrimaryTab
+		}
+		else {
+			$null
+		}
+		Update-CategoryFilterList -PrimaryTab $targetTab
+		Update-SearchResultsTabState
+	}
+
+	Set-SearchInputStyle
+	Set-FilterControlStyle
+	$TxtSearch.Text = $Script:SearchText
+	$TxtSearch.Add_GotKeyboardFocus({
+		Set-SearchInputStyle
+	})
+	$TxtSearch.Add_LostKeyboardFocus({
+		Set-SearchInputStyle
+	})
+	$TxtSearch.Add_TextChanged({
+		if ($Script:RunInProgress) { return }
+		$Script:SearchText = $TxtSearch.Text
+		Set-SearchInputStyle
+		Update-SearchResultsTabState
+	})
+	$CmbRiskFilter.Add_SelectionChanged({
+		if ($Script:FilterUiUpdating -or $Script:RunInProgress) { return }
+		$Script:RiskFilter = if ($CmbRiskFilter.SelectedItem) { [string]$CmbRiskFilter.SelectedItem } else { 'All' }
+		& $refreshVisibleContent
+	})
+	$CmbCategoryFilter.Add_SelectionChanged({
+		if ($Script:FilterUiUpdating -or $Script:RunInProgress) { return }
+		$Script:CategoryFilter = if ($CmbCategoryFilter.SelectedItem) { [string]$CmbCategoryFilter.SelectedItem } else { 'All' }
+		Update-SearchResultsTabState
+	})
+	$ChkAdvancedMode.Add_Checked({
+		if ($Script:FilterUiUpdating -or $Script:RunInProgress) { return }
+		$Script:AdvancedMode = $true
+		$Script:PresetStatusMessage = 'Advanced Mode enabled. High-risk and advanced tweaks are now visible.'
+		$StatusText.Text = $Script:PresetStatusMessage
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+		& $refreshVisibleContent
+	})
+	$ChkAdvancedMode.Add_Unchecked({
+		if ($Script:FilterUiUpdating -or $Script:RunInProgress) { return }
+		$Script:AdvancedMode = $false
+		$Script:PresetStatusMessage = 'Advanced Mode disabled. High-risk and advanced tweaks are hidden again.'
+		$StatusText.Text = $Script:PresetStatusMessage
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.TextSecondary)
+		& $refreshVisibleContent
+	})
+	$BtnClearSearch.Add_Click({
+		$TxtSearch.Text = ''
+		$TxtSearch.Focus() | Out-Null
+	})
+	$ContentScroll.Add_ScrollChanged({
+		if ($Script:RunInProgress) { return }
+		Save-CurrentTabScrollOffset
+	})
+	$ContentScroll.Add_SizeChanged({
+		if ($ContentScroll.Content -is [System.Windows.FrameworkElement])
+		{
+			Update-MainContentPanelWidth -Panel $ContentScroll.Content
+		}
+	})
+
 	#region Theme toggle handler
 	$ChkTheme.Add_Checked({
 		Set-GUITheme -Theme $Script:LightTheme
@@ -2015,577 +7361,123 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	#endregion
 
 	#region Button handlers
-	$BtnRun.Add_Click({
-		$Global:Error.Clear()
-		$StatusText.Text = "Running selected tweaks..."
-		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
-		$Form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [Action]{})
+		$BtnPreviewRun.Add_Click({
+		if ($Script:RunInProgress) { return }
 
-		Stop-Foreground
-		$Script:RunInProgress = $true
-		$PrimaryTabs.IsEnabled = $false
-		$BtnRun.IsEnabled = $false
-		$BtnDefaults.IsEnabled = $false
-		$ChkScan.IsEnabled = $false
-		$ChkTheme.IsEnabled = $false
-		Enter-ExecutionView -Title 'Running Selected Tweaks'
-		$Script:AbortRequested = $false
-
-		# Build a plain-data snapshot of tweaks to run.
-		# WPF control references cannot cross the runspace boundary, so we capture only values.
-		$tweakList = [System.Collections.Generic.List[hashtable]]::new()
-		for ($ri = 0; $ri -lt $Script:TweakManifest.Count; $ri++)
+		$tweakList = Get-SelectedTweakRunList
+		if ($tweakList.Count -eq 0)
 		{
-			$rt   = $Script:TweakManifest[$ri]
-			$rctl = $Script:Controls[$ri]
-			if (-not $rctl -or -not $rctl.IsEnabled) { continue }
-			switch ($rt.Type)
-			{
-				'Toggle'
-				{
-					if ($rctl.IsChecked)
-					{
-						$tweakList.Add(@{ Name=$rt.Name; Function=$rt.Function; Type='Toggle'; OnParam=$rt.OnParam; ExtraArgs=$null })
-					}
-				}
-				'Choice'
-				{
-					$selIdx = $rctl.SelectedIndex
-					if ($selIdx -ge 0)
-					{
-						$tweakList.Add(@{ Name=$rt.Name; Function=$rt.Function; Type='Choice'; Value=$rt.Options[$selIdx]; ExtraArgs=$rt.ExtraArgs })
-					}
-				}
-				'Action'
-				{
-					if ($rctl.IsChecked)
-					{
-						$tweakList.Add(@{ Name=$rt.Name; Function=$rt.Function; Type='Action'; ExtraArgs=$rt.ExtraArgs })
-					}
-				}
-			}
-		}
-		$totalRunnableTweaks = $tweakList.Count
-		$Script:CurrentTweakDisplayName = $null
-		& $updateProgressFn -Completed 0 -Total $totalRunnableTweaks -CurrentAction 'Preparing run...' -Indeterminate ($totalRunnableTweaks -gt 0)
-
-		# Shared state for cross-thread communication.
-		# LogQueue receives PSCustomObject entries from the background thread;
-		# the DispatcherTimer drains it on the UI thread.
-		$runState = [hashtable]::Synchronized(@{
-			AbortRequested   = $false
-			AbortRequestedAt = [datetime]::MinValue
-			Done             = $false
-			AbortedRun       = $false
-			CompletedCount   = 0
-			QueuedCompletedCount = 0
-			ErrorCount       = 0
-			ForceStopIssued  = $false
-			CurrentTweak     = ''
-			LogQueue         = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
-			AppliedFunctions = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
-		})
-
-		# Log-append helper — called on the UI thread only (DispatcherTimer tick).
-		# Uses only $Script: variables so no $Form closure capture is needed.
-		$appendLogFn = {
-			param($Text, $Level = 'INFO')
-			if (-not $Script:ExecutionLogBox) { return }
-			$cleanText = ($Text -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
-			if ([string]::IsNullOrWhiteSpace($cleanText)) { return }
-			$Script:ExecutionLogBox.AppendText(("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $cleanText) + [Environment]::NewLine)
-			$vO = $Script:ExecutionLogBox.VerticalOffset
-			$vH = $Script:ExecutionLogBox.ViewportHeight
-			$eH = $Script:ExecutionLogBox.ExtentHeight
-			if (($vO + $vH) -ge ($eH - 30)) { $Script:ExecutionLogBox.ScrollToEnd() }
+			Show-ThemedDialog -Title 'Preview Run' `
+				-Message 'Select at least one tweak before previewing a run.' `
+				-Buttons @('OK') `
+				-AccentButton 'OK' | Out-Null
+			return
 		}
 
-		# Queue-entry drain helper — processes a single entry dequeued from $runState['LogQueue'].
-		# GetNewClosure captures $appendLogFn, $updateProgressFn, $runState, $totalRunnableTweaks.
-		# Named functions are NOT captured by GetNewClosure — only variables are.
-		$drainEntry = {
-			param($entry)
-			switch ($entry.Kind)
+		$previewResults = @(Get-ExecutionPreviewResults -SelectedTweaks $tweakList)
+		Write-ExecutionPreviewToLog -Results $previewResults
+
+		$selectedCount = $previewResults.Count
+		$highRiskCount = @($previewResults | Where-Object Risk -eq 'High').Count
+		$restartCount = @($previewResults | Where-Object RequiresRestart).Count
+		$summaryParts = @(
+			"This preview lists the $selectedCount selected tweak$(if ($selectedCount -eq 1) { '' } else { 's' }).",
+			'No changes were applied.'
+		)
+		if ($highRiskCount -gt 0)
+		{
+			$summaryParts += "$highRiskCount high-risk tweak$(if ($highRiskCount -eq 1) { '' } else { 's' }) selected."
+		}
+		if ($restartCount -gt 0)
+		{
+			$summaryParts += "$restartCount tweak$(if ($restartCount -eq 1) { '' } else { 's' }) may require a restart after the real run."
+		}
+
+		Show-ExecutionSummaryDialog -Title 'Preview Run' `
+			-SummaryText ($summaryParts -join ' ') `
+			-Results $previewResults `
+			-LogPath $Global:LogFilePath `
+			-Buttons @('Close') | Out-Null
+
+		$StatusText.Text = "Previewed $selectedCount tweak$(if ($selectedCount -eq 1) { '' } else { 's' }). No changes were applied."
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+	})
+
+		$BtnRun.Add_Click({
+			if ($Script:RunInProgress -and $Script:RunState)
 			{
-				'Log'
+				if ($Script:RunState['Paused'])
 				{
-					return
-				}
-				'_TweakStarted'
-				{
-					$runState['CurrentTweak'] = $entry.Name
-					$Script:ExecutionLastConsoleAction = $null
-					# Clear any leftover sub-progress from the previous tweak
-					& $updateProgressFn -Completed $runState['CompletedCount'] -Total $totalRunnableTweaks -CurrentAction $entry.Name -ClearSub $true
-				}
-				'_TweakCompleted'
-				{
-					$completedStatus = if ([string]::IsNullOrWhiteSpace($entry.Status)) { 'success' } else { $entry.Status.ToLowerInvariant() }
-					$completedName = ($entry.Name -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
-					if ($entry.PSObject.Properties['Count'])
-					{
-						$runState['QueuedCompletedCount'] = [int]$entry.Count
-					}
-					if (-not [string]::IsNullOrWhiteSpace($completedName))
-					{
-						& $appendLogFn "$completedName - $completedStatus" $(if ($completedStatus -eq 'failed') { 'ERROR' } elseif ($completedStatus -eq 'warning') { 'WARNING' } else { 'INFO' })
-					}
-					$Script:ExecutionLastConsoleAction = $null
-					# Clear sub-progress on tweak completion and advance main bar
-					& $updateProgressFn -Completed $runState['QueuedCompletedCount'] -Total $totalRunnableTweaks -CurrentAction $completedName -ClearSub $true
-				}
-				'_TweakFailed'
-				{
-					if (-not [string]::IsNullOrWhiteSpace($entry.Error))
-					{
-						& $appendLogFn ("[ERROR] {0}" -f $entry.Error) 'ERROR'
-					}
-					LogError ("Failed to execute {0}: {1}" -f $entry.Name, $entry.Error)
-					& $updateProgressFn -Completed $runState['CompletedCount'] -Total $totalRunnableTweaks -CurrentAction $runState['CurrentTweak'] -Indeterminate ($runState['CompletedCount'] -lt $totalRunnableTweaks)
-				}
-				'_RunError'
-				{
-					& $appendLogFn "Fatal run error: $($entry.Error)" 'ERROR'
-					LogError "Fatal run error: $($entry.Error)"
-				}
-				'_RunNotice'
-				{
-					$noticeLevel = if ([string]::IsNullOrWhiteSpace($entry.Level)) { 'WARNING' } else { $entry.Level.ToUpperInvariant() }
-					& $appendLogFn $entry.Message $noticeLevel
-				}
-				'ConsoleAction'
-				{
-					$cleanAct = ($entry.Action -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
-					$Script:ExecutionLastConsoleAction = $cleanAct
-					& $updateProgressFn -Completed $runState['CompletedCount'] -Total $totalRunnableTweaks -CurrentAction $cleanAct -Indeterminate ($runState['CompletedCount'] -lt $totalRunnableTweaks)
-				}
-				'ConsoleStatus'
-				{
-					$mStat = switch ($entry.Status) {
-						'success' { 'success' }
-						'warning' { 'warning' }
-						default { 'failed' }
-					}
-					$fb = if ($Script:ExecutionLastConsoleAction) { $Script:ExecutionLastConsoleAction } `
-					      elseif ($runState['CurrentTweak']) { $runState['CurrentTweak'] } else { $null }
-					& $appendLogFn (if ($fb) { "$fb - $mStat" } else { $mStat }) $(if ($mStat -eq 'failed') { 'ERROR' } elseif ($mStat -eq 'warning') { 'WARNING' } else { 'INFO' })
-					$Script:ExecutionLastConsoleAction = $null
-				}
-				'ConsoleComplete'
-				{
-					$mStat = switch ($entry.Status) {
-						'success' { 'success' }
-						'warning' { 'warning' }
-						default { 'failed' }
-					}
-					$cleanAct = ($entry.Action -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]', '').Trim()
-					& $appendLogFn "$cleanAct - $mStat" $(if ($mStat -eq 'failed') { 'ERROR' } elseif ($mStat -eq 'warning') { 'WARNING' } else { 'INFO' })
-					$Script:ExecutionLastConsoleAction = $null
-				}
-				'_SubProgress'
-				{
-					# A tweak function reporting its own internal progress (e.g. a download).
-					# Fields: Action (string), Completed (int), Total (int), Percent (int, optional)
-					$subAct   = if ($entry.PSObject.Properties['Action'])    { $entry.Action }    else { $null }
-					$subComp  = if ($entry.PSObject.Properties['Completed']) { [int]$entry.Completed } else { 0 }
-					$subTot   = if ($entry.PSObject.Properties['Total'])     { [int]$entry.Total }     else { 0 }
-					$subPct   = if ($entry.PSObject.Properties['Percent'])   { [int]$entry.Percent }   else { -1 }
-					# If caller supplied Percent but no Total, synthesise a 100-point scale
-					if ($subTot -le 0 -and $subPct -ge 0)
-					{
-						$subComp = $subPct
-						$subTot  = 100
-					}
-					& $updateProgressFn `
-						-Completed $runState['QueuedCompletedCount'] `
-						-Total     $totalRunnableTweaks `
-						-SubCompleted $subComp `
-						-SubTotal     $subTot `
-						-SubAction    $subAct
-				}
-			}
-		}.GetNewClosure()
-
-		# Register the main-session UILogHandler so any LogInfo/LogError on the UI thread
-		# before the background runspace starts are also queued (silently ignored by drain).
-		Set-UILogHandler { param($entry) $runState['LogQueue'].Enqueue($entry) }
-
-		LogInfo "Starting tweak execution (mode: Run)"
-
-		# Background runspace — initialize it like the normal script path, then execute tweaks.
-		# The UI thread remains free, so the Abort button and all controls respond instantly.
-		$bgModuleDir   = Split-Path $PSScriptRoot -Parent   # Module/
-		$bgLoaderPath  = Join-Path $bgModuleDir 'Win10_11Util.psm1'
-		$bgRootDir     = Split-Path $bgModuleDir -Parent
-		$bgLocDir      = Join-Path $bgRootDir 'Localizations'
-		$bgUICulture   = $PSUICulture
-		$bgLogFilePath = $Global:LogFilePath
-
-		$bgRunspace = [runspacefactory]::CreateRunspace()
-		$bgRunspace.ApartmentState = 'STA'
-		$bgRunspace.ThreadOptions  = 'ReuseThread'
-		$bgRunspace.Open()
-		$bgRunspace.SessionStateProxy.SetVariable('runState',      $runState)
-		$bgRunspace.SessionStateProxy.SetVariable('tweakList',     $tweakList)
-		$bgRunspace.SessionStateProxy.SetVariable('bgLoaderPath',  $bgLoaderPath)
-		$bgRunspace.SessionStateProxy.SetVariable('bgLocDir',      $bgLocDir)
-		$bgRunspace.SessionStateProxy.SetVariable('bgUICulture',   $bgUICulture)
-		$bgRunspace.SessionStateProxy.SetVariable('bgLogFilePath', $bgLogFilePath)
-		# Expose the log queue as $Global:GUIRunState so Report-TweakProgress (called from
-		# inside tweak functions) can enqueue _SubProgress messages without needing a direct
-		# reference to $runState.
-		$bgRunspace.SessionStateProxy.SetVariable('GUIRunState',   $runState['LogQueue'])
-
-		$bgPS = [powershell]::Create().AddScript({
-			try
-			{
-				# Match the normal script initialization as closely as possible.
-				$Global:GUIMode = $true
-				try
-				{
-					Import-LocalizedData -BindingVariable Global:Localization -UICulture $bgUICulture -BaseDirectory $bgLocDir -FileName Win10_11Util -ErrorAction Stop
-				}
-				catch
-				{
-					Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $bgLocDir -FileName Win10_11Util
-				}
-
-				Import-Module $bgLoaderPath -Force -Global -ErrorAction Stop
-				$global:LogFilePath = $bgLogFilePath
-				Set-LogFile -Path $bgLogFilePath
-				# Wire log handler — must only enqueue, never touch WPF from background thread
-				Set-UILogHandler { param($entry) $runState['LogQueue'].Enqueue($entry) }
-
-				$missingFunctions = @(
-					$tweakList |
-						ForEach-Object { $_.Function } |
-						Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-						Select-Object -Unique |
-						Where-Object { -not (Get-Command -Name $_ -ErrorAction SilentlyContinue) }
-				)
-				if ($missingFunctions.Count -gt 0)
-				{
-					throw ("Required tweak functions were not loaded: {0}" -f ($missingFunctions -join ', '))
-				}
-
-				foreach ($tweak in $tweakList)
-				{
-					if ($runState['AbortRequested']) { $runState['AbortedRun'] = $true; break }
-					$runState['CurrentTweak'] = $tweak.Name
-					$runState['LogQueue'].Enqueue([PSCustomObject]@{
-						Kind = '_TweakStarted'
-						Name = $tweak.Name
-					})
-					try
-					{
-						$tweakCommand = Get-Command -Name $tweak.Function -ErrorAction SilentlyContinue
-						if (-not $tweakCommand)
-						{
-							throw "The tweak function '$($tweak.Function)' is not available in the current session."
-						}
-
-						switch ($tweak.Type)
-						{
-							'Toggle'
-							{
-								$splat = @{ $tweak.OnParam = $true }
-								& $tweakCommand @splat
-							}
-							'Choice'
-							{
-								$splat = @{ $tweak.Value = $true }
-								if ($tweak.ExtraArgs)
-								{
-									$tweak.ExtraArgs.GetEnumerator() | ForEach-Object { $splat[$_.Key] = $_.Value }
-								}
-								& $tweakCommand @splat
-							}
-							'Action'
-							{
-								if ($tweak.ExtraArgs) { $argSplat = $tweak.ExtraArgs; & $tweakCommand @argSplat }
-								else { & $tweakCommand }
-							}
-						}
-						$runState['AppliedFunctions'].Add($tweak.Function)
-						$runState['CompletedCount'] = [int]$runState['CompletedCount'] + 1
-						$runState['LogQueue'].Enqueue([PSCustomObject]@{
-							Kind   = '_TweakCompleted'
-							Name   = $tweak.Name
-							Status = 'success'
-							Count  = $runState['CompletedCount']
-						})
-					}
-					catch
-					{
-						$runState['LogQueue'].Enqueue([PSCustomObject]@{
-							Kind  = '_TweakFailed'
-							Name  = $tweak.Name
-							Error = $_.Exception.Message
-						})
-						$runState['ErrorCount'] = [int]$runState['ErrorCount'] + 1
-						$runState['CompletedCount'] = [int]$runState['CompletedCount'] + 1
-						$runState['LogQueue'].Enqueue([PSCustomObject]@{
-							Kind   = '_TweakCompleted'
-							Name   = $tweak.Name
-							Status = 'failed'
-							Count  = $runState['CompletedCount']
-						})
-					}
-				}
-
-				if (-not $runState['AbortedRun'])
-				{
-					PostActions
-					Errors
+					$Script:RunState['Paused'] = $false
+					$BtnRun.Content = "Pause"
+					$StatusText.Text = if ($Script:ExecutionMode -eq 'Defaults') { 'Restoring Windows defaults...' } else { 'Running selected tweaks...' }
+					$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
 				}
 				else
 				{
-					LogWarning "Run aborted by user before all selected tweaks finished."
+					$Script:RunState['Paused'] = $true
+					$BtnRun.Content = "Resume"
+					$StatusText.Text = "Run paused..."
+					$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
 				}
-				Stop-Foreground
+				return
 			}
-			catch
+
+			$tweakList = Get-SelectedTweakRunList
+			if ($tweakList.Count -eq 0)
 			{
-				$runState['LogQueue'].Enqueue([PSCustomObject]@{
-					Kind  = '_RunError'
-					Error = $_.Exception.Message
-				})
-			}
-			finally
+			Show-ThemedDialog -Title 'Run Tweaks' `
+				-Message 'Select at least one tweak before starting a run.' `
+				-Buttons @('OK') `
+				-AccentButton 'OK' | Out-Null
+			return
+		}
+			if (-not (Confirm-HighRiskTweakRun -SelectedTweaks $tweakList))
 			{
-				$runState['Done'] = $true
+				return
 			}
+
+			Start-GuiExecutionRun -TweakList $tweakList -Mode 'Run' -ExecutionTitle 'Running Selected Tweaks'
 		})
-		$bgPS.Runspace = $bgRunspace
-		$bgAsync = $bgPS.BeginInvoke()
-
-		# DispatcherTimer fires every 100 ms on the UI thread.
-		# Drains the log queue and updates the progress bar while tweaks run in background.
-		# The UI never blocks, so Abort and all other controls respond instantly.
-		$runTimer = New-Object System.Windows.Threading.DispatcherTimer
-		$runTimer.Interval = [TimeSpan]::FromMilliseconds(100)
-		$runTimer.Add_Tick({
-			# Propagate the UI-thread abort flag into shared state so the background runspace stops.
-			if ($Script:AbortRequested -and -not $runState['AbortRequested'])
-			{
-				$runState['AbortRequested'] = $true
-				$runState['AbortRequestedAt'] = Get-Date
-			}
-
-			# If a running tweak does not yield after an abort request, stop the background pipeline.
-			if (
-				$runState['AbortRequested'] -and
-				-not $runState['Done'] -and
-				-not $runState['ForceStopIssued'] -and
-				$runState['AbortRequestedAt'] -ne [datetime]::MinValue -and
-				((Get-Date) - $runState['AbortRequestedAt']).TotalSeconds -ge 2
-			)
-			{
-				$runState['ForceStopIssued'] = $true
-				$runState['AbortedRun'] = $true
-				$runState['LogQueue'].Enqueue([PSCustomObject]@{
-					Kind = '_RunNotice'
-					Level = 'WARNING'
-					Message = 'Abort requested - stopping the current operation now.'
-				})
-				try { $bgPS.Stop() } catch { $null = $_ }
-			}
-
-			# Drain the log queue
-			$qEntry = $null
-			while ($runState['LogQueue'].TryDequeue([ref]$qEntry)) { & $drainEntry $qEntry }
-
-			# Pulse progress bar with latest completed count
-			if ($runState['CurrentTweak'])
-			{
-				$displayCompleted = [Math]::Max([int]$runState['QueuedCompletedCount'], [int]$runState['CompletedCount'])
-				& $updateProgressFn -Completed $displayCompleted -Total $totalRunnableTweaks -CurrentAction $runState['CurrentTweak']
-			}
-
-			if (-not $bgAsync.IsCompleted -and -not $runState['Done']) { return }
-
-			# === Background run finished ===
-			$runTimer.Stop()
-
-			# Final drain — cover any entries enqueued between the last Tick and Done = $true
-			$qEntry = $null
-			while ($runState['LogQueue'].TryDequeue([ref]$qEntry)) { & $drainEntry $qEntry }
-
-			# Clean up background runspace resources
-			try { $bgPS.EndInvoke($bgAsync) } catch { $null = $_ }
-			try { $bgPS.Dispose() } catch { $null = $_ }
-			try { $bgRunspace.Close(); $bgRunspace.Dispose() } catch { $null = $_ }
-
-			# Transfer applied-function tracking to the main session's set
-			foreach ($fn in $runState['AppliedFunctions']) { $Script:AppliedTweaks.Add($fn) | Out-Null }
-
-			# Restore UI state
-			Clear-UILogHandler
-			$Script:RunInProgress = $false
-			$Script:CurrentTweakDisplayName = $null
-			$PrimaryTabs.IsEnabled = $true
-			$BtnRun.IsEnabled = $true
-			$BtnDefaults.IsEnabled = $true
-			$ChkScan.IsEnabled = $true
-			$ChkTheme.IsEnabled = $true
-
-			$completedCount = [Math]::Max([int]$runState['QueuedCompletedCount'], [int]$runState['CompletedCount'])
-			$abortedRun     = $runState['AbortedRun']
-			$logPath = $Global:LogFilePath
-			$stats   = Get-LogStatistics
-
-			& $updateProgressFn -Completed $completedCount -Total $totalRunnableTweaks -CurrentAction (if ($abortedRun) { 'Aborted' } else { 'Completed' }) -Indeterminate $false
-			$StatusText.Text = if ($abortedRun) {
-				"Run aborted. Completed $completedCount of $totalRunnableTweaks. Errors: $($stats.ErrorCount). Choose whether to return to tweaks or exit."
-			} else {
-				"Run complete. Completed $completedCount of $totalRunnableTweaks. Errors: $($stats.ErrorCount). Choose whether to return to tweaks or exit."
-			}
-			$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($(if ($abortedRun) { $Script:CurrentTheme.CautionText } else { $Script:CurrentTheme.ToggleOn }))
-
-			$dlgTitle = if ($abortedRun) { 'Run Aborted' } else { 'Run Complete' }
-			$dlgMsg = if ($abortedRun) {
-				"The run was aborted.`n`nCompleted $completedCount of $totalRunnableTweaks tweaks. Errors: $($stats.ErrorCount)."
-			} else {
-				"Selected tweaks have finished running.`n`nCompleted $completedCount of $totalRunnableTweaks. Errors: $($stats.ErrorCount)."
-			}
-			if ($logPath) { $dlgMsg += "`n`nLog file:`n$logPath" }
-
-			$nextStep = Show-ThemedDialog -Title $dlgTitle -Message $dlgMsg `
-				-Buttons @('Return to Tweaks', 'Exit') `
-				-AccentButton 'Return to Tweaks'
-
-			if ($nextStep -eq 'Return to Tweaks')
-			{
-				Exit-ExecutionView
-				$ChkScan.IsChecked = $true
-				Invoke-GuiSystemScan
-			}
-			else
-			{
-				$Form.Close()
-			}
-		}.GetNewClosure())
-		$runTimer.Start()
-	})
 
 	$BtnDefaults.Add_Click({
 		# Confirmation dialog for destructive action
 		$result = Show-ThemedDialog -Title 'Restore to Windows Defaults' `
-			-Message "This will reset ALL tweaks to their Windows default values.`n`nThis is a destructive action that undoes all customizations.`nAre you sure you want to continue?" `
+			-Message "This will reset tweaks to their Windows default values where possible.`n`nNote: OS Hardening tweaks and other permanent changes cannot be reversed and will be skipped.`n`nAre you sure you want to continue?" `
 			-Buttons @('Cancel', 'Restore Defaults') `
 			-DestructiveButton 'Restore Defaults'
 		if ($result -ne 'Restore Defaults') { return }
 
-		$StatusText.Text = "Resetting to Windows defaults..."
-		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
-		$Form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [Action]{})
-
-		Stop-Foreground
-
-		$Script:RunInProgress = $true
-		$Form.Dispatcher.Invoke([Action]{ $Form.WindowState = [System.Windows.WindowState]::Minimized }, [System.Windows.Threading.DispatcherPriority]::Render)
-		$Form.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [Action]{})
-
-		LogInfo "Starting tweak execution (mode: Defaults)"
-
-		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
-		{
-			$t = $Script:TweakManifest[$i]
-			$ctl = $Script:Controls[$i]
-			if (-not $ctl) { continue }
-
-			try
+			$defaultsTweakList = Get-WindowsDefaultRunList
+			if ($defaultsTweakList.Count -eq 0)
 			{
-				switch ($t.Type)
-				{
-					"Toggle"
-					{
-						$param = if ($t.WinDefault) { $t.OnParam } else { $t.OffParam }
-						$splat = @{ $param = $true }
-						& $t.Function @splat
-					}
-					"Choice"
-					{
-						if (-not [string]::IsNullOrEmpty($t.WinDefault))
-						{
-							$splat = @{ $t.WinDefault = $true }
-							if ($t.ExtraArgs)
-							{
-								foreach ($key in $t.ExtraArgs.Keys) { $splat[$key] = $t.ExtraArgs[$key] }
-							}
-							& $t.Function @splat
-						}
-					}
-					"Action"
-					{
-						if ($t.WinDefault)
-						{
-							if ($t.ExtraArgs) { $argSplat = $t.ExtraArgs; & $t.Function @argSplat }
-							else { & $t.Function }
-						}
-					}
-				}
+				Show-ThemedDialog -Title 'Restore to Windows Defaults' `
+					-Message 'No restorable tweaks with Windows default actions are currently available.' `
+					-Buttons @('OK') `
+					-AccentButton 'OK' | Out-Null
+				return
 			}
-			catch
-			{
-				LogError ("Failed to execute {0}: {1}" -f $t.Function, $_.Exception.Message)
-			}
-		}
 
-		Stop-Foreground
+			Start-GuiExecutionRun -TweakList $defaultsTweakList -Mode 'Defaults' -ExecutionTitle 'Restoring Windows Defaults'
+		})
 
-		PostActions
-		Errors
-
-		# Restore GUI
-		$Script:RunInProgress = $false
-		$Form.Dispatcher.Invoke([Action]{
-			$Form.WindowState = [System.Windows.WindowState]::Normal
-			$Form.Activate() | Out-Null
-		}, [System.Windows.Threading.DispatcherPriority]::Render)
-
-		# Reset all controls to Windows defaults after run
-		foreach ($ctlKey in $Script:Controls.Keys)
-		{
-			$ctl = $Script:Controls[$ctlKey]
-			$twk = $Script:TweakManifest[$ctlKey]
-			if ($ctl.PSObject.Properties['IsChecked'])
-			{
-				$ctl.IsChecked = [bool]$twk.WinDefault
-			}
-			elseif ($ctl.PSObject.Properties['SelectedIndex'])
-			{
-				$winDefIdx = [array]::IndexOf($twk.Options, $twk.WinDefault)
-				if ($winDefIdx -ge 0) { $ctl.SelectedIndex = $winDefIdx }
-			}
-		}
-
-		$logPath2 = $Global:LogFilePath
-		if ($logPath2 -and (Test-Path -LiteralPath $logPath2 -ErrorAction SilentlyContinue))
-		{
-			$StatusText.Text = "Windows defaults restored.  Log: $logPath2"
-		}
-		else
-		{
-			$StatusText.Text = "Windows defaults restored."
-		}
-		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.ToggleOn)
-
-		if ($Script:CurrentPrimaryTab)
-		{
-			Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab
-		}
+	$BtnHelp.Add_Click({
+		Show-HelpDialog
+		$StatusText.Text = 'Help opened.'
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
 	})
 
 	$BtnLog.Add_Click({
 		$logPath = $Global:LogFilePath
 		if ($logPath -and (Test-Path -LiteralPath $logPath -ErrorAction SilentlyContinue))
 		{
-			Start-Process -FilePath "notepad.exe" -ArgumentList $logPath -ErrorAction SilentlyContinue
+			Show-LogDialog -LogPath $logPath
 		}
 		else
 		{
-			Show-ThemedDialog -Title 'Open Log' -Message "Log file not found.`n$logPath" -Buttons @('OK') -AccentButton 'OK'
+			Show-ThemedDialog -Title 'Open Log' `
+				-Message "Log file not found.`n$logPath" `
+				-Buttons @('OK') -AccentButton 'OK' | Out-Null
 		}
 	})
 	#endregion Button handlers
@@ -2607,334 +7499,128 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	# Style buttons directly
 	$bc = [System.Windows.Media.BrushConverter]::new()
 
-	# Run button styling
-	$runTmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-	$runBorder = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-	$runBorder.Name = "Bd"
-	$runBorder.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(6))
-	$runBorder.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(20, 8, 20, 8))
-	$runBorder.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($Script:CurrentTheme.AccentBlue))
-	$runCp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-	$runCp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-	$runBorder.AppendChild($runCp)
-	$runTmpl.VisualTree = $runBorder
-	$BtnRun.Template = $runTmpl
-	$BtnRun.Foreground = $bc.ConvertFromString($Script:CurrentTheme.HeaderBg)
+	# Settings profile buttons live alongside the defaults action so users can
+	# export, import, and roll back the current GUI state.
+	$secondaryActionGroup = New-Object System.Windows.Controls.Border
+	$secondaryActionGroup.Margin = [System.Windows.Thickness]::new(8, 4, 0, 4)
+	$secondaryActionGroup.Padding = [System.Windows.Thickness]::new(6, 4, 6, 4)
+	$secondaryActionGroup.CornerRadius = [System.Windows.CornerRadius]::new(8)
+	$secondaryActionGroup.BorderThickness = [System.Windows.Thickness]::new(1)
+	$secondaryActionGroup.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+	$secondaryActionBar = New-Object System.Windows.Controls.WrapPanel
+	$secondaryActionBar.Orientation = 'Horizontal'
+	$secondaryActionGroup.Child = $secondaryActionBar
+	$Script:SecondaryActionGroupBorder = $secondaryActionGroup
+	$ActionButtonBar.Children.Add($secondaryActionGroup) | Out-Null
 
-	# Defaults button styling (destructive red)
-	$defTmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-	$defBorder = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-	$defBorder.Name = "Bd"
-	$defBorder.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(6))
-	$defBorder.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(16, 8, 16, 8))
-	$defBorder.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($Script:CurrentTheme.DestructiveBg))
-	$defBorder.SetValue([System.Windows.Controls.Border]::BorderBrushProperty, $bc.ConvertFromString($Script:CurrentTheme.CautionBorder))
-	$defBorder.SetValue([System.Windows.Controls.Border]::BorderThicknessProperty, [System.Windows.Thickness]::new(1))
-	$defCp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-	$defCp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-	$defBorder.AppendChild($defCp)
-	$defTmpl.VisualTree = $defBorder
-	$BtnDefaults.Template = $defTmpl
-	$BtnDefaults.Foreground = $bc.ConvertFromString("#FFFFFF")
+	$BtnExportSettings = New-PresetButton -Label 'Export Settings' -Variant 'Subtle' -Compact -Muted
+	$BtnExportSettings.ToolTip = 'Export the current GUI selections to a JSON profile.'
+	$secondaryActionBar.Children.Add($BtnExportSettings) | Out-Null
 
-	# Log button styling (subtle, matches header)
-	$logTmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
-	$logBd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
-	$logBd.Name = "Bd"
-	$logBd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new(4))
-	$logBd.SetValue([System.Windows.Controls.Border]::PaddingProperty, [System.Windows.Thickness]::new(10, 4, 10, 4))
-	$logBd.SetValue([System.Windows.Controls.Border]::BackgroundProperty, $bc.ConvertFromString($Script:CurrentTheme.TabBg))
-	$logCp = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.ContentPresenter])
-	$logCp.SetValue([System.Windows.Controls.ContentPresenter]::HorizontalAlignmentProperty, [System.Windows.HorizontalAlignment]::Center)
-	$logBd.AppendChild($logCp)
-	$logTmpl.VisualTree = $logBd
-	$BtnLog.Template = $logTmpl
-	$BtnLog.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+	$BtnImportSettings = New-PresetButton -Label 'Import Settings' -Variant 'Subtle' -Compact -Muted
+	$BtnImportSettings.ToolTip = 'Import a saved JSON profile and restore the selected GUI state.'
+	$secondaryActionBar.Children.Add($BtnImportSettings) | Out-Null
+
+	$BtnRestoreSnapshot = New-PresetButton -Label 'Restore Snapshot' -Variant 'Subtle' -Compact -Muted
+	$BtnRestoreSnapshot.ToolTip = 'Restore the last captured UI snapshot before an import or preset change.'
+	$secondaryActionBar.Children.Add($BtnRestoreSnapshot) | Out-Null
+
+	$BtnExportSettings.Add_Click({
+		$null = Export-GuiSettingsProfile
+	})
+
+	$BtnImportSettings.Add_Click({
+		$null = Import-GuiSettingsProfile
+	})
+
+	$BtnRestoreSnapshot.Add_Click({
+		try
+		{
+			if (-not (Restore-GuiSnapshot))
+			{
+				Show-ThemedDialog -Title 'Restore Snapshot' -Message 'No previous GUI snapshot has been captured yet.' -Buttons @('OK') -AccentButton 'OK' | Out-Null
+				return
+			}
+		}
+		catch
+		{
+			LogError "Failed to restore GUI snapshot: $($_.Exception.Message)"
+			Show-ThemedDialog -Title 'Restore Snapshot' -Message "Failed to restore the previous snapshot.`n`n$($_.Exception.Message)" -Buttons @('OK') -AccentButton 'OK' | Out-Null
+			return
+		}
+
+		$StatusText.Text = 'Previous GUI snapshot restored.'
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
+		LogInfo 'Restored previous GUI snapshot'
+	})
 
 	# Apply initial theme
 	Set-GUITheme -Theme $Script:DarkTheme
+	Set-StaticButtonStyle
+	Set-StaticControlTabOrder
+	Set-GuiActionButtonsEnabled -Enabled $true
 
-	# Hide the console — only shown during Run Tweaks execution
-	Hide-ConsoleWindow
-
-	$startupSplashCleanup = $null
-
-	function Close-StartupSplashWindow
+	$restoredGuiSession = Restore-GuiSessionState
+	if ($restoredGuiSession)
 	{
-		if (-not $StartupSplash) { return $false }
-
-		try
-		{
-			if ($StartupSplash -is [hashtable])
-			{
-				if ($StartupSplash.IsAlive -and $StartupSplash.Dispatcher -and (-not $StartupSplash.Dispatcher.HasShutdownStarted))
-				{
-					$StartupSplash.Dispatcher.Invoke([Action]{
-						if ($StartupSplash.Window)
-						{
-							try { $StartupSplash.Window.Hide() } catch { $null = $_ }
-							try { $StartupSplash.Window.Close() } catch { $null = $_ }
-						}
-						# Clear the flag here so the caller's wait-loop exits immediately
-						# rather than spinning until the Closed event fires asynchronously.
-						$StartupSplash.IsAlive = $false
-					})
-					return $true
-				}
-			}
-			else
-			{
-				if ($StartupSplash.Dispatcher -and (-not $StartupSplash.Dispatcher.HasShutdownStarted))
-				{
-					$StartupSplash.Dispatcher.Invoke([Action]{ $StartupSplash.Hide(); $StartupSplash.Close() })
-					return $true
-				}
-			}
-		}
-		catch { $null = $_ }
-
-		return $false
+		$StatusText.Text = 'Previous session restored.'
+		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.AccentBlue)
 	}
 
-	# Keep the splash visible until the main window is fully prepared, then close
-	# it immediately before showing the finished GUI.
-	if ($StartupSplash)
-	{
-		try
-		{
-			if ($StartupSplash -is [hashtable])
-			{
-				# Runspace-based splash (from Show-BootstrapLoadingSplash)
-				if ($StartupSplash.IsAlive)
-				{
-					$null = Close-StartupSplashWindow
-
-					$closeDeadline = [datetime]::UtcNow.AddSeconds(2)
-					while ($StartupSplash.IsAlive -and [datetime]::UtcNow -lt $closeDeadline)
-					{
-						Start-Sleep -Milliseconds 50
-					}
-
-					if ($StartupSplash.IsAlive -and $StartupSplash.Dispatcher -and (-not $StartupSplash.Dispatcher.HasShutdownStarted))
-					{
-						try { $StartupSplash.Dispatcher.InvokeShutdown() } catch { $null = $_ }
-					}
-				}
-				# Defer runspace cleanup until after the GUI closes so the splash-to-GUI
-				# transition is immediate instead of waiting on runspace teardown.
-				$startupSplashCleanup = {
-					try { $StartupSplash._PowerShell.EndInvoke($StartupSplash._AsyncResult) } catch { $null = $_ }
-					try { $StartupSplash._PowerShell.Dispose() } catch { $null = $_ }
-					try { $StartupSplash._Runspace.Close(); $StartupSplash._Runspace.Dispose() } catch { $null = $_ }
-				}.GetNewClosure()
-			}
-			else
-			{
-				# Legacy Window splash (from Show-LoadingSplash)
-				if (-not $StartupSplash.Dispatcher.HasShutdownStarted)
-				{
-					Close-StartupSplashWindow
-				}
-			}
-		}
-		catch { $null = $_ }
-	}
-
-	# Safety net: if the splash is still alive when the main window finishes rendering,
-	# close it now. Capture $StartupSplash explicitly — closure variable, not nested-function scope.
-	$_splashRef = $StartupSplash
+	$closeLoadingSplashCapture = ${function:Close-LoadingSplashWindow}.GetNewClosure()
+	$hideConsoleWindowCapture = ${function:Hide-ConsoleWindow}.GetNewClosure()
+	$startupPresentationCompleted = $false
 	$Form.Add_ContentRendered({
-		if (-not $_splashRef) { return }
+		if ($startupPresentationCompleted) { return }
+		$startupPresentationCompleted = $true
+
 		try
 		{
-			if ($_splashRef -is [hashtable])
+			$loadingSplash = Get-Variable -Name 'LoadingSplash' -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+			if ($loadingSplash)
 			{
-				if ($_splashRef.IsAlive -and $_splashRef.Dispatcher -and (-not $_splashRef.Dispatcher.HasShutdownStarted))
-				{
-					$_splashRef.Dispatcher.Invoke([Action]{
-						if ($_splashRef.Window)
-						{
-							try { $_splashRef.Window.Hide() } catch { $null = $_ }
-							try { $_splashRef.Window.Close() } catch { $null = $_ }
-						}
-						$_splashRef.IsAlive = $false
-					})
-				}
-			}
-			else
-			{
-				if ($_splashRef.Dispatcher -and (-not $_splashRef.Dispatcher.HasShutdownStarted))
-				{
-					$_splashRef.Dispatcher.Invoke([Action]{ $_splashRef.Hide(); $_splashRef.Close() })
-				}
+				$null = & $closeLoadingSplashCapture -Splash $loadingSplash -DisposeResources
+				$Global:LoadingSplash = $null
 			}
 		}
-		catch { $null = $_ }
+		catch
+		{
+			$null = $_
+		}
+
+		try
+		{
+			& $hideConsoleWindowCapture
+		}
+		catch
+		{
+			$null = $_
+		}
 	}.GetNewClosure())
+
+	# Activate the main window only when it is about to be shown.
+	$Form.ShowActivated = $true
+	Initialize-WpfWindowForeground -Window $Form
 
 	# Show the GUI
 	$Form.ShowDialog() | Out-Null
-	if ($startupSplashCleanup)
+
+	$saveChoice = GUICommon\Show-ThemedDialog `
+		-Theme $Script:CurrentTheme `
+		-ApplyButtonChrome ${function:Set-ButtonChrome} `
+		-OwnerWindow $null `
+		-Title 'Save Session' `
+		-Message 'Do you want to save your current selections for next launch?' `
+		-Buttons @('Save', 'Discard') `
+		-AccentButton 'Save'
+	if ($saveChoice -eq 'Save')
 	{
-		& $startupSplashCleanup
+		$null = Save-GuiSessionState
 	}
 
 	LogInfo "GUI closed"
 }
 #endregion GUI Builder
-
-#region Loading Splash
-<#
-	.SYNOPSIS
-	Show a WPF loading splash window in a separate STA runspace.
-
-	.DESCRIPTION
-	Creates a dark-themed WPF splash window in its own STA thread with a
-	message loop so it stays responsive while the main thread is blocked.
-	Returns a synchronized hashtable with Window, Dispatcher, and cleanup
-	handles. Call the Dispatcher to close the window when done.
-
-	.OUTPUTS
-	hashtable  A synchronized hashtable with keys: Window, Dispatcher,
-	           IsReady, IsAlive, _PowerShell, _AsyncResult, _Runspace.
-
-	.EXAMPLE
-	$splash = Show-LoadingSplash
-	InitialActions
-	$splash.Dispatcher.Invoke([Action]{ $splash.Window.Close() })
-#>
-function Show-LoadingSplash
-{
-	[CmdletBinding()]
-	[OutputType([hashtable])]
-	param ()
-
-	# Hide the console window immediately — before anything else loads
-	try
-	{
-		if (-not ('SplashConsoleHide' -as [type]))
-		{
-			Add-Type -Name 'SplashConsoleHide' -Namespace '' -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("kernel32.dll")]
-public static extern System.IntPtr GetConsoleWindow();
-[System.Runtime.InteropServices.DllImport("user32.dll")]
-public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
-'@
-		}
-		$consoleHwnd = [SplashConsoleHide]::GetConsoleWindow()
-		if ($consoleHwnd -ne [System.IntPtr]::Zero)
-		{
-			[SplashConsoleHide]::ShowWindow($consoleHwnd, 0) | Out-Null  # SW_HIDE = 0
-		}
-	}
-	catch { $null = $_ }
-
-	$syncHash = [hashtable]::Synchronized(@{
-		Window     = $null
-		Dispatcher = $null
-		IsReady    = $false
-		IsAlive    = $false
-	})
-
-	$rs = [runspacefactory]::CreateRunspace()
-	$rs.ApartmentState = 'STA'
-	$rs.ThreadOptions  = 'ReuseThread'
-	$rs.Open()
-	$rs.SessionStateProxy.SetVariable('syncHash', $syncHash)
-
-	$ps = [powershell]::Create().AddScript({
-		Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase
-
-		[xml]$splashXAML = @"
-<Window
-	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	Title="WinUtil Script"
-	Width="520" Height="260"
-	ResizeMode="CanMinimize"
-	WindowStartupLocation="CenterScreen"
-	Background="#1E1E2E"
-	Foreground="#CDD6F4"
-	FontFamily="Segoe UI"
-	ShowInTaskbar="True">
-	<Grid>
-		<Grid.RowDefinitions>
-			<RowDefinition Height="*"/>
-			<RowDefinition Height="Auto"/>
-		</Grid.RowDefinitions>
-		<StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-			<TextBlock Text="WinUtil Script" FontSize="22" FontWeight="Bold"
-				Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-			<TextBlock Text="Windows Optimization &amp; Hardening"
-				FontSize="13" Foreground="#A6ADC8"
-				HorizontalAlignment="Center" Margin="0,0,0,24"/>
-			<TextBlock Name="StatusText" Text="Please wait &#x2014; running startup checks..."
-				FontSize="14" Foreground="#89B4FA"
-				HorizontalAlignment="Center"/>
-		</StackPanel>
-		<Border Grid.Row="1" Background="#181825" Padding="12,8">
-			<TextBlock FontSize="11" Foreground="#6C7086" HorizontalAlignment="Center"
-				Text="This window will close automatically when ready."/>
-		</Border>
-	</Grid>
-</Window>
-"@
-
-		$splash = [Windows.Markup.XamlReader]::Load(
-			(New-Object System.Xml.XmlNodeReader $splashXAML)
-		)
-
-		$syncHash.Window     = $splash
-		$syncHash.Dispatcher = $splash.Dispatcher
-		$syncHash.IsReady    = $true
-		$syncHash.IsAlive    = $true
-
-		$splash.Add_Closed({ $syncHash.IsAlive = $false })
-
-		# ShowDialog() runs the WPF message loop — keeps the window responsive
-		$splash.ShowDialog() | Out-Null
-	})
-
-	$ps.Runspace = $rs
-	$asyncResult = $ps.BeginInvoke()
-
-	# Wait for the splash to be ready (window created and message loop running)
-	$timeout = [datetime]::UtcNow.AddSeconds(10)
-	while (-not $syncHash.IsReady -and [datetime]::UtcNow -lt $timeout)
-	{
-		Start-Sleep -Milliseconds 50
-	}
-
-	# Try to set OS name in title and bring to foreground
-	if ($syncHash.IsAlive -and $syncHash.Dispatcher)
-	{
-		try
-		{
-			$osName = (Get-OSInfo).OSName
-			$syncHash.Dispatcher.Invoke([Action]{
-				$syncHash.Window.Title = "WinUtil Script for $osName"
-			})
-		}
-		catch { $null = $_ }
-
-		try
-		{
-			$syncHash.Dispatcher.Invoke([Action]{
-				$syncHash.Window.Topmost = $true
-				$syncHash.Window.Activate() | Out-Null
-				$syncHash.Window.Topmost = $false
-			})
-		}
-		catch { $null = $_ }
-	}
-
-	$syncHash._PowerShell  = $ps
-	$syncHash._AsyncResult = $asyncResult
-	$syncHash._Runspace    = $rs
-
-	return $syncHash
-}
-#endregion Loading Splash
 
 #region Report-TweakProgress
 <#
@@ -2966,11 +7652,11 @@ public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 	# Inside a tweak function that downloads a file in chunks:
 	for ($i = 0; $i -lt $chunks.Count; $i++)
 	{
-	    Report-TweakProgress -Action "Downloading installer" -Completed $i -Total $chunks.Count
+	    Write-TweakProgress -Action "Downloading installer" -Completed $i -Total $chunks.Count
 	    # ... download chunk ...
 	}
 #>
-function Report-TweakProgress
+function Write-TweakProgress
 {
 	[CmdletBinding()]
 	param (
@@ -2982,7 +7668,7 @@ function Report-TweakProgress
 
 	if (-not $Global:GUIMode) { return }
 	# $GUIRunState is the ConcurrentQueue injected directly by the GUI run loop via
-	# SessionStateProxy.SetVariable — it is not a global, just a session variable.
+	# SessionStateProxy.SetVariable - it is not a global, just a session variable.
 	$queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction SilentlyContinue
 	if (-not $queue) { return }
 
@@ -2996,4 +7682,5 @@ function Report-TweakProgress
 }
 #endregion Report-TweakProgress
 
-Export-ModuleMember -Function 'Show-TweakGUI', 'Show-LoadingSplash', 'Report-TweakProgress'
+Set-Alias -Name Report-TweakProgress -Value Write-TweakProgress -Scope Script
+Export-ModuleMember -Function 'Show-TweakGUI', 'Write-TweakProgress' -Alias 'Report-TweakProgress'

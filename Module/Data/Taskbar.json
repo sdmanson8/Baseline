@@ -1,0 +1,223 @@
+{
+  "Tab": "Taskbar",
+  "Entries": [
+    {
+      "Name": "News and Interests",
+      "Function": "NewsInterests",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "Default": false,
+      "WinDefault": true,
+      "Description": "News and weather content on the taskbar",
+      "WinDefaultDesc": "News and Interests widget enabled on taskbar",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar",
+        "ads"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "News and weather content on the taskbar",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "Taskbar Alignment",
+      "Function": "TaskbarAlignment",
+      "SourceRegion": "Taskbar",
+      "Type": "Choice",
+      "Options": [
+        "Left",
+        "Center"
+      ],
+      "Default": "Left",
+      "WinDefault": "Center",
+      "Description": "Taskbar icon alignment",
+      "WinDefaultDesc": "Taskbar icons centered",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Taskbar icon alignment",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "Taskbar Widgets",
+      "Function": "TaskbarWidgets",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Widgets button on the taskbar",
+      "WinDefaultDesc": "Widgets icon shown on taskbar",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Widgets button on the taskbar",
+      "PresetTier": "Minimal"
+    },
+    {
+      "Name": "Taskbar Search",
+      "Function": "TaskbarSearch",
+      "SourceRegion": "Taskbar",
+      "Type": "Choice",
+      "Options": [
+        "Hide",
+        "SearchIcon",
+        "SearchBox"
+      ],
+      "Default": "Hide",
+      "WinDefault": "SearchBox",
+      "Description": "Taskbar search presentation",
+      "WinDefaultDesc": "Search box shown on taskbar",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar",
+        "search"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Taskbar search presentation",
+      "PresetTier": "Minimal"
+    },
+    {
+      "Name": "Search Highlights",
+      "Function": "SearchHighlights",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Search highlights in Windows Search",
+      "WinDefaultDesc": "Search highlights are shown",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar",
+        "search"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Search highlights in Windows Search",
+      "PresetTier": "Minimal"
+    },
+    {
+      "Name": "Task View Button",
+      "Function": "TaskViewButton",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Task View button on the taskbar",
+      "WinDefaultDesc": "Task View button shown on taskbar",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Task View button on the taskbar",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "Taskbar Button Combine",
+      "Function": "TaskbarCombine",
+      "SourceRegion": "Taskbar",
+      "Type": "Choice",
+      "Options": [
+        "Always",
+        "Full",
+        "Never"
+      ],
+      "Default": "Always",
+      "WinDefault": "Always",
+      "Description": "How taskbar buttons are grouped",
+      "WinDefaultDesc": "Taskbar buttons always combined, labels hidden",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "How taskbar buttons are grouped",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "Unpin Taskbar Shortcuts",
+      "Function": "UnpinTaskbarShortcuts",
+      "SourceRegion": "Taskbar",
+      "Type": "Action",
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Remove bundled taskbar shortcuts",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remove bundled taskbar shortcuts",
+      "PresetTier": "Safe"
+    },
+    {
+      "Name": "End Task in Taskbar Right-Click",
+      "Function": "TaskbarEndTask",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Add End Task to the taskbar context menu",
+      "WinDefaultDesc": "End Task in taskbar right-click is disabled",
+      "Risk": "Low",
+      "Tags": [
+        "system",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Add End Task to the taskbar context menu",
+      "PresetTier": "Minimal"
+    },
+    {
+      "Name": "Meet Now Icon",
+      "Function": "MeetNow",
+      "SourceRegion": "Taskbar",
+      "Type": "Toggle",
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Meet Now icon in the notification area",
+      "WinDefaultDesc": "Meet Now icon shown in notification area",
+      "Risk": "Low",
+      "Tags": [
+        "appearance",
+        "taskbar"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Meet Now icon in the notification area",
+      "PresetTier": "Safe"
+    }
+  ]
+}

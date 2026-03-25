@@ -1,0 +1,40 @@
+{
+  "Tab": "OneDrive",
+  "Entries": [
+    {
+      "Name": "OneDrive",
+      "Function": "OneDrive",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": "Uninstall",
+      "WinDefault": "Install",
+      "Description": "OneDrive installation state",
+      "Detail": "Installs or completely uninstalls the OneDrive cloud sync client. Uninstalling removes sync, breaks OneDrive shell integration and links, and requires a manual reinstall if you want it back.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": null,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "OneDrive",
+      "Risk": "Medium",
+      "Tags": [
+        "cloud",
+        "microsoft",
+        "sync"
+      ],
+      "Impact": "Low",
+      "Safe": false,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Installs or completely uninstalls the OneDrive cloud sync client. Uninstalling removes sync, breaks OneDrive links and shell integration, and requires a manual reinstall if you want it back.",
+      "PresetTier": "Balanced"
+    }
+  ]
+}

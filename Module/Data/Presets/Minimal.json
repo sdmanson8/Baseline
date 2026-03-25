@@ -1,0 +1,22 @@
+{
+  "Name": "Minimal",
+  "Entries": [
+    "CheckWinGet",
+    "Update-Powershell",
+    "Update-RegistryPaths",
+    "Update-DesktopRegistry",
+    "DiskCleanup",
+    "NTFSLongPaths -Enable",
+    "NTFSLastAccess -Enable",
+    "Win32LongPathLimit -Disable",
+    "BSoDStopError -Enable",
+    "LatestInstalled.NET -Enable",
+    "TaskManagerDetails -Enable",
+    "FileOperationsDetails -Enable",
+    "FileDeleteConfirm -Enable",
+    "DefaultTerminalApp -WindowsTerminal",
+    "NumLock -Enable",
+    "RegistryBackup -Disable",
+    "RecommendedTroubleshooting -Default"
+  ]
+}

@@ -1,7 +1,8 @@
 using module ..\Logging.psm1
-using module ..\Helpers.psm1
+using module ..\SharedHelpers.psm1
 
 #region OneDrive
+
 <#
 	.SYNOPSIS
 	OneDrive
@@ -243,4 +244,5 @@ function OneDrive
 		}
 	}
 }
+
 #endregion OneDrive

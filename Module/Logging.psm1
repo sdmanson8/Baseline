@@ -17,6 +17,8 @@
     informational, warning, and error messages to that log.
 #>
 
+using module .\SharedHelpers.psm1
+
 $script:LogFilePath = $null
 $script:LogLock = New-Object System.Threading.Mutex($false, "Global\RemoveWindowsAILogLock")
 $script:LogStatistics = @{
@@ -25,6 +27,33 @@ $script:LogStatistics = @{
     Error = 0
 }
 $script:UILogHandler = $null
+$script:ConsoleStatusContext = $null
+
+function Send-UILogEntry {
+    param(
+        [Parameter(Mandatory=$true)]
+        [psobject]$Entry
+    )
+
+    if ($script:UILogHandler) {
+        try {
+            & $script:UILogHandler $Entry
+            return $true
+        }
+        catch { }
+    }
+
+    $queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction SilentlyContinue
+    if ($queue) {
+        try {
+            $queue.Enqueue($Entry)
+            return $true
+        }
+        catch { }
+    }
+
+    return $false
+}
 
 function Reset-LogStatistics {
     $script:LogStatistics = @{
@@ -116,16 +145,11 @@ function Write-LogMessage {
         'ERROR' { $script:LogStatistics.Error++ }
     }
 
-    if ($script:UILogHandler) {
-        try {
-            & $script:UILogHandler ([PSCustomObject]@{
-                Kind = 'Log'
-                Level = $Level
-                Message = $Message
-            })
-        }
-        catch { }
-    }
+    $null = Send-UILogEntry -Entry ([PSCustomObject]@{
+        Kind = 'Log'
+        Level = $Level
+        Message = $Message
+    })
     
     # Show log output in the console only when explicitly requested.
     if ($ShowConsole) {
@@ -269,22 +293,36 @@ function Write-ConsoleStatus {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Action) -and [string]::IsNullOrWhiteSpace($Status)) {
-        if ($script:UILogHandler) {
-            try {
-                & $script:UILogHandler ([PSCustomObject]@{
-                    Kind = 'ConsoleAction'
-                    Action = $Action
-                })
-            }
-            catch { }
+        $script:ConsoleStatusContext = [PSCustomObject]@{
+            Action = $Action
+            ErrorBaseline = if ($Global:Error) { $Global:Error.Count } else { 0 }
         }
+        $null = Send-UILogEntry -Entry ([PSCustomObject]@{
+            Kind = 'ConsoleAction'
+            Action = $Action
+        })
         if ($writeToHost) {
             Write-Host ("{0} - " -f $Action) -NoNewline
         }
         return
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($Action)) {
+        $script:ConsoleStatusContext = $null
+    }
+
     $statusText = $Status.ToLowerInvariant()
+    if (
+        $statusText -eq 'success' -and
+        $script:ConsoleStatusContext -and
+        ($script:ConsoleStatusContext.PSObject.Properties['ErrorBaseline'])
+    ) {
+        $errorBaseline = [int]$script:ConsoleStatusContext.ErrorBaseline
+        $newErrors = Get-NewUnhandledErrorRecords -BaselineCount $errorBaseline
+        if ($newErrors.Count -gt 0) {
+            $statusText = 'failed'
+        }
+    }
     $color = switch ($statusText) {
         'success' { 'Green' }
         'failed' { 'Red' }
@@ -292,35 +330,27 @@ function Write-ConsoleStatus {
     }
 
     if ([string]::IsNullOrWhiteSpace($Action)) {
-        if ($script:UILogHandler) {
-            try {
-                & $script:UILogHandler ([PSCustomObject]@{
-                    Kind = 'ConsoleStatus'
-                    Status = $statusText
-                })
-            }
-            catch { }
-        }
+        $null = Send-UILogEntry -Entry ([PSCustomObject]@{
+            Kind = 'ConsoleStatus'
+            Status = $statusText
+        })
         if ($writeToHost) {
             Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
         }
+        $script:ConsoleStatusContext = $null
         return
     }
 
-    if ($script:UILogHandler) {
-        try {
-            & $script:UILogHandler ([PSCustomObject]@{
-                Kind = 'ConsoleComplete'
-                Action = $Action
-                Status = $statusText
-            })
-        }
-        catch { }
-    }
+    $null = Send-UILogEntry -Entry ([PSCustomObject]@{
+        Kind = 'ConsoleComplete'
+        Action = $Action
+        Status = $statusText
+    })
     if ($writeToHost) {
         Write-Host ("{0} - " -f $Action) -NoNewline
         Write-Host ("{0}!" -f $statusText) -ForegroundColor $color
     }
+    $script:ConsoleStatusContext = $null
 }
 
 # Export the logging functions used by the loader and region modules.
