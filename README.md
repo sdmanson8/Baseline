@@ -36,7 +36,7 @@ Baseline supports **PowerShell 5.1** on:
   - Minimal
   - Safe
   - Balanced
-  - Aggressive
+  - Advanced
 
 - **GUI workflow**
   - category tabs
@@ -90,7 +90,8 @@ Windows 11
 ### Headless / noninteractive run
 
 ```powershell
-.\Baseline.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", "UninstallUWPApps"
+.\Baseline.ps1 -Preset Safe
+.\Baseline.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", "UWPApps -Uninstall"
 ```
 
 ### Interactive session / tab completion
@@ -105,7 +106,14 @@ Windows 11
 iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
 ```
 
-The bootstrap flow downloads the repository archive, extracts it to a temporary folder, and launches the standard entry point.
+To run a preset through the raw bootstrap flow, set `BASELINE_PRESET` first:
+
+```powershell
+$env:BASELINE_PRESET = 'Safe'
+iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
+```
+
+The bootstrap flow downloads the repository archive, extracts it to a temporary folder, and launches the standard entry point. When `BASELINE_PRESET` is present, the preset is forwarded into the noninteractive runner.
 
 ## Presets
 
@@ -114,7 +122,7 @@ Baseline ships with four built-in presets:
 - **Minimal** — smallest baseline of practical quality-of-life and maintenance tweaks
 - **Safe** — lower-risk usability, privacy, and cleanup recommendations
 - **Balanced** — broader privacy, performance, and system configuration changes
-- **Aggressive** — advanced tuning, debloat, and hardening for experienced users
+- **Advanced** — advanced tuning, debloat, and hardening for experienced users
 
 ## Repository layout
 

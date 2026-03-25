@@ -9,7 +9,8 @@
         iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
 
     It downloads the latest branch archive, extracts it to a temp folder, and
-    launches the repo's root run.cmd entrypoint.
+    launches the repo's root run.cmd entrypoint. When BASELINE_PRESET is set or
+    -Preset is supplied, the preset is forwarded into the noninteractive runner.
 #>
 
 [CmdletBinding()]
@@ -17,11 +18,17 @@ param(
     [string]$Owner = 'sdmanson8',
     [string]$Repository = 'Baseline',
     [string]$Branch = 'main',
+    [string]$Preset,
     [string]$CacheRoot = (Join-Path $env:TEMP 'Baseline-Bootstrap')
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+if ([string]::IsNullOrWhiteSpace($Preset))
+{
+    $Preset = $env:BASELINE_PRESET
+}
 
 function Enable-Tls12
 {
@@ -107,7 +114,21 @@ try
         throw "run.cmd was not found in the extracted repository: $repoRoot"
     }
 
-    Write-Host "Launching Baseline..."
+    $previousPreset = $env:BASELINE_PRESET
+    $hadPreviousPreset = -not [string]::IsNullOrWhiteSpace([string]$previousPreset)
+    if (-not [string]::IsNullOrWhiteSpace([string]$Preset))
+    {
+        $env:BASELINE_PRESET = $Preset
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$Preset))
+    {
+        Write-Host "Launching Baseline headless run with preset '$Preset'..."
+    }
+    else
+    {
+        Write-Host "Launching Baseline..."
+    }
     Push-Location $repoRoot
     try
     {
@@ -116,6 +137,14 @@ try
     finally
     {
         Pop-Location
+        if ($hadPreviousPreset)
+        {
+            $env:BASELINE_PRESET = $previousPreset
+        }
+        else
+        {
+            Remove-Item -Path Env:\BASELINE_PRESET -ErrorAction SilentlyContinue
+        }
     }
 }
 catch

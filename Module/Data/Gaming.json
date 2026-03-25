@@ -129,7 +129,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "A Windows feature that optimizes games and apps running in fullscreen mode for better performance. Disabling can fix compatibility issues in some older games. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Multiplane Overlay",

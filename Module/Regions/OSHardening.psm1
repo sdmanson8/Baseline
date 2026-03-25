@@ -843,7 +843,7 @@ function Update-AdobereaderDCSTIG
     Machine-wide
 
     .CAUTION
-    Aggressive. Can break ClickOnce-based installers, updates, or internal
+    Advanced. Can break ClickOnce-based installers, updates, or internal
     applications that depend on trust prompts.
 #>
 function Protect-ClickOnce

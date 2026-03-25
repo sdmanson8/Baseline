@@ -208,7 +208,7 @@
       "Description": "Configure additional Defender Exploit Guard policies",
       "Detail": "Applies additional Exploit Guard attack surface reduction rules via Windows Defender to block common malware techniques.",
       "Caution": true,
-      "CautionReason": "Aggressive. Can block legitimate applications, Office automation, admin tooling, scripts, or line-of-business workflows.",
+      "CautionReason": "Advanced. Can block legitimate applications, Office automation, admin tooling, scripts, or line-of-business workflows.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -227,7 +227,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies additional Exploit Guard attack surface reduction rules via Windows Defender to block common malware techniques. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Defender Sandbox",
@@ -564,7 +564,7 @@
       "Description": "Import the Exploit Protection policy",
       "Detail": "Downloads and imports a pre-built exploit mitigation policy file into Windows Defender Exploit Guard, applying custom process mitigations.",
       "Caution": true,
-      "CautionReason": "Aggressive. Imports a downloaded mitigation policy that can change exploit protection behavior for applications across the system.",
+      "CautionReason": "Advanced. Imports a downloaded mitigation policy that can change exploit protection behavior for applications across the system.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -583,7 +583,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Downloads and imports a pre-built exploit mitigation policy file into Windows Defender Exploit Guard, applying custom process mitigations. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Local Security Authority Protection",
@@ -628,7 +628,7 @@
       "Description": "Configure LOLBin outbound firewall block rules",
       "Detail": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads.",
       "Caution": true,
-      "CautionReason": "Aggressive. Can break administrative scripts, installers, troubleshooting tools, or enterprise workflows that intentionally use these binaries.",
+      "CautionReason": "Advanced. Can break administrative scripts, installers, troubleshooting tools, or enterprise workflows that intentionally use these binaries.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -647,7 +647,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Network Protection",

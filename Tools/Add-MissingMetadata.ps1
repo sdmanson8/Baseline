@@ -109,7 +109,7 @@ function Get-PresetTier {
 
     # Explicit exclusions from Balanced
     if ($func -in $balancedExclusions) {
-        if ($risk -eq 'High') { return 'Aggressive' }
+        if ($risk -eq 'High') { return 'Advanced' }
         return $null  # Omitted — not in any preset
     }
 
@@ -132,11 +132,11 @@ function Get-PresetTier {
             $isIrreversible = ($Entry.ContainsKey('Restorable') -and $Entry.Restorable -eq $false)
 
             if ($isAppSpecific -or $isOpinionated -or $isIrreversible) {
-                return 'Aggressive'
+                return 'Advanced'
             }
             return 'Balanced'
         }
-        'High'   { return 'Aggressive' }
+        'High'   { return 'Advanced' }
         default  { return 'Safe' }
     }
 }

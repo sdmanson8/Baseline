@@ -23,6 +23,9 @@
 	.EXAMPLE Run the script by specifying the module functions as an argument (headless)
 	.\Baseline.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal"
 
+	.EXAMPLE Run a preset non-interactively
+	.\Baseline.ps1 -Preset Advanced
+
 	.NOTES
 	Supported Windows 10 versions
 	Version: 1607+
@@ -47,7 +50,11 @@ param
 (
 	[Parameter(Mandatory = $false)]
 	[string[]]
-	$Functions
+	$Functions,
+
+	[Parameter(Mandatory = $false)]
+	[string]
+	$Preset
 )
 
 Clear-Host
@@ -158,6 +165,119 @@ function Get-ErrorDetailText
 	return ($detailParts -join "`n`n")
 }
 
+function ConvertTo-HeadlessPresetName
+{
+	param (
+		[Parameter(Mandatory = $false)]
+		[string]
+		$PresetName
+	)
+
+	$normalizedPresetName = if ([string]::IsNullOrWhiteSpace($PresetName)) { 'Safe' } else { [string]$PresetName }
+	$normalizedPresetName = [System.IO.Path]::GetFileNameWithoutExtension($normalizedPresetName.Trim())
+
+	switch -Regex ($normalizedPresetName)
+	{
+		'^\s*minimal\s*$'               { return 'Minimal' }
+		'^\s*balanced\s*$'              { return 'Balanced' }
+		'^\s*safe\s*$'                  { return 'Safe' }
+		'^\s*(advanced|aggressive)\s*$' { return 'Advanced' }
+		default                         { return $normalizedPresetName }
+	}
+}
+
+function Get-HeadlessPresetCommandList
+{
+	param (
+		[Parameter(Mandatory = $true)]
+		[string]
+		$PresetName
+	)
+
+	$presetDirectory = Join-Path -Path $Script:ModuleRoot -ChildPath 'Data\Presets'
+	if (-not (Test-Path -LiteralPath $presetDirectory -PathType Container))
+	{
+		throw "Preset directory was not found: $presetDirectory"
+	}
+
+	$presetPath = $null
+	if (Test-Path -LiteralPath $PresetName -PathType Leaf)
+	{
+		$presetPath = (Resolve-Path -LiteralPath $PresetName -ErrorAction Stop).Path
+	}
+	else
+	{
+		$normalizedPresetName = ConvertTo-HeadlessPresetName -PresetName $PresetName
+		foreach ($extension in @('.json', '.txt'))
+		{
+			$candidatePath = Join-Path -Path $presetDirectory -ChildPath ("{0}{1}" -f $normalizedPresetName, $extension)
+			if (Test-Path -LiteralPath $candidatePath -PathType Leaf)
+			{
+				$presetPath = $candidatePath
+				break
+			}
+		}
+	}
+
+	if ([string]::IsNullOrWhiteSpace([string]$presetPath))
+	{
+		throw "Preset file '$PresetName.json' or '$PresetName.txt' was not found under Module\Data\Presets."
+	}
+
+	$commandList = [System.Collections.Generic.List[string]]::new()
+	$commandIndex = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+	if ([System.IO.Path]::GetExtension($presetPath).Equals('.json', [System.StringComparison]::OrdinalIgnoreCase))
+	{
+		$presetData = Get-Content -LiteralPath $presetPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+		if ($presetData -and $presetData.PSObject.Properties['Entries'])
+		{
+			$rawEntries = @($presetData.Entries)
+		}
+		elseif ($presetData -is [System.Collections.IEnumerable] -and -not ($presetData -is [string]))
+		{
+			$rawEntries = @($presetData)
+		}
+		else
+		{
+			$rawEntries = @()
+		}
+	}
+	else
+	{
+		$rawEntries = [System.IO.File]::ReadAllLines($presetPath)
+	}
+
+	foreach ($rawEntry in $rawEntries)
+	{
+		$commandLine = [string]$rawEntry
+		if ([string]::IsNullOrWhiteSpace($commandLine)) { continue }
+
+		$trimmed = $commandLine.Trim()
+		if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith('#')) { continue }
+
+		$functionName = ($trimmed -split '\s+', 2)[0].Trim()
+		if ([string]::IsNullOrWhiteSpace($functionName)) { continue }
+
+		if ($commandIndex.ContainsKey($functionName))
+		{
+			$commandList[$commandIndex[$functionName]] = $trimmed
+		}
+		else
+		{
+			$commandIndex[$functionName] = $commandList.Count
+			[void]$commandList.Add($trimmed)
+		}
+	}
+
+	return ,$commandList.ToArray()
+}
+
+if ([string]::IsNullOrWhiteSpace($Preset) -and -not $Functions)
+{
+	$Preset = $env:BASELINE_PRESET
+}
+
 if ($Script:BootstrapSplash -and $Script:BootstrapSplash.IsAlive)
 {
 	try {
@@ -188,9 +308,26 @@ catch [System.InvalidOperationException]
 	exit
 }
 
-# Headless mode: run specific functions from the command line
+# Preset mode expands the requested preset into the same command list used by
+# the headless path so the bootstrap can stay non-interactive.
+if ($Preset)
+{
+	if ($Functions)
+	{
+		throw 'Specify either -Preset or -Functions, not both.'
+	}
+
+	$Functions = @(Get-HeadlessPresetCommandList -PresetName $Preset)
+	if (-not $Functions -or $Functions.Count -eq 0)
+	{
+		throw "Preset '$Preset' did not resolve to any commands."
+	}
+}
+
+# Headless mode: run specific functions or a preset from the command line
 if ($Functions)
 {
+	$Global:BaselineHeadlessCommands = @($Functions)
 	Invoke-Command -ScriptBlock {InitialActions}
 
 	foreach ($Function in $Functions)

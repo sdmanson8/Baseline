@@ -522,7 +522,7 @@ function DefenderCloud
 	Machine-wide
 
 	.CAUTION
-	Aggressive. Can block legitimate applications, Office automation, admin
+	Advanced. Can block legitimate applications, Office automation, admin
 	tooling, scripts, or line-of-business workflows depending on how they
 	interact with Defender ASR and system mitigations.
 #>
@@ -1397,7 +1397,7 @@ function Firewall
 	Machine-wide
 
 	.CAUTION
-	Aggressive. Imports a downloaded mitigation policy that can change exploit
+	Advanced. Imports a downloaded mitigation policy that can change exploit
 	protection behavior for applications across the system.
 #>
 function Import-ExploitProtectionPolicy
@@ -1537,7 +1537,7 @@ function LocalSecurityAuthority
 	Machine-wide
 
 	.CAUTION
-	Aggressive. Can break administrative scripts, installers, troubleshooting
+	Advanced. Can break administrative scripts, installers, troubleshooting
 	tools, or enterprise workflows that intentionally use these binaries.
 #>
 function Set-LOLBinFirewallRules

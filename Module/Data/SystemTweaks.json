@@ -31,7 +31,7 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Enables a Group Policy setting that allows the LanmanWorkstation service to accept guest-authenticated SMB connections. Required for certain share access scenarios. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Performance Tuning",
@@ -190,7 +190,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds firewall rules to block Adobe applications from accessing the internet. This affects license validation, cloud sync, and Creative Cloud features. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Brave Debloat",
@@ -222,7 +222,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables Brave browser's optional extras: rewards, crypto wallet, VPN, and AI chat. Only affects these Brave-specific features, not your browsing. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Cross-Device Resume",
@@ -286,7 +286,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Runs the built-in Windows Disk Cleanup tool to remove temporary files, system cache, and other unneeded data to free up disk space. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Explorer Automatic Folder Discovery",
@@ -383,7 +383,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Blocks Razer Synapse installer scripts from running automatically. Prevents unwanted Razer software from being installed in the background. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "S3 Sleep",
@@ -479,7 +479,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Teredo is a tunneling protocol that provides IPv6 connectivity over IPv4 networks. Required for Xbox Live connectivity and some peer-to-peer applications. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Windows Platform Binary Table (WPBT)",

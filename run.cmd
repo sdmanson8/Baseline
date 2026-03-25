@@ -10,6 +10,10 @@ cd /d "%~dp0"
 set "LOGFILE=%TEMP%\install_log.txt"
 echo Installation started at %DATE% %TIME% > "%LOGFILE%"
 
+if /i "%~1"=="-Preset" (
+    set "BASELINE_PRESET=%~2"
+)
+
 if exist "%temp%\Baseline - Windows Utility for Windows 10.txt" (
     del /f /q "%temp%\Baseline - Windows Utility for Windows 10.txt" >nul 2>&1
 )

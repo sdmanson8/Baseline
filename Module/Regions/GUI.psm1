@@ -1239,7 +1239,7 @@ function Show-TweakGUI
 				'Preset buttons do not run anything by themselves.'
 			)
 			'Presets' = @(
-				'Minimal, Safe, Balanced, and Aggressive load selections from their matching preset files.'
+				'Minimal, Safe, Balanced, and Advanced load selections from their matching preset files.'
 				'Clicking a preset replaces any previously loaded preset selection - selections do not stack.'
 				'Presets only update the GUI selection. They do not execute changes.'
 				'Run Tweaks applies the current GUI selection.'
@@ -5266,7 +5266,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 			'^\s*minimal\s*$'               { return 'Minimal' }
 			'^\s*balanced\s*$'              { return 'Balanced' }
 			'^\s*safe\s*$'                  { return 'Safe' }
-			'^\s*(advanced|aggressive)\s*$' { return 'Aggressive' }
+			'^\s*(advanced|aggressive)\s*$' { return 'Advanced' }
 			default                         { return 'Safe' }
 		}
 	}
@@ -5994,7 +5994,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 		try
 		{
 		$advancedModeWasEnabled = [bool]$Script:AdvancedMode
-		if ($presetDefinition.Name -eq 'Aggressive' -and -not $advancedModeWasEnabled)
+		if ($presetDefinition.Name -eq 'Advanced' -and -not $advancedModeWasEnabled)
 		{
 			& $setAdvancedModeStateScript -Enabled $true
 		}
@@ -7042,23 +7042,23 @@ $null = $ContentScroll.Dispatcher.BeginInvoke(
 			}.GetNewClosure())
 			$presetBar.Children.Add($btnBalanced) | Out-Null
 
-			# Aggressive (Danger)
-			$btnAggressive = New-PresetButton -Label 'Aggressive' -Variant 'Danger'
-			$btnAggressive.ToolTip = 'Selects all tweaks including high-risk changes. Recommended for advanced users only.'
-			$btnAggressive.Add_Click({
+			# Advanced (Danger)
+			$btnAdvanced = New-PresetButton -Label 'Advanced' -Variant 'Danger'
+			$btnAdvanced.ToolTip = 'Selects all tweaks including high-risk changes. Recommended for advanced users only.'
+			$btnAdvanced.Add_Click({
 				try {
-					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Aggressive' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Aggressive'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
-					& $setGuiPresetSelectionScript -PresetName 'Aggressive'
+					& $writeGuiPresetDebugScript -Context 'Build-TabContent/Preset/Advanced' -Message ("Preset button clicked. CurrentPrimaryTab='{0}', requestedPreset='Advanced'." -f $(if ($Script:CurrentPrimaryTab) { $Script:CurrentPrimaryTab } else { '<none>' }))
+					& $setGuiPresetSelectionScript -PresetName 'Advanced'
 				}
 				catch {
 					if ($showGuiRuntimeFailureScript) {
-						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Aggressive' -Exception $_.Exception -ShowDialog
+						& $showGuiRuntimeFailureScript -Context 'Build-TabContent/Preset/Advanced' -Exception $_.Exception -ShowDialog
 					} else {
-						Write-Warning "GUI event failed [Build-TabContent/Preset/Aggressive]: $($_.Exception.Message)"
+						Write-Warning "GUI event failed [Build-TabContent/Preset/Advanced]: $($_.Exception.Message)"
 					}
 				}
 			}.GetNewClosure())
-			$presetBar.Children.Add($btnAggressive) | Out-Null
+			$presetBar.Children.Add($btnAdvanced) | Out-Null
 
 			# System Scan
 			$btnScan = New-PresetButton -Label 'System Scan' -Variant 'Secondary'

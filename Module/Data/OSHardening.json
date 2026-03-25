@@ -31,7 +31,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables DCOM remote activation and removes file associations that expose remote command surfaces. Reduces attack surface for remote execution attempts. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Configure Cipher Suites",
@@ -63,7 +63,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets the preferred SCHANNEL cipher suites to strong AES-256 and AES-128 variants. Ensures strong encryption for all TLS connections. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Configure Event Log Sizes",
@@ -126,7 +126,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables Diffie-Hellman, ECDH, and PKCS key exchange algorithms in SCHANNEL. Ensures forward-secure key exchange is available for TLS connections. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Configure SSL/TLS Protocols",
@@ -159,7 +159,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables old protocols (PCT, SSL 2.0, SSL 3.0) and enables TLS 1.0 through 1.2. Removes broken protocols while keeping legacy compatibility. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Configure Strong .NET Authentication",
@@ -191,7 +191,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Forces .NET Framework 4.x and 2.x to use system-default TLS and strong cryptography. Prevents older .NET apps from falling back to weak ciphers. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable AES Ciphers",
@@ -223,7 +223,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables older weak AES cipher entries in the Windows SCHANNEL security layer. Forces applications to negotiate stronger cipher configurations. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable AutoRun",
@@ -286,7 +286,7 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Disables the IPv6 protocol stack system-wide. Recommended if your network does not use IPv6 to reduce unnecessary attack surface. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable RC2 and RC4 Ciphers",
@@ -318,7 +318,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables RC2 and RC4 ciphers in SCHANNEL. These algorithms are cryptographically broken and should not be used in any TLS connection. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable SMBv3 Compression",
@@ -350,7 +350,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Turns off SMB compression to protect against CVE-2020-0796. Only affects SMB traffic compression, not file access speed. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable TCP Timestamps",
@@ -382,7 +382,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes TCP timestamp information from network packets. Prevents remote systems from fingerprinting your OS based on uptime. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable Triple DES Cipher",
@@ -414,7 +414,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables Triple DES (3DES) in SCHANNEL. 3DES is vulnerable to SWEET32 birthday attacks and is no longer considered secure. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Disable Weak Hash Algorithms",
@@ -446,7 +446,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Configures SCHANNEL hash algorithm settings. Disables MD5 and enables SHA family algorithms for stronger integrity verification. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Enable Biometrics Anti-Spoofing",
@@ -575,7 +575,7 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Applies a broad set of registry hardening values covering credential protection, UAC, NTLM, TCP/IP, and smart card removal behavior. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Harden Adobe Reader",
@@ -607,7 +607,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies a set of security policy settings for Adobe Reader DC including protected mode, protected view, and disabling cloud and web features. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Harden ClickOnce Trust Prompts",
@@ -620,7 +620,7 @@
       "Description": "Configure ClickOnce trust prompt hardening",
       "Detail": "Disables ClickOnce trust prompts for all security zones. Prevents untrusted ClickOnce applications from prompting for installation.",
       "Caution": true,
-      "CautionReason": "Aggressive. Can break ClickOnce-based installers, updates, or internal applications that depend on trust prompts.",
+      "CautionReason": "Advanced. Can break ClickOnce-based installers, updates, or internal applications that depend on trust prompts.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -639,7 +639,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables ClickOnce trust prompts for all security zones. Prevents untrusted ClickOnce applications from prompting for installation. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Harden MS Office",
@@ -671,7 +671,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Restricts macros, external content execution, and Outlook trust settings across Office versions. Reduces document-based attack vectors. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Harden Office Links",
@@ -703,7 +703,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Prevents Word from automatically refreshing external links in documents and email. Reduces the risk of data exfiltration via embedded document links. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Harden WinRM",
@@ -735,7 +735,7 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Disables unencrypted WinRM traffic and digest authentication, then restarts the WinRM service. Ensures remote management connections are always encrypted. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Prevent Remote DLL Hijacking",
@@ -766,7 +766,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Configures Session Manager DLL search order to prevent applications from loading DLLs from untrusted locations. Closes a common malware delivery path. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Prevent Wireless Exploitation",
@@ -799,7 +799,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Hides the network selection UI from the Windows lock screen. Prevents changing network settings before signing in. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Reduce RPC Surface",
@@ -832,7 +832,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables RPC-over-TCP for Task Scheduler and the remote Service Control Manager. Reduces exposure for remote management attack paths. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     }
   ]
 }

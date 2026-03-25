@@ -32,7 +32,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether apps are allowed to run and update in the background when they are not in focus. Disabling saves CPU and memory. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Copilot App",
@@ -132,7 +132,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies Group Policy settings to disable telemetry, shopping assistant, collections, Copilot sidebar, and other optional Edge extras. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "New Outlook",
@@ -196,7 +196,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Master switch for the entire Windows notification system. Disabling stops all app notifications and hides the notification center. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "Revert Start Menu (24H2)",
@@ -209,7 +209,7 @@
       "Description": "Revert to original Start Menu from 24H2",
       "Detail": "Reverts the Start Menu to the pre-24H2 layout on Windows 11 24H2 builds. May affect compatibility with future Windows updates.",
       "Caution": true,
-      "CautionReason": "Aggressive. Reverting the Start Menu may break future Windows updates that depend on the new layout and requires additional tooling.",
+      "CautionReason": "Advanced. Reverting the Start Menu may break future Windows updates that depend on the new layout and requires additional tooling.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": null,
@@ -229,7 +229,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Reverts the Start Menu to the pre-24H2 layout on Windows 11 24H2 builds. May affect compatibility with future Windows updates. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     },
     {
       "Name": "UWP Apps (Bulk)",
@@ -263,7 +263,7 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Opens a selection dialog to bulk uninstall or reinstall Windows Store apps. Some apps cannot be reinstalled once removed. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Aggressive"
+      "PresetTier": "Advanced"
     }
   ]
 }

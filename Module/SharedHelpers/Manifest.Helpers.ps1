@@ -68,7 +68,7 @@ function ConvertTo-TweakPresetTier
 	{
 		switch -Regex ([string]$Value)
 		{
-			'^\s*aggressive\s*$' { return 'Aggressive' }
+			'^\s*(advanced|aggressive)\s*$' { return 'Advanced' }
 			'^\s*balanced\s*$'   { return 'Balanced' }
 			default              { return 'Safe' }
 		}
@@ -76,7 +76,7 @@ function ConvertTo-TweakPresetTier
 
 	if ($Impact -or $Risk -eq 'High')
 	{
-		return 'Aggressive'
+		return 'Advanced'
 	}
 	if ($Risk -eq 'Medium')
 	{
@@ -208,7 +208,7 @@ function Import-TweakManifestFromData
 			$safeValue = if ($entry.PSObject.Properties['Safe']) { [bool]$entry.Safe } else { ($riskValue -eq 'Low' -and -not $impactValue) }
 			$requiresRestartValue = if ($entry.PSObject.Properties['RequiresRestart']) { [bool]$entry.RequiresRestart } else { $false }
 			$presetTierValue = ConvertTo-TweakPresetTier -Value $(if ($entry.PSObject.Properties['PresetTier']) { $entry.PresetTier } else { $null }) -Risk $riskValue -Impact $impactValue
-			if ($presetTierValue -eq 'Aggressive' -and $tagValues -notcontains 'advanced')
+			if ($presetTierValue -eq 'Advanced' -and $tagValues -notcontains 'advanced')
 			{
 				$tagValues += 'advanced'
 			}
@@ -353,7 +353,7 @@ function Test-TweakManifestIntegrity
 	$requiredFields = @('Name', 'Function', 'Type', 'Category', 'Risk', 'PresetTier')
 	$validTypes = @('Toggle', 'Action', 'Choice')
 	$validRisks = @('Low', 'Medium', 'High')
-	$validTiers = @('Minimal', 'Safe', 'Balanced', 'Aggressive')
+	$validTiers = @('Minimal', 'Safe', 'Balanced', 'Advanced')
 	$issues = [System.Collections.ArrayList]::new()
 
 	foreach ($tweak in $Manifest)

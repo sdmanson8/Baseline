@@ -4933,9 +4933,25 @@ function WinPrtScrFolder
 			$PresetName = (Get-Variable -Name MyInvocation -Scope Script).Value.PSCommandPath
 			$PSCallStack = (Get-PSCallStack).Position.Text
 			$OneDriveInstalled = Get-Package -Name "Microsoft OneDrive" -ProviderName Programs -Force -ErrorAction Ignore -WarningAction SilentlyContinue
+			$HeadlessCommands = Get-Variable -Name BaselineHeadlessCommands -Scope Global -ErrorAction SilentlyContinue
 
+			# Headless runs pass the requested command list through a global variable.
+			if ($HeadlessCommands -and $HeadlessCommands.Value)
+			{
+				$RequestedCommands = [string[]]@($HeadlessCommands.Value)
+				if (($RequestedCommands -contains 'OneDrive -Uninstall') -or (-not $OneDriveInstalled))
+				{
+					$DesktopFolder = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name Desktop
+					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name "{B7BEDE81-DF94-4682-A7D8-57A52620B86F}" -PropertyType ExpandString -Value $DesktopFolder -Force | Out-Null
+				}
+				else
+				{
+					LogError ($Localization.OneDriveWarning -f $MyInvocation.Line.Trim())
+					LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+				}
+			}
 			# Checking whether function was called from Functions.ps1
-			if ($PresetName -match "Functions.ps1")
+			elseif ($PresetName -match "Functions.ps1")
 			{
 				# Checking whether command contains "WinPrtScrFolder -Desktop"
 				if ($PSCallStack -match "WinPrtScrFolder -Desktop")
