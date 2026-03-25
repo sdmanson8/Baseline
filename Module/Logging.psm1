@@ -43,7 +43,7 @@ function Send-UILogEntry {
         catch { }
     }
 
-    $queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction SilentlyContinue
+    $queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction Ignore
     if ($queue) {
         try {
             $queue.Enqueue($Entry)

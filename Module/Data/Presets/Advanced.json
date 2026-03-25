@@ -187,6 +187,7 @@
     "Repair-Windows11SMBUpdateIssue",
     "Set-SMBSharingCompatibility",
     "Enable-SMBGuestCompatibility",
+    "Repair-SharedPrinterConnectionErrors",
     "NetBIOS -Disable",
     "LLMNR -Enable",
     "MSNetClient -Enable",

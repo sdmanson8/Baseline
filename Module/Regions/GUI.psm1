@@ -7669,7 +7669,7 @@ function Write-TweakProgress
 	if (-not $Global:GUIMode) { return }
 	# $GUIRunState is the ConcurrentQueue injected directly by the GUI run loop via
 	# SessionStateProxy.SetVariable - it is not a global, just a session variable.
-	$queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction SilentlyContinue
+	$queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction Ignore
 	if (-not $queue) { return }
 
 	$queue.Enqueue([PSCustomObject]@{

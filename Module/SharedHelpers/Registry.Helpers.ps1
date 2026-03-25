@@ -55,7 +55,7 @@ function Set-Policy
 	{
 		if (-not (Test-Path -LiteralPath $FullPath))
 		{
-			New-Item -LiteralPath $FullPath -Force -ErrorAction Stop | Out-Null
+			New-Item -Path $FullPath -Force -ErrorAction Stop | Out-Null
 		}
 
 		if ($MappedType -eq "CLEAR")

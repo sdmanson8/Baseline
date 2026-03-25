@@ -679,7 +679,12 @@ function Restart-Script
 			'-File', $ScriptPath
 		)
 
-		if ($Functions)
+		if ($Preset)
+		{
+			$argList += '-Preset'
+			$argList += $Preset
+		}
+		elseif ($Functions)
 		{
 			$argList += '-Functions'
 			$argList += $Functions

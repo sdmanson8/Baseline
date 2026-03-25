@@ -270,7 +270,7 @@ function Get-HeadlessPresetCommandList
 		}
 	}
 
-	return ,$commandList.ToArray()
+	return $commandList.ToArray()
 }
 
 if ([string]::IsNullOrWhiteSpace($Preset) -and -not $Functions)
@@ -327,6 +327,13 @@ if ($Preset)
 # Headless mode: run specific functions or a preset from the command line
 if ($Functions)
 {
+	# Close the bootstrap splash — headless mode does not use the GUI.
+	if ($Script:BootstrapSplash)
+	{
+		$null = Close-LoadingSplashWindow -Splash $Script:BootstrapSplash -DisposeResources
+		$Script:BootstrapSplash = $null
+	}
+
 	$Global:BaselineHeadlessCommands = @($Functions)
 	Invoke-Command -ScriptBlock {InitialActions}
 
