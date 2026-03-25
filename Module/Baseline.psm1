@@ -1,6 +1,6 @@
 ﻿<#
     .SYNOPSIS
-    Loader module for Win10_11Util.
+    Loader module for Baseline.
  
     .VERSION
 	2.0.0
@@ -25,7 +25,7 @@ Import-Module -Name "$PSScriptRoot\SharedHelpers.psm1" -Force -Global
 # Detect the OS version once through the shared helper so every module uses the same logic.
 $osName = (Get-OSInfo).OSName
 # Initialize logging and write to an OS-specific log file in %TEMP%
-$global:LogFilePath = Join-Path $env:TEMP "WinUtil Script for $osName.txt"
+$global:LogFilePath = Join-Path $env:TEMP "Baseline - Windows Utility for $osName.txt"
 Set-LogFile -Path $global:LogFilePath
 
 <#

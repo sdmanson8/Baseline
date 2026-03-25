@@ -145,7 +145,7 @@ $Script:GuiPresetDebugScript = ${function:Write-GuiPresetDebug}
 
 <#
 	.SYNOPSIS
-	WPF-based GUI that replaces the preset file (Win10_11Util.ps1).
+	WPF-based GUI that replaces the preset file (Baseline.ps1).
 
 	.DESCRIPTION
 	Builds a modern two-tier tabbed WPF window from a tweak manifest.
@@ -1312,7 +1312,7 @@ function Show-TweakGUI
 			<StackPanel>
 				<TextBlock Text="Help" FontSize="16" FontWeight="SemiBold"
 						   Foreground="$($theme.TextPrimary)"/>
-				<TextBlock Text="Win10_11Util - usage guide"
+				<TextBlock Text="Baseline - usage guide"
 						   FontSize="12" Foreground="$($theme.TextMuted)" Margin="0,2,0,0"/>
 			</StackPanel>
 		</Border>
@@ -1605,7 +1605,7 @@ function Show-TweakGUI
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	Name="MainWindow"
-	Title="WinUtil - Windows Optimization &amp; Hardening"
+	Title="Baseline | Windows Utility - Windows Optimization &amp; Hardening"
 	MinWidth="$guiWindowMinWidth" MinHeight="$guiWindowMinHeight"
 	WindowStartupLocation="CenterScreen"
 	FontFamily="Segoe UI" FontSize="13"
@@ -1839,12 +1839,12 @@ function Show-TweakGUI
 	$Script:ExecutionSummaryRecords = @()
 	$Script:ExecutionSummaryLookup = @{}
 	$Script:ExecutionCurrentSummaryKey = $null
-	$Script:GuiDisplayVersion = Get-WinUtilDisplayVersion
+	$Script:GuiDisplayVersion = Get-BaselineDisplayVersion
 
-	# Set the window title to include OS name
+	# Set the window title to include OS name and version
 	try
 	{
-		$formTitle = "WinUtil Script for $((Get-OSInfo).OSName)"
+		$formTitle = "Baseline | Windows Utility for $((Get-OSInfo).OSName)"
 		if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiDisplayVersion))
 		{
 			$formTitle = "{0} {1}" -f $formTitle, $Script:GuiDisplayVersion
@@ -2522,7 +2522,7 @@ function Show-TweakGUI
 		}
 
 		$snapshot = [ordered]@{
-			Schema = 'Win10_11Util.GuiSettings'
+			Schema = 'Baseline.GuiSettings'
 			SchemaVersion = 2
 			SavedAt = (Get-Date).ToString('o')
 			Theme = $themeName
@@ -2833,26 +2833,26 @@ function Show-TweakGUI
 	function Get-GuiSettingsProfileDirectory
 	{
 		param ()
-		return (GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Win10_11Util')
+		return (GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Baseline')
 	}
 
 	function Get-GuiSessionStatePath
 	{
 		param ()
-		return (GUICommon\Get-GuiSessionStatePath -AppName 'Win10_11Util')
+		return (GUICommon\Get-GuiSessionStatePath -AppName 'Baseline')
 	}
 
 	function Save-GuiSessionState
 	{
 		param ()
-		return (GUICommon\Save-GuiSessionStateDocument -Snapshot (Get-GuiSettingsSnapshot) -AppName 'Win10_11Util')
+		return (GUICommon\Save-GuiSessionStateDocument -Snapshot (Get-GuiSettingsSnapshot) -AppName 'Baseline')
 	}
 
 	function Restore-GuiSessionState
 	{
 		param ()
 
-		$snapshot = GUICommon\Read-GuiSessionStateDocument -AppName 'Win10_11Util' -ExpectedSchema 'Win10_11Util.GuiSettings'
+		$snapshot = GUICommon\Read-GuiSessionStateDocument -AppName 'Baseline' -ExpectedSchema 'Baseline.GuiSettings'
 		if (-not $snapshot)
 		{
 			return $false
@@ -2876,7 +2876,7 @@ function Show-TweakGUI
 		param ()
 
 		$snapshot = Get-GuiSettingsSnapshot
-		$savePath = GUICommon\Show-GuiSettingsSaveDialog -AppName 'Win10_11Util'
+		$savePath = GUICommon\Show-GuiSettingsSaveDialog -AppName 'Baseline'
 		if ([string]::IsNullOrWhiteSpace($savePath))
 		{
 			return $false
@@ -2902,7 +2902,7 @@ function Show-TweakGUI
 	{
 		param ()
 
-		$openPath = GUICommon\Show-GuiSettingsOpenDialog -AppName 'Win10_11Util'
+		$openPath = GUICommon\Show-GuiSettingsOpenDialog -AppName 'Baseline'
 		if ([string]::IsNullOrWhiteSpace($openPath))
 		{
 			return $false
@@ -2910,7 +2910,7 @@ function Show-TweakGUI
 
 		try
 		{
-			$snapshot = GUICommon\Read-GuiSettingsProfileDocument -FilePath $openPath -ExpectedSchema 'Win10_11Util.GuiSettings'
+			$snapshot = GUICommon\Read-GuiSettingsProfileDocument -FilePath $openPath -ExpectedSchema 'Baseline.GuiSettings'
 		}
 		catch
 		{
@@ -3719,7 +3719,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 			$BtnRun.Content = if ($ExitNow) { "Exiting..." } else { "Stopping..." }
 			$BtnRun.IsEnabled = $false
 		}
-		$StatusText.Text = if ($ExitNow) { "Exit requested. Closing WinUtil now..." } else { "Abort requested. Waiting for the current step to stop..." }
+		$StatusText.Text = if ($ExitNow) { "Exit requested. Closing Baseline now..." } else { "Abort requested. Waiting for the current step to stop..." }
 		$StatusText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($Script:CurrentTheme.CautionText)
 		LogWarning 'Abort requested by user - waiting for the current step to stop.'
 
@@ -3732,7 +3732,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 
 		if ($ExitNow)
 		{
-			LogWarning 'Exit requested by user - closing WinUtil now.'
+			LogWarning 'Exit requested by user - closing Baseline now.'
 			& $Script:ForceCloseExecutionFn
 			return
 		}
@@ -3745,7 +3745,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 		try
 		{
 			$choice = Show-ThemedDialog -Title 'Abort Run' `
-			-Message "Stop the current run now?`n`nReturn to Tweaks aborts the run and keeps the app open. Exit Now force-stops the run and closes Win10_11Util immediately." `
+			-Message "Stop the current run now?`n`nReturn to Tweaks aborts the run and keeps the app open. Exit Now force-stops the run and closes Baseline immediately." `
 			-Buttons @('Return to Tweaks', 'Exit Now', 'Cancel') `
 			-AccentButton 'Return to Tweaks' `
 			-DestructiveButton 'Exit Now'
@@ -4851,7 +4851,7 @@ $null = $Script:MainForm.Dispatcher.BeginInvoke(
 		LogInfo "Starting tweak execution (mode: $Mode)"
 
 		$bgModuleDir   = Split-Path $PSScriptRoot -Parent
-		$bgLoaderPath  = Join-Path $bgModuleDir 'Win10_11Util.psm1'
+		$bgLoaderPath  = Join-Path $bgModuleDir 'Baseline.psm1'
 		$bgRootDir     = Split-Path $bgModuleDir -Parent
 		$bgLocDir      = Join-Path $bgRootDir 'Localizations'
 		$bgUICulture   = $PSUICulture

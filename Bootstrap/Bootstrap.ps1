@@ -1,12 +1,12 @@
 <#
     .SYNOPSIS
-    Download and launch Win10_11Util from GitHub.
+    Download and launch Baseline from GitHub.
 
     .DESCRIPTION
     This script is designed to be hosted at a raw GitHub URL and executed with
     a one-liner such as:
 
-        iwr https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
+        iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
 
     It downloads the latest branch archive, extracts it to a temp folder, and
     launches the repo's root run.cmd entrypoint.
@@ -15,9 +15,9 @@
 [CmdletBinding()]
 param(
     [string]$Owner = 'sdmanson8',
-    [string]$Repository = 'Win10_11Util',
+    [string]$Repository = 'Baseline',
     [string]$Branch = 'main',
-    [string]$CacheRoot = (Join-Path $env:TEMP 'Win10_11Util-Bootstrap')
+    [string]$CacheRoot = (Join-Path $env:TEMP 'Baseline-Bootstrap')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,7 +107,7 @@ try
         throw "run.cmd was not found in the extracted repository: $repoRoot"
     }
 
-    Write-Host "Launching Win10_11Util..."
+    Write-Host "Launching Baseline..."
     Push-Location $repoRoot
     try
     {
@@ -120,6 +120,6 @@ try
 }
 catch
 {
-    Write-Error "Failed to bootstrap Win10_11Util: $($_.Exception.Message)"
+    Write-Error "Failed to bootstrap Baseline: $($_.Exception.Message)"
     throw
 }

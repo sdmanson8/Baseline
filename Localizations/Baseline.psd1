@@ -1,4 +1,4 @@
-﻿# Localized strings used by Win10_11Util for prompts, warnings, and status messages.
+﻿# Localized strings used by Baseline for prompts, warnings, and status messages.
 ConvertFrom-StringData -StringData @'
 UnsupportedOSBuild                        = The script supports Windows 11 23H2 and higher. Your OS is {0}.
 UnsupportedWindowsTerminal                = Windows Terminal version is lower than 1.20. Please update it in the Microsoft Store and try again.
@@ -13,7 +13,7 @@ Bin                                       = There are no files in "{0}" folder. 
 RebootPending                             = The PC is waiting to be restarted.
 UnsupportedRelease                        = A new script version found. Please use only the latest Script.
 KeyboardArrows                            = Please use the arrow keys {0} and {1} on your keyboard to select your answer
-CustomizationWarning                      = Have you customized every function in the {0} preset file before running WinUtil Script?
+CustomizationWarning                      = Have you customized every function in the {0} preset file before running Baseline | Windows Utility?
 WindowsComponentBroken                    = {0} broken or removed from Windows. Reinstall Windows using only a genuine ISO image.
 ControlledFolderAccessDisabled            = Controlled folder access disabled.
 InitialActionsCheckFailed                 = The InitialActions function cannot be loaded from the {0} preset file. Please check the preset file and try again.

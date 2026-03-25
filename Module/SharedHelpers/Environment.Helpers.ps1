@@ -1,4 +1,4 @@
-# Shared helper slice for Win10_11Util.
+# Shared helper slice for Baseline.
 
 function Initialize-ForegroundWindowInterop
 {
@@ -355,7 +355,7 @@ function Show-BootstrapLoadingSplash
 <Window
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	Title="WinUtil Script"
+	Title="Baseline | Windows Utility"
 	Width="520" Height="260"
 	ResizeMode="CanMinimize"
 	WindowStartupLocation="CenterScreen"
@@ -370,7 +370,7 @@ function Show-BootstrapLoadingSplash
 			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
 		<StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-			<TextBlock Text="WinUtil Script" FontSize="22" FontWeight="Bold"
+			<TextBlock Text="Baseline" FontSize="22" FontWeight="Bold"
 				Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,0,0,6"/>
 			<TextBlock Text="Windows Optimization &amp; Hardening"
 				FontSize="13" Foreground="#A6ADC8"
@@ -690,9 +690,9 @@ function Restart-Script
 	}
 }
 
-function Get-WinUtilDisplayVersion
+function Get-BaselineDisplayVersion
 {
-	$moduleManifestPath = Join-Path $Script:SharedHelpersModuleRoot 'Win10_11Util.psd1'
+	$moduleManifestPath = Join-Path $Script:SharedHelpersModuleRoot 'Baseline.psd1'
 	if (-not (Test-Path -LiteralPath $moduleManifestPath))
 	{
 		return $null

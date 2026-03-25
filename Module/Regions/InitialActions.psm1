@@ -7,7 +7,7 @@ using module ..\SharedHelpers.psm1
 	Run the shared startup checks and runtime setup used before applying tweaks.
 
 	.DESCRIPTION
-	Prepares the Win10_11Util session by clearing previous errors, unblocking
+	Prepares the Baseline session by clearing previous errors, unblocking
 	script files, setting network and compiler prerequisites, and initializing
 	the runtime helpers used by other region modules.
 
@@ -28,8 +28,15 @@ function InitialActions
 
 	$osInfo = Get-OSInfo
 	$osName = $osInfo.OSName
+	$displayVersion = Get-BaselineDisplayVersion
 
-	LogInfo "Starting WinUtil Script for $osName" -addGap
+	$startupLabel = "Baseline | Windows Utility for $osName"
+	if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
+	{
+		$startupLabel = "$startupLabel $displayVersion"
+	}
+
+	LogInfo "Starting $startupLabel" -addGap
 
 	LogInfo "Beginning Initial Checks:"
 
@@ -651,7 +658,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	# Display a warning message about whether a user has customized the preset file
 	if ($Warning)
 	{
-		# Get the name of a preset (e.g Win10_11Util.ps1) regardless if it was named
+		# Get the name of a preset (e.g Baseline.ps1) regardless if it was named
 		# $_.File has no EndsWith() method
 		[string]$PresetName = ((Get-PSCallStack).Position | Where-Object -FilterScript {$_.File}).File | Where-Object -FilterScript {$_.EndsWith(".ps1")}
 		LogWarning ($Localization.CustomizationWarning -f "`"$PresetName`"")

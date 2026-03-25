@@ -13,7 +13,7 @@
 	sdmanson8 - Copyright (c) 2026
 
     .DESCRIPTION
-    Validates the local Win10_11Util files, enforces Windows PowerShell 5.1,
+    Validates the local Baseline files, enforces Windows PowerShell 5.1,
     relaunches as administrator when needed, initializes logging, and then
     removes or restores AI-related components depending on the selected mode.
     The script supports both a non-interactive command-line workflow and a
@@ -67,7 +67,7 @@ if ($nonInteractive) {
     }
 }
 
-$Host.UI.RawUI.WindowTitle = "Remove Windows AI - Win10_11Util"
+$Host.UI.RawUI.WindowTitle = "Remove Windows AI - Baseline"
 
 # Resolve the local files this script depends on before any removal work begins.
 $LocalizationRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Localizations"))
@@ -80,8 +80,8 @@ if (-not (Test-Path -LiteralPath $ModuleRoot -PathType Container))
 }
 
 $HelpersModulePath = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "SharedHelpers.psm1"))
-$ModulePath       = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Win10_11Util.psm1"))
-$ManifestPath     = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Win10_11Util.psd1"))
+$ModulePath       = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Baseline.psm1"))
+$ManifestPath     = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Baseline.psd1"))
 
 $ScriptFiles = @(
 	$HelpersModulePath,
@@ -107,17 +107,17 @@ if (($ScriptFiles | Test-Path) -contains $false)
 }
 
 # Load localized strings and the root module used by the script.
-Import-LocalizedData -BindingVariable Global:Localization -UICulture "en-US" -FileName "Win10_11Util.psd1" -BaseDirectory $LocalizationRoot
+Import-LocalizedData -BindingVariable Global:Localization -UICulture "en-US" -FileName "Baseline.psd1" -BaseDirectory $LocalizationRoot
 Import-Module -Name $ManifestPath -ErrorAction Stop
 
-Remove-Module -Name Win10_11Util -Force -ErrorAction Ignore
+Remove-Module -Name Baseline -Force -ErrorAction Ignore
 try
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName Win10_11Util -ErrorAction Stop
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName Baseline -ErrorAction Stop
 }
 catch
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName "Win10_11Util"
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName "Baseline"
 }
 
 # Validate that the module can be loaded by the current PowerShell runtime.
@@ -161,8 +161,8 @@ if ($psversion -ge 7) {
     exit 1
 }
 
-$RemoteRemoveWindowsAIScriptUrl = 'https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Assets/RemoveWindowsAI.ps1'
-$RemoteRemoveWindowsAIPackageBaseUrl = 'https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Assets/RemoveWindowsAIPackage'
+$RemoteRemoveWindowsAIScriptUrl = 'https://raw.githubusercontent.com/sdmanson8/Baseline/main/Assets/RemoveWindowsAI.ps1'
+$RemoteRemoveWindowsAIPackageBaseUrl = 'https://raw.githubusercontent.com/sdmanson8/Baseline/main/Assets/RemoveWindowsAIPackage'
 
 # Relaunch as administrator before making system changes.
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
@@ -418,8 +418,8 @@ function Write-Status {
 $LoggingModulePath = [System.IO.Path]::GetFullPath((Join-Path $ModuleRoot "Logging.psm1"))
 Import-Module -Name $LoggingModulePath -Force
 
-# Track the active log path locally so standalone runs do not inherit WinUtil's
-# global log unless WinUtil passes it explicitly.
+# Track the active log path locally so standalone runs do not inherit Baseline's
+# global log unless Baseline passes it explicitly.
 $script:ActiveLogFilePath = Join-Path $env:TEMP "Remove Windows AI.txt"
 
 # Log file priority: explicit parameter, environment variable, then the

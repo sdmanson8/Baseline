@@ -3566,7 +3566,7 @@ function WindowsCapabilities
 	Add-Type -AssemblyName System.Windows.Forms
 
 	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
+	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Windows Utility for Windows"} | ForEach-Object -Process {
 		# Show window, if minimized
 		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 
@@ -3965,7 +3965,7 @@ function WindowsFeatures
 	Add-Type -AssemblyName System.Windows.Forms
 
 	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
+	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Windows Utility for Windows"} | ForEach-Object -Process {
 		# Show window, if minimized
 		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 
@@ -4955,12 +4955,12 @@ function WinPrtScrFolder
 			}
 			else
 			{
-				# Checking whether function was called from Win10_11Util.ps1, and preset contains the "OneDrive -Uninstall" string is uncommented that means OneDrive will be unistalled
+				# Checking whether function was called from Baseline.ps1, and preset contains the "OneDrive -Uninstall" string is uncommented that means OneDrive will be unistalled
 				if (Select-String -Path $PresetName -Pattern "OneDrive -Uninstall" -SimpleMatch)
 				{
 					# Checking whether string exists and is uncommented
 					$IsOneDriveToUninstall = (Select-String -Path $PresetName -Pattern "OneDrive -Uninstall" -SimpleMatch).Line.StartsWith("#") -eq $false
-					# Checking whether string exists and is uncommented, or OneDrive was uninstalled, or user called "OneDrive -Uninstall" from Win10_11Util.ps1 alongside with "WinPrtScrFolder -Desktop"
+					# Checking whether string exists and is uncommented, or OneDrive was uninstalled, or user called "OneDrive -Uninstall" from Baseline.ps1 alongside with "WinPrtScrFolder -Desktop"
 					if ($IsOneDriveToUninstall -or (-not $OneDriveInstalled) -or ($PSCallStack -match "OneDrive -Uninstall"))
 					{
 						$DesktopFolder = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name Desktop

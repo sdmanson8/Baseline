@@ -8,7 +8,7 @@ using module ..\SharedHelpers.psm1
 
 	.DESCRIPTION
 	Filters the accumulated PowerShell error list, formats the remaining errors
-	with file and line information, writes them to the Win10_11Util log, and
+	with file and line information, writes them to the Baseline log, and
 	then shows the user where the log file was saved.
 
 	.EXAMPLE

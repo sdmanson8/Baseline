@@ -1,6 +1,6 @@
 <#
 	.SYNOPSIS
-	Bootstraps an interactive Win10_11Util session and provides tab completion for functions and arguments.
+	Bootstraps an interactive Baseline session and provides tab completion for functions and arguments.
 
     .VERSION
 	2.0.0
@@ -17,30 +17,30 @@
 	Start typing any characters contained in the function's name or its arguments, and press the TAB button
 
 	.EXAMPLE
-	Win10_11Util -Functions <tab>
-	Win10_11Util -Functions temp<tab>
-	Win10_11Util -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", UninstallUWPApps
+	Baseline -Functions <tab>
+	Baseline -Functions temp<tab>
+	Baseline -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", UninstallUWPApps
 
 	.NOTES
 	Use commas to separate functions and their arguments. If a function doesn't have arguments, just type its name. You can also use the TAB button to complete only the function name or only the argument name.
 
 	.LINK
-	https://github.com/sdmanson8/Win10_11Util
+	https://github.com/sdmanson8/Baseline
 #>
 
 #Requires -RunAsAdministrator
 
 <#
 	.SYNOPSIS
-	Run one or more Win10_11Util functions after the module has been loaded.
+	Run one or more Baseline functions after the module has been loaded.
 
 	.PARAMETER Functions
 	One or more function calls to execute.
 
 	.EXAMPLE
-	Win10_11Util -Functions "DiagTrackService -Disable", "BingSearch -Disable"
+	Baseline -Functions "DiagTrackService -Disable", "BingSearch -Disable"
 #>
-function Win10_11Util
+function Baseline
 {
 	[CmdletBinding()]
 	param
@@ -61,9 +61,9 @@ function Win10_11Util
 
 Clear-Host
 
-$Host.UI.RawUI.WindowTitle = "WinUtil Script for Windows 10/11"
+$Host.UI.RawUI.WindowTitle = "Baseline | Windows Utility"
 
-# Import the Win10_11Util module and load the localization strings used by its functions.
+# Import the Baseline module and load the localization strings used by its functions.
 $Script:RepoRoot = Split-Path -Path $PSScriptRoot -Parent
 $Script:ModuleRoot = Join-Path $Script:RepoRoot 'Module'
 
@@ -72,16 +72,23 @@ if (-not (Test-Path -LiteralPath $Script:ModuleRoot -PathType Container))
 	throw "Module directory not found under: $Script:RepoRoot"
 }
 
-Remove-Module -Name Win10_11Util -Force -ErrorAction Ignore
-Import-Module -Name (Join-Path $Script:ModuleRoot 'Win10_11Util.psd1') -PassThru -Force
+Remove-Module -Name Baseline -Force -ErrorAction Ignore
+Import-Module -Name (Join-Path $Script:ModuleRoot 'Baseline.psd1') -PassThru -Force
 
 try
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Baseline -ErrorAction Stop
 }
 catch
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Baseline
+}
+
+$displayVersion = Get-BaselineDisplayVersion
+if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
+{
+	$osName = (Get-OSInfo).OSName
+	$Host.UI.RawUI.WindowTitle = "Baseline | Windows Utility for $osName $displayVersion"
 }
 
 # Run the mandatory startup checks before enabling tab completion.
@@ -90,7 +97,7 @@ InitialActions
 
 # Register tab completion for the -Functions parameter so users can complete function names and arguments.
 $Parameters = @{
-	CommandName   = "Win10_11Util"
+	CommandName   = "Baseline"
 	ParameterName = "Functions"
 	ScriptBlock   = {
 		param
@@ -103,7 +110,7 @@ $Parameters = @{
 		)
 
 		# Get functions list with arguments to complete
-		$Commands = (Get-Module -Name Win10_11Util).ExportedCommands.Keys
+		$Commands = (Get-Module -Name Baseline).ExportedCommands.Keys
 		foreach ($Command in $Commands)
 		{
 			$ParameterSets = (Get-Command -Name $Command).Parametersets.Parameters | Where-Object -FilterScript {$null -eq $_.Attributes.AliasNames}
@@ -266,9 +273,9 @@ $Parameters = @{
 Register-ArgumentCompleter @Parameters
 
 Write-Information -MessageData "" -InformationAction Continue
-Write-Verbose -Message "Win10_11Util -Functions <tab>" -Verbose
-Write-Verbose -Message "Win10_11Util -Functions temp<tab>" -Verbose
-Write-Verbose -Message "Win10_11Util -Functions `"DiagTrackService -Disable`", `"DiagnosticDataLevel -Minimal`", UninstallUWPApps" -Verbose
+Write-Verbose -Message "Baseline -Functions <tab>" -Verbose
+Write-Verbose -Message "Baseline -Functions temp<tab>" -Verbose
+Write-Verbose -Message "Baseline -Functions `"DiagTrackService -Disable`", `"DiagnosticDataLevel -Minimal`", UninstallUWPApps" -Verbose
 Write-Information -MessageData "" -InformationAction Continue
-Write-Verbose -Message "Win10_11Util -Functions `"UninstallUWPApps, `"PinToStart -UnpinAll`" -Verbose"
-Write-Verbose -Message "Win10_11Util -Functions `"Set-Association -ProgramPath ```"%ProgramFiles%\Notepad++\notepad++.exe```" -Extension .txt -Icon ```"%ProgramFiles%\Notepad++\notepad++.exe,0```"`"" -Verbose
+Write-Verbose -Message "Baseline -Functions `"UninstallUWPApps, `"PinToStart -UnpinAll`" -Verbose"
+Write-Verbose -Message "Baseline -Functions `"Set-Association -ProgramPath ```"%ProgramFiles%\Notepad++\notepad++.exe```" -Extension .txt -Icon ```"%ProgramFiles%\Notepad++\notepad++.exe,0```"`"" -Verbose

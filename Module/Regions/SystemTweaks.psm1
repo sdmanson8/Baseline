@@ -48,7 +48,7 @@ Run the remaining legacy system/bootstrap optimizations.
 
 .DESCRIPTION
 Runs the old Performance Tuning system-only actions directly inside
-Win10_11Util by calling `Invoke-SystemOptimizations`.
+Baseline by calling `Invoke-SystemOptimizations`.
 The Advanced Startup shortcut is managed separately via
 `AdvancedStartupShortcut -Enable/-Disable`.
 

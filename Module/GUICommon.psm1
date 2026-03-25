@@ -391,7 +391,7 @@ function Show-ExecutionSummaryDialog
 function Get-GuiSettingsProfileDirectory
 {
 	param (
-		[string]$AppName = 'Win10_11Util'
+		[string]$AppName = 'Baseline'
 	)
 
 	$baseDir = if ($env:LOCALAPPDATA)
@@ -421,7 +421,7 @@ function Get-GuiSettingsProfileDirectory
 function Get-GuiSessionStatePath
 {
 	param (
-		[string]$AppName = 'Win10_11Util'
+		[string]$AppName = 'Baseline'
 	)
 
 	return (Join-Path (Get-GuiSettingsProfileDirectory -AppName $AppName) "$AppName-last-session.json")
@@ -433,7 +433,7 @@ function Save-GuiSessionStateDocument
 		[Parameter(Mandatory = $true)]
 		[object]$Snapshot,
 
-		[string]$AppName = 'Win10_11Util'
+		[string]$AppName = 'Baseline'
 	)
 
 	try
@@ -458,8 +458,8 @@ function Save-GuiSessionStateDocument
 function Read-GuiSessionStateDocument
 {
 	param (
-		[string]$AppName = 'Win10_11Util',
-		[string]$ExpectedSchema = 'Win10_11Util.GuiSettings'
+		[string]$AppName = 'Baseline',
+		[string]$ExpectedSchema = 'Baseline.GuiSettings'
 	)
 
 	$sessionPath = Get-GuiSessionStatePath -AppName $AppName
@@ -496,7 +496,7 @@ function Read-GuiSessionStateDocument
 function Show-GuiSettingsSaveDialog
 {
 	param (
-		[string]$AppName = 'Win10_11Util'
+		[string]$AppName = 'Baseline'
 	)
 
 	$saveDialog = New-Object Microsoft.Win32.SaveFileDialog
@@ -515,7 +515,7 @@ function Show-GuiSettingsSaveDialog
 function Show-GuiSettingsOpenDialog
 {
 	param (
-		[string]$AppName = 'Win10_11Util'
+		[string]$AppName = 'Baseline'
 	)
 
 	$openDialog = New-Object Microsoft.Win32.OpenFileDialog
@@ -551,7 +551,7 @@ function Read-GuiSettingsProfileDocument
 		[Parameter(Mandatory = $true)]
 		[string]$FilePath,
 
-		[string]$ExpectedSchema = 'Win10_11Util.GuiSettings'
+		[string]$ExpectedSchema = 'Baseline.GuiSettings'
 	)
 
 	$raw = Get-Content -LiteralPath $FilePath -Raw -Encoding UTF8 -ErrorAction Stop
@@ -564,7 +564,7 @@ function Read-GuiSettingsProfileDocument
 		-not $snapshot.PSObject.Properties['Controls']
 	)
 	{
-		throw 'The selected file does not contain a valid Win10_11Util settings profile.'
+		throw 'The selected file does not contain a valid Baseline settings profile.'
 	}
 
 	return $snapshot

@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Shared helper loader module for Win10_11Util.
+    Shared helper loader module for Baseline.
 
     .DESCRIPTION
     Dot-sources the helper slices from Module/SharedHelpers and exports the
@@ -63,7 +63,7 @@ $ExportedFunctions = @(
     'Close-LoadingSplashWindow'
     'Show-Menu'
     'Restart-Script'
-    'Get-WinUtilDisplayVersion'
+    'Get-BaselineDisplayVersion'
     'Stop-Foreground'
     'Convert-JsonManifestValue'
     'ConvertTo-TweakRiskLevel'

@@ -605,7 +605,7 @@ function DiagTrackService
 	# Checking whether "InitialActions" function was removed in preset file
 	if (-not ("WinAPI.GetStrings" -as [type]))
 	{
-		# Get the name of a preset (e.g Win10_11Util.ps1) regardless if it was renamed
+		# Get the name of a preset (e.g Baseline.ps1) regardless if it was renamed
 		# $_.File has no EndsWith() method
 		$PresetName = Split-Path -Path (((Get-PSCallStack).Position | Where-Object -FilterScript {$_.File}).File | Where-Object -FilterScript {$_.EndsWith(".ps1")}) -Leaf
 
@@ -1089,7 +1089,7 @@ function ScheduledTasks
 	Add-Type -AssemblyName System.Windows.Forms
 
 	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
+	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Windows Utility for Windows"} | ForEach-Object -Process {
 		# Show window, if minimized
 		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 

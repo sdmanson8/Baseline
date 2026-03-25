@@ -39,8 +39,15 @@ function CreateRestorePoint
 		New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name SystemRestorePointCreationFrequency -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 
 		$osName = (Get-OSInfo).OSName
+		$displayVersion = Get-BaselineDisplayVersion
 
-		Checkpoint-Computer -Description "WinUtil Script for $osName" -RestorePointType MODIFY_SETTINGS -ErrorAction Stop | Out-Null
+		$restorePointDescription = "Baseline | Windows Utility for $osName"
+		if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
+		{
+			$restorePointDescription = "$restorePointDescription $displayVersion"
+		}
+
+		Checkpoint-Computer -Description $restorePointDescription -RestorePointType MODIFY_SETTINGS -ErrorAction Stop | Out-Null
 
 		# Revert the System Restore checkpoint creation frequency to 1440 minutes
 		New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name SystemRestorePointCreationFrequency -PropertyType DWord -Value 1440 -Force -ErrorAction Stop | Out-Null

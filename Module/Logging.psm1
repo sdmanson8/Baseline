@@ -1,6 +1,6 @@
 ﻿<#
     .SYNOPSIS
-    Logging module for Win10_11Util.
+    Logging module for Baseline.
 
     .VERSION
 	2.0.0

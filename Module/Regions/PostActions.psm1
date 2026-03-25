@@ -189,7 +189,7 @@ public static void PostMessage()
 	#endregion Other actions
 
 	#region Toast notifications
-	# Persist Win10_11Util notifications to prevent to immediately disappear from Action Center
+	# Persist Baseline notifications to prevent to immediately disappear from Action Center
 	# Enable notifications in Action Center
 	Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer, HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer -Name DisableNotificationCenter -Force -ErrorAction Ignore
 	Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name DisableNotificationCenter -Type CLEAR
@@ -200,15 +200,15 @@ public static void PostMessage()
 	Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\CurrentVersion\PushNotifications -Name NoToastApplicationNotification -Force -ErrorAction Ignore
 	Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name DisableNotificationCenter -Type CLEAR
 
-	if (-not (Test-Path -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Win10_11Util))
+	if (-not (Test-Path -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Baseline))
 	{
-		New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Win10_11Util -Force
+		New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Baseline -Force
 	}
-	New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Win10_11Util -Name ShowInActionCenter -PropertyType DWord -Value 1 -Force
+	New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Baseline -Name ShowInActionCenter -PropertyType DWord -Value 1 -Force
 
-	if (-not (Test-Path -Path Registry::HKEY_CLASSES_ROOT\AppUserModelId\Win10_11Util))
+	if (-not (Test-Path -Path Registry::HKEY_CLASSES_ROOT\AppUserModelId\Baseline))
 	{
-		New-Item -Path Registry::HKEY_CLASSES_ROOT\AppUserModelId\Win10_11Util -Force
+		New-Item -Path Registry::HKEY_CLASSES_ROOT\AppUserModelId\Baseline -Force
 	}
 	Pause
 #>

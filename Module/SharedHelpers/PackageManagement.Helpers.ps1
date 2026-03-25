@@ -1,4 +1,4 @@
-# Shared helper slice for Win10_11Util.
+# Shared helper slice for Baseline.
 
 function Update-ProcessPathFromRegistry
 {
@@ -102,7 +102,7 @@ function Invoke-DownloadFile
 	try
 	{
 		$webClient = New-Object System.Net.WebClient
-		$webClient.Headers['User-Agent'] = 'Win10_11Util'
+		$webClient.Headers['User-Agent'] = 'Baseline'
 		$webClient.DownloadFile($Uri, $OutFile)
 		if (Test-Path -LiteralPath $OutFile)
 		{

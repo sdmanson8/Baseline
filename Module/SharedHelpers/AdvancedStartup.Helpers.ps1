@@ -1,4 +1,4 @@
-# Shared helper slice for Win10_11Util.
+# Shared helper slice for Baseline.
 
 function Get-AdvancedStartupDesktopDirectory
 {
@@ -86,7 +86,7 @@ function Get-AdvancedStartupIconLocation
 	try
 	{
 		$downloadedIconPath = Join-Path $DownloadsPath 'troubleshoot.ico'
-		Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/files/troubleshoot.ico' `
+		Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/sdmanson8/Baseline/main/files/troubleshoot.ico' `
 			-OutFile $downloadedIconPath -UseBasicParsing -ErrorAction Stop
 		Move-Item -Path $downloadedIconPath -Destination $localIconPath -Force -ErrorAction Stop
 		LogInfo 'Downloaded Advanced Startup shortcut icon'
@@ -122,7 +122,7 @@ function Enable-AdvancedStartupWindowsRecoveryEnvironment
 
 function Get-AdvancedStartupCommandPath
 {
-	$commandDirectory = Join-Path $env:ProgramData 'Win10_11Util'
+	$commandDirectory = Join-Path $env:ProgramData 'Baseline'
 	if (-not (Test-Path -LiteralPath $commandDirectory))
 	{
 		New-Item -Path $commandDirectory -ItemType Directory -Force | Out-Null

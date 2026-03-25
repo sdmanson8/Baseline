@@ -1,4 +1,4 @@
-# Shared helper slice for Win10_11Util.
+# Shared helper slice for Baseline.
 
 function Remove-HandledErrorRecord
 {

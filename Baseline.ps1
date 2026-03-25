@@ -18,10 +18,10 @@
 	Click "Run Tweaks" to apply, or "Reset to Windows Defaults" to undo.
 
 	.EXAMPLE Run the GUI
-	.\Win10_11Util.ps1
+	.\Baseline.ps1
 
 	.EXAMPLE Run the script by specifying the module functions as an argument (headless)
-	.\Win10_11Util.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal"
+	.\Baseline.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal"
 
 	.NOTES
 	Supported Windows 10 versions
@@ -61,7 +61,7 @@ $Script:ModuleRootExists = Test-Path -LiteralPath $Script:ModuleRoot -PathType C
 $Script:RegionsRoot = Join-Path $Script:ModuleRoot 'Regions'
 
 $RequiredFiles = @(
-    (Join-Path (Join-Path $Script:RepoRoot 'Localizations') 'Win10_11Util.psd1')
+    (Join-Path (Join-Path $Script:RepoRoot 'Localizations') 'Baseline.psd1')
 )
 
 $RequiredFiles += if ($Script:ModuleRootExists)
@@ -76,8 +76,8 @@ $RequiredFiles += if ($Script:ModuleRootExists)
 		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'AdvancedStartup.Helpers.ps1')
 		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'Taskbar.Helpers.ps1')
 		(Join-Path (Join-Path $Script:ModuleRoot 'SharedHelpers') 'SystemMaintenance.Helpers.ps1')
-		(Join-Path $Script:ModuleRoot 'Win10_11Util.psm1')
-		(Join-Path $Script:ModuleRoot 'Win10_11Util.psd1')
+		(Join-Path $Script:ModuleRoot 'Baseline.psm1')
+		(Join-Path $Script:ModuleRoot 'Baseline.psd1')
 		(Join-Path $Script:RegionsRoot 'GUI.psm1')
 		(Join-Path $Script:ModuleRoot 'Logging.psm1')
 		(Join-Path $Script:ModuleRoot 'GUICommon.psm1')
@@ -124,7 +124,12 @@ if (-not $Script:ModuleRootExists -or $MissingRequired -or -not $RegionFiles) {
 Import-Module -Name (Join-Path $Script:ModuleRoot 'SharedHelpers.psm1') -Force -ErrorAction Stop
 $Script:BootstrapSplash = Show-BootstrapLoadingSplash
 $osName = (Get-OSInfo).OSName
-$Host.UI.RawUI.WindowTitle = "WinUtil Script for $osName"
+$Host.UI.RawUI.WindowTitle = "Baseline | Windows Utility for $osName"
+$displayVersion = Get-BaselineDisplayVersion
+if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
+{
+	$Host.UI.RawUI.WindowTitle = "$($Host.UI.RawUI.WindowTitle) $displayVersion"
+}
 
 function Get-ErrorDetailText
 {
@@ -157,25 +162,25 @@ if ($Script:BootstrapSplash -and $Script:BootstrapSplash.IsAlive)
 {
 	try {
 		$Script:BootstrapSplash.Dispatcher.Invoke([System.Action]{
-			$Script:BootstrapSplash.Window.Title = "WinUtil Script for $osName"
+			$Script:BootstrapSplash.Window.Title = $Host.UI.RawUI.WindowTitle
 		})
 	} catch { $null = $_ }
 }
 
-Remove-Module -Name Win10_11Util -Force -ErrorAction Ignore
+Remove-Module -Name Baseline -Force -ErrorAction Ignore
 try
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util -ErrorAction Stop
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $Script:RepoRoot\Localizations -FileName Baseline -ErrorAction Stop
 }
 catch
 {
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Win10_11Util
+	Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $Script:RepoRoot\Localizations -FileName Baseline
 }
 
 # Checking whether script is the correct PowerShell version
 try
 {
-	Import-Module -Name (Join-Path $Script:ModuleRoot 'Win10_11Util.psd1') -Force -ErrorAction Stop
+	Import-Module -Name (Join-Path $Script:ModuleRoot 'Baseline.psd1') -Force -ErrorAction Stop
 }
 catch [System.InvalidOperationException]
 {
@@ -234,15 +239,15 @@ catch
 	{
 		Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
 		[System.Windows.MessageBox]::Show(
-			"WinUtil failed to open the GUI.`n`n$startupErrorMessage`n`nLog file:`n$Global:LogFilePath",
-			'WinUtil Startup Error',
+			"Baseline failed to open the GUI.`n`n$startupErrorMessage`n`nLog file:`n$Global:LogFilePath",
+			'Baseline Startup Error',
 			[System.Windows.MessageBoxButton]::OK,
 			[System.Windows.MessageBoxImage]::Error
 		) | Out-Null
 	}
 	catch
 	{
-		Write-Warning "WinUtil failed to open the GUI. See the log file: $Global:LogFilePath"
+		Write-Warning "Baseline failed to open the GUI. See the log file: $Global:LogFilePath"
 	}
 
 	throw
@@ -302,15 +307,15 @@ catch
 	{
 		Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
 		[System.Windows.MessageBox]::Show(
-			"WinUtil failed while opening the GUI.`n`n$guiErrorMessage`n`nLog file:`n$Global:LogFilePath",
-			'WinUtil GUI Error',
+			"Baseline failed while opening the GUI.`n`n$guiErrorMessage`n`nLog file:`n$Global:LogFilePath",
+			'Baseline GUI Error',
 			[System.Windows.MessageBoxButton]::OK,
 			[System.Windows.MessageBoxImage]::Error
 		) | Out-Null
 	}
 	catch
 	{
-		Write-Warning "WinUtil failed while opening the GUI. See the log file: $Global:LogFilePath"
+		Write-Warning "Baseline failed while opening the GUI. See the log file: $Global:LogFilePath"
 	}
 
 	throw

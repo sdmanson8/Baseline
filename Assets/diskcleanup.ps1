@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Runs Windows disk cleanup tasks and writes progress to the Win10_11Util log.
+    Runs Windows disk cleanup tasks and writes progress to the Baseline log.
 
     .VERSION
 	2.0.0
@@ -18,14 +18,14 @@
     superseded component store files.
 
     .NOTES
-    This script is intended to be called by Win10_11Util. If no log path is
+    This script is intended to be called by Baseline. If no log path is
     provided, it falls back to a temporary log file.
 
     .EXAMPLE
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\diskcleanup.ps1
 #>
 
-# Import the shared logging module used by Win10_11Util child scripts.
+# Import the shared logging module used by Baseline child scripts.
 $script:RepoRoot = Split-Path -Path $PSScriptRoot -Parent
 $script:ModuleRoot = Join-Path $script:RepoRoot 'Module'
 

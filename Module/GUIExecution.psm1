@@ -48,11 +48,11 @@ function Start-GuiExecutionWorker
 
 			try
 			{
-				Import-LocalizedData -BindingVariable Global:Localization -UICulture $bgUICulture -BaseDirectory $bgLocDir -FileName Win10_11Util -ErrorAction Stop
+				Import-LocalizedData -BindingVariable Global:Localization -UICulture $bgUICulture -BaseDirectory $bgLocDir -FileName Baseline -ErrorAction Stop
 			}
 			catch
 			{
-				Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $bgLocDir -FileName Win10_11Util
+				Import-LocalizedData -BindingVariable Global:Localization -UICulture en-US -BaseDirectory $bgLocDir -FileName Baseline
 			}
 
 			Import-Module $bgLoaderPath -Force -Global -ErrorAction Stop

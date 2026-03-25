@@ -1727,7 +1727,7 @@ function UWPApps
 				Add-Type -AssemblyName System.Windows.Forms
 
 				# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-				Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "WinUtil Script for Windows"} | ForEach-Object -Process {
+				Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Windows Utility for Windows"} | ForEach-Object -Process {
 					# Show window, if minimized
 					[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
 

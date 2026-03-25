@@ -84,13 +84,13 @@ Windows 11
 ### Direct PowerShell launch
 
 ```powershell
-.\Win10_11Util.ps1
+.\Baseline.ps1
 ```
 
 ### Headless / noninteractive run
 
 ```powershell
-.\Win10_11Util.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", "UninstallUWPApps"
+.\Baseline.ps1 -Functions "DiagTrackService -Disable", "DiagnosticDataLevel -Minimal", "UninstallUWPApps"
 ```
 
 ### Interactive session / tab completion
@@ -102,7 +102,7 @@ Windows 11
 ## Remote bootstrap
 
 ```powershell
-iwr https://raw.githubusercontent.com/sdmanson8/Win10_11Util/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
+iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
 ```
 
 The bootstrap flow downloads the repository archive, extracts it to a temporary folder, and launches the standard entry point.
@@ -120,7 +120,7 @@ Baseline ships with four built-in presets:
 
 ```text
 run.cmd             Local launcher
-Win10_11Util.ps1    Main launcher and GUI/headless entry point
+Baseline.ps1    Main launcher and GUI/headless entry point
 Bootstrap/          Remote bootstrap script
 Completion/         Interactive session bootstrap and tab completion
 Tools/              Validation and maintenance scripts
