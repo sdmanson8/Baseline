@@ -1,14 +1,12 @@
-# Changelog
+# Full Change Log
 
 All notable user-visible changes to Baseline are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses [Semantic Versioning](https://semver.org/).
 
-> **Note:** Line counts, file sizes, and architecture references in historical entries reflect the state at the time of that release. The current architecture may differ — see ARCHITECTURE.md for the latest structure.
-
 ---
 
-## [3.0.0-beta] — 2026-04-06
+## 3.0.0-beta | 2026-04-06
 
 ### Added
 
@@ -152,7 +150,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
-## [2.0.0-beta] — 2026-03-29
+## 2.1.0-beta | 2026-03-25
 
 ### Added
 
@@ -202,3 +200,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Added shared object models reference (Module/GUI/MODELS.md) documenting 6 canonical object shapes
 - Added smoke-test script (Tools/Test-SmokeTest.ps1) for release validation
 - Added scenario expansion policy documentation in ScenarioMode.Helpers.ps1
+
+## 2.1.0-beta | 2026-03-21
+
+- Minor changes to the GUI
+
+## 1.0.0-beta | 2026-03-17
+
+- Initial Commit
