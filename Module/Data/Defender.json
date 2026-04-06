@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -31,7 +31,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows Security shows a warning if you are not signed in with a Microsoft account. Disabling hides this recurring notification.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Apps SmartScreen",
@@ -47,7 +49,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "SmartScreen checks downloaded files and apps against a cloud reputation database and warns you before running unknown executables. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Boot Recovery",
@@ -79,7 +83,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -96,7 +100,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Controls whether Windows automatically enters recovery mode after consecutive failed boot attempts. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Core Isolation Memory Integrity",
@@ -112,7 +118,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -129,7 +135,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Hypervisor-protected code integrity runs Windows kernel code in a virtualized environment to prevent kernel-level malware and rootkits. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Defender Application Guard",
@@ -145,7 +153,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -162,7 +170,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Opens Edge browser tabs in an isolated virtual machine to prevent malicious websites from accessing the host system or its files. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Defender Cloud",
@@ -178,7 +188,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -195,7 +205,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables Microsoft Defender's cloud-based protection for real-time threat lookups using Microsoft's global threat intelligence database. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Defender Exploit Guard Policy",
@@ -208,7 +220,7 @@
       "Description": "Configure additional Defender Exploit Guard policies",
       "Detail": "Applies additional Exploit Guard attack surface reduction rules via Windows Defender to block common malware techniques.",
       "Caution": true,
-      "CautionReason": "Advanced. Can block legitimate applications, Office automation, admin tooling, scripts, or line-of-business workflows.",
+      "CautionReason": "May break VPN or enterprise connectivity. Applies Exploit Guard attack surface reduction rules that can block legitimate applications, Office automation, admin scripts, PowerShell tooling, and line-of-business workflows.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -227,7 +239,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies additional Exploit Guard attack surface reduction rules via Windows Defender to block common malware techniques. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Defender Sandbox",
@@ -243,7 +257,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -259,7 +273,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Runs the Microsoft Defender antivirus engine inside an isolated sandbox process for extra protection. Adds a small performance overhead. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Defender Tray Icon",
@@ -275,7 +291,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -291,7 +307,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Windows Security (Defender) icon in the system tray. Hiding it does not disable Defender protection.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "DEP OptOut",
@@ -307,7 +325,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -323,7 +341,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets Data Execution Prevention to OptOut mode, enabling DEP protection for all processes except those you explicitly exclude. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Dismiss MS Account Offer",
@@ -339,7 +359,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -355,7 +375,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes the recurring prompt in Windows Security asking you to sign in with a Microsoft account for additional protection.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Dismiss SmartScreen Filter Offer",
@@ -371,7 +393,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -387,7 +409,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes the recurring prompt in Windows Security asking you to enable the SmartScreen reputation filter.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "DNS over HTTPS",
@@ -403,7 +427,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -421,7 +445,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Encrypts DNS lookups by sending them over HTTPS instead of plain UDP. Prevents your ISP or network from monitoring or tampering with DNS traffic. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Download File Blocking",
@@ -437,7 +463,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -453,7 +479,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether Windows Security marks downloaded files as potentially unsafe using the Zone.Identifier alternate data stream.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Event Viewer Custom View",
@@ -469,7 +497,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -485,7 +513,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Creates a custom view in Event Viewer filtered to show process creation events, making it easier to audit what programs have been launched.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "F8 Boot Menu",
@@ -501,7 +531,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -518,7 +548,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Enables the legacy F8 key boot menu that lets you select Safe Mode and other startup options during the Windows boot process.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Firewall",
@@ -534,7 +566,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -551,7 +583,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables or disables Windows Defender Firewall across all network profiles. Disabling leaves all inbound ports completely unfiltered. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Import Exploit Protection Policy",
@@ -564,7 +598,7 @@
       "Description": "Import the Exploit Protection policy",
       "Detail": "Downloads and imports a pre-built exploit mitigation policy file into Windows Defender Exploit Guard, applying custom process mitigations.",
       "Caution": true,
-      "CautionReason": "Advanced. Imports a downloaded mitigation policy that can change exploit protection behavior for applications across the system.",
+      "CautionReason": "May break VPN or enterprise connectivity. Imports a pre-built exploit mitigation policy that enforces DEP, ASLR, CFG, and other protections per-process. May cause application crashes or compatibility failures in apps that are not mitigation-aware.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -583,7 +617,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Downloads and imports a pre-built exploit mitigation policy file into Windows Defender Exploit Guard, applying custom process mitigations. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Local Security Authority Protection",
@@ -599,7 +635,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -615,7 +651,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Runs the Windows LSA process in protected mode to prevent credential theft by tools like Mimikatz. Recommended for all systems. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "LOLBin Firewall Rules",
@@ -628,7 +666,7 @@
       "Description": "Configure LOLBin outbound firewall block rules",
       "Detail": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads.",
       "Caution": true,
-      "CautionReason": "Advanced. Can break administrative scripts, installers, troubleshooting tools, or enterprise workflows that intentionally use these binaries.",
+      "CautionReason": "May break VPN or enterprise connectivity. Blocks outbound network access for LOLBins (certutil, mshta, wscript, cscript, etc.). May break administrative scripts, installers, certificate enrollment, troubleshooting tools, and enterprise deployment workflows that use these binaries.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -647,7 +685,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Network Protection",
@@ -663,7 +703,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -680,7 +720,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Microsoft Defender's network protection blocks connections to known malicious domains and IP addresses at the network level. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "PowerShell Module Logging",
@@ -696,7 +738,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -713,7 +755,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Logs every command run by PowerShell modules to the Windows event log. Useful for security auditing and investigating incidents.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "PowerShell Script Logging",
@@ -729,7 +773,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -746,7 +790,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Logs the full content of every PowerShell script block that executes to the Windows event log. Helps with post-incident investigations.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "PUA Detection",
@@ -762,7 +808,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -778,7 +824,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables Defender to detect and quarantine potentially unwanted applications such as adware, bundleware, and browser hijackers. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Save Zone Information",
@@ -794,7 +842,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -810,7 +858,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When you download a file from the internet, Windows tags it with a zone marker. Keeping this enabled allows security warnings when running downloaded files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Sharing Mapped Drives",
@@ -826,7 +876,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -842,7 +892,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows mapped network drives to be visible to elevated (administrator) processes as well as the current logged-in user. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Windows Firewall Logging",
@@ -858,7 +910,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -874,7 +926,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables logging of dropped and allowed connections to the Windows Firewall log file so you can audit network activity.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Sandbox",
@@ -890,7 +944,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -906,7 +960,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "A lightweight isolated virtual machine for safely running untrusted applications without risking your main system. Requires Windows Pro or higher.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Script Host",
@@ -922,7 +978,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -938,7 +994,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Controls whether Windows can run .vbs and .js script files. Disabling prevents these script types from executing when double-clicked. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     }
   ]
 }

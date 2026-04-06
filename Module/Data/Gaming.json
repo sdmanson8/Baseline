@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -32,7 +32,25 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Hardware-accelerated GPU scheduling lets the GPU manage its own video memory directly, potentially reducing input latency in games.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High",
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive",
+        "streaming"
+      ],
+      "GamingPreviewGroup": "Core Performance",
+      "GameModeDefault": true,
+      "GameModeDefaultByProfile": {
+        "Casual": true,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "GPUScheduling"
     },
     {
       "Name": "Xbox Game Bar",
@@ -48,7 +66,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -58,13 +76,32 @@
       "Risk": "Low",
       "Tags": [
         "gaming",
-        "uwp"
+        "uwp",
+        "overlay"
       ],
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The Xbox Game Bar is an in-game overlay (Win+G) for screenshots, video recording, and system performance monitoring.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium",
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive",
+        "streaming"
+      ],
+      "GamingPreviewGroup": "Xbox & Overlay",
+      "GameModeDefault": true,
+      "GameModeDefaultByProfile": {
+        "Casual": true,
+        "Competitive": false,
+        "Streaming": true,
+        "Troubleshooting": true
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "GameBar"
     },
     {
       "Name": "Xbox Game Bar Tips",
@@ -80,7 +117,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -90,13 +127,32 @@
       "Risk": "Low",
       "Tags": [
         "gaming",
-        "uwp"
+        "uwp",
+        "overlay"
       ],
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows onboarding tips and hints inside the Xbox Game Bar overlay. Disable if you are already familiar with Game Bar.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive",
+        "streaming"
+      ],
+      "GamingPreviewGroup": "Xbox & Overlay",
+      "GameModeDefault": false,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": true
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "GameBarTips"
     },
     {
       "Name": "Fullscreen Optimizations",
@@ -109,10 +165,10 @@
       "Description": "Fullscreen Optimizations",
       "Detail": "A Windows feature that optimizes games and apps running in fullscreen mode for better performance. Disabling can fix compatibility issues in some older games.",
       "Caution": true,
-      "CautionReason": "Disabling Fullscreen Optimizations may reduce gaming performance in some applications. Use only for troubleshooting.",
+      "CautionReason": "May affect gaming overlays or input latency. Disabling Fullscreen Optimizations removes DWM compositing from fullscreen apps, which may reduce performance in modern titles, break in-game overlays (Steam, Discord), and increase input latency in some configurations.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -122,14 +178,30 @@
       "Risk": "High",
       "Tags": [
         "gaming",
-        "performance",
-        "display"
+        "display",
+        "compatibility"
       ],
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "A Windows feature that optimizes games and apps running in fullscreen mode for better performance. Disabling can fix compatibility issues in some older games. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "WhyThisMatters": "A Windows feature that optimizes games and apps running in fullscreen mode for better performance. Disabling can fix compatibility issues in some older games.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High",
+      "ScenarioTags": [
+        "gaming",
+        "troubleshooting"
+      ],
+      "GamingPreviewGroup": "Compatibility & Troubleshooting",
+      "GameModeDefault": false,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": true,
+      "DecisionPromptKey": "FullscreenOptimizations"
     },
     {
       "Name": "Multiplane Overlay",
@@ -145,7 +217,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -154,15 +226,243 @@
       "WinDefaultDesc": "Multiplane Overlay is enabled",
       "Risk": "Low",
       "Tags": [
-        "performance",
+        "gaming",
         "gpu",
-        "display"
+        "display",
+        "compatibility"
       ],
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "A GPU compositing feature that can improve performance. Disabling can fix visual glitches or flickering in some display configurations.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High",
+      "ScenarioTags": [
+        "gaming",
+        "competitive",
+        "troubleshooting"
+      ],
+      "GamingPreviewGroup": "Compatibility & Troubleshooting",
+      "GameModeDefault": false,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": true
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "MultiplaneOverlay"
+    },
+    {
+      "Name": "Game DVR",
+      "Function": "GameDVR",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Game DVR background recording",
+      "Detail": "Background recording continuously captures gameplay so you can save the last few minutes after something happens. Disabling frees GPU and disk resources for better FPS consistency.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Gaming",
+      "WinDefaultDesc": "Game DVR background recording is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "gaming",
+        "performance",
+        "recording"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Background recording continuously captures gameplay so you can save the last few minutes after something happens. Disabling frees GPU and disk resources for better FPS consistency.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive"
+      ],
+      "GamingPreviewGroup": "Xbox & Overlay",
+      "GameModeDefault": true,
+      "GameModeDefaultByProfile": {
+        "Casual": true,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "GameDVR",
+      "ConflictsWith": [
+        {
+          "Function": "XboxGameBar",
+          "WhenThisIs": "Enable",
+          "AndTargetIs": "Disable",
+          "Resolution": "Game DVR requires Xbox Game Bar to be enabled. Enabling Game DVR while Xbox Game Bar is disabled may not work as expected."
+        }
+      ]
+    },
+    {
+      "Name": "Windows Game Mode",
+      "Function": "WindowsGameMode",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": true,
+      "Description": "Windows Game Mode",
+      "Detail": "This controls the built-in Windows Game Mode setting, not Baseline's Gaming profile workflow. Windows Game Mode prioritizes game processes and suppresses background activity. Some users disable it for streaming or recording stability where the priority changes can cause encoder drops.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Gaming",
+      "WinDefaultDesc": "Windows Game Mode is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "gaming",
+        "performance",
+        "system"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "This controls the built-in Windows Game Mode setting, not Baseline's Gaming profile workflow. Windows Game Mode prioritizes game processes and suppresses background activity. Some users disable it for streaming or recording stability where the priority changes can cause encoder drops.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive",
+        "streaming"
+      ],
+      "GamingPreviewGroup": "Core Performance",
+      "GameModeDefault": true,
+      "GameModeDefaultByProfile": {
+        "Casual": true,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": true
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "WindowsGameMode"
+    },
+    {
+      "Name": "Mouse Acceleration",
+      "Function": "MouseAcceleration",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Mouse acceleration (Enhance Pointer Precision)",
+      "Detail": "Enhance Pointer Precision scales mouse movement based on speed. Disabling gives a 1:1 raw input ratio preferred by competitive FPS players for consistent aim.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Gaming",
+      "WinDefaultDesc": "Mouse acceleration (Enhance Pointer Precision) is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "gaming",
+        "input",
+        "mouse",
+        "competitive"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Enhance Pointer Precision scales mouse movement based on speed. Disabling gives a 1:1 raw input ratio preferred by competitive FPS players for consistent aim.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "ScenarioTags": [
+        "gaming",
+        "competitive"
+      ],
+      "GamingPreviewGroup": "Advanced: Performance",
+      "GameModeDefault": true,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "MouseAcceleration"
+    },
+    {
+      "Name": "Network Latency Optimization",
+      "Function": "NaglesAlgorithm",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Reduces network buffering for lower latency. May affect connection stability.",
+      "Detail": "Disables TCP send coalescing (Nagle's Algorithm) so packets are sent immediately instead of being batched. Can lower network latency in competitive multiplayer games at the cost of slightly more network traffic. Affects all TCP connections, not just games. If you experience connection drops or instability after enabling, disable this tweak.",
+      "Caution": true,
+      "CautionReason": "Applies per-adapter registry values to all active physical network adapters. Affects all TCP traffic, not just games. May cause connection instability on some networks. Safe to undo.",
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Gaming",
+      "WinDefaultDesc": "TCP send coalescing is active (Nagle's Algorithm enabled)",
+      "Risk": "Medium",
+      "Tags": [
+        "gaming",
+        "network",
+        "latency",
+        "competitive",
+        "advanced"
+      ],
+      "Impact": "Medium",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Reduces network buffering so packets are sent immediately. Can lower latency in competitive multiplayer, but may affect connection stability on some networks. Disable if you notice connection drops.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium",
+      "ScenarioTags": [
+        "gaming",
+        "competitive"
+      ],
+      "GamingPreviewGroup": "Compatibility & Troubleshooting",
+      "GameModeDefault": false,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "NaglesAlgorithm"
     }
   ]
 }

@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -30,7 +30,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Creates a desktop shortcut that immediately reboots the PC into the Advanced Startup Options (Windows Recovery Environment) menu.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Silent App Installing",
@@ -46,7 +48,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows can silently install suggested apps in the background without asking you. Disabling stops this behavior. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Active Hours",
@@ -75,20 +79,20 @@
       ],
       "DisplayOptions": null,
       "Default": "Manually",
-      "WinDefault": "Manually",
+      "WinDefault": "Automatically",
       "Description": "Active hours adjustment",
       "Detail": "Defines the time range when Windows will not automatically restart your PC to finish installing updates.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "System",
-      "WinDefaultDesc": "Active hours adjusted manually",
+      "WinDefaultDesc": "Active hours adjusted automatically",
       "Risk": "Low",
       "Tags": [
         "updates",
@@ -98,7 +102,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Defines the time range when Windows will not automatically restart your PC to finish installing updates.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Admin Approval Mode (UAC)",
@@ -117,7 +123,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -133,7 +139,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls how User Account Control behaves when an app requests elevated privileges. Default prompts for consent, Never disables UAC prompts. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "AutoPlay",
@@ -149,7 +157,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -165,7 +173,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether Windows automatically opens a prompt or launches an app when you insert a USB drive or other removable media.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "BSoD Stop Error Code",
@@ -181,7 +191,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -197,7 +207,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows the specific error code on the blue screen of death instead of just the generic sad face emoji.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Caps Lock",
@@ -213,7 +225,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -229,7 +241,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether the Caps Lock key is enabled. Disabling remaps the Caps Lock key so pressing it does nothing.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Client for Microsoft Networks",
@@ -245,7 +259,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -261,7 +275,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "The Microsoft Networks client that allows this PC to access files and printers shared by other Windows computers on the network. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Current Network Profile",
@@ -280,7 +296,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -296,7 +312,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets the network profile for your currently active connection. Private enables network discovery and sharing, Public restricts it. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Default Input Method",
@@ -315,7 +333,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -331,7 +349,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets the default keyboard input method Windows uses. English forces the English layout regardless of other installed languages.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Default Terminal App",
@@ -353,7 +373,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -369,7 +389,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets which terminal application opens when you launch Command Prompt or PowerShell from within Windows.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Delivery Optimization",
@@ -385,7 +407,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -402,7 +424,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows can use your PC to share Windows Update download data with other PCs on your network or the internet. Disabling keeps your downloads private. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "F1 Help Lookup",
@@ -418,7 +442,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -434,7 +458,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Pressing F1 in File Explorer or on the desktop opens the Windows help website in your browser. Disabling prevents this browser launch.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "File and Printer Sharing (SMB Server)",
@@ -450,7 +476,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -467,7 +493,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables the SMB file server component that lets other computers on the network access shared folders and printers on this PC. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Get Latest Updates ASAP",
@@ -483,7 +511,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -499,7 +527,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enrolls this PC to receive Windows updates as soon as they are released rather than waiting for a gradual rollout. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Hibernation",
@@ -515,7 +545,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -531,7 +561,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Saves the entire contents of RAM to disk and powers the PC off completely. The hibernation file can use several gigabytes of disk space.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Home Groups",
@@ -547,7 +579,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -563,7 +595,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Home Groups was a Windows feature for sharing files between home PCs. It was removed in Windows 10 1803 but residual services may still be present.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Internet Connection Sharing",
@@ -579,7 +613,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -595,7 +629,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows this PC to share its internet connection with other devices, acting as a software hotspot. Enabling shows this option in network settings. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Latest .NET Runtime for All Apps",
@@ -611,7 +647,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -627,7 +663,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Forces 32-bit and 64-bit applications to use the newest installed .NET runtime version instead of the version they were originally built against.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "LLMNR Protocol",
@@ -643,7 +681,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -660,7 +698,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Link-Local Multicast Name Resolution resolves hostnames on local networks. It can be exploited in credential capture attacks and is best disabled. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "NCSI Probe",
@@ -676,7 +716,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -692,7 +732,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Network Connectivity Status Indicator checks connectivity by pinging Microsoft servers. Disabling may show incorrect network status icons. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "NetBIOS over TCP/IP",
@@ -708,7 +750,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -724,7 +766,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "NetBIOS is an older name resolution protocol used for Windows file sharing. Disabling on modern networks reduces unnecessary broadcast traffic. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Network Adapters Save Power",
@@ -740,7 +784,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -756,7 +800,25 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows Windows to put network adapters into a low-power state when idle. Disabling prevents brief reconnection delays after the adapter wakes up.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium",
+      "ScenarioTags": [
+        "gaming",
+        "troubleshooting",
+        "networking",
+        "performance"
+      ],
+      "GamingPreviewGroup": "Compatibility & Troubleshooting",
+      "GameModeDefault": false,
+      "GameModeDefaultByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": false
+      },
+      "TroubleshootingOnly": true,
+      "DecisionPromptKey": "NetworkAdaptersSavePower"
     },
     {
       "Name": "Network Devices Auto Install",
@@ -772,7 +834,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -788,7 +850,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Controls whether Windows automatically downloads and installs drivers for newly connected network devices.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Network Discovery",
@@ -804,7 +868,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -820,7 +884,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables this PC to find other devices on the local network and be visible to them. Required for browsing network shares in File Explorer. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "New App Prompt",
@@ -836,7 +902,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -851,7 +917,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When you try to open an unassociated file type, Windows shows a dialog asking how to open it. Disabling suppresses this prompt.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Num Lock at Startup",
@@ -867,7 +935,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -883,26 +951,33 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Controls whether the Num Lock key is automatically turned on when Windows starts. Enable to always start with the number pad active.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Power Plan",
       "Function": "PowerPlan",
       "Type": "Choice",
       "Options": [
+        "Balanced",
         "High",
-        "Balanced"
+        "Ultimate"
       ],
-      "DisplayOptions": null,
+      "DisplayOptions": [
+        "Balanced",
+        "High Performance",
+        "Ultimate Performance"
+      ],
       "Default": "High",
       "WinDefault": "Balanced",
       "Description": "Power plan selection",
-      "Detail": "Sets the Windows power plan. High Performance keeps the CPU at full speed at all times. Balanced scales performance based on load.",
+      "Detail": "Sets the Windows power plan. Balanced scales performance based on load. High Performance keeps the CPU at full speed. Ultimate Performance removes all power-saving throttling for maximum throughput. Ultimate Performance may not be available on all systems.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -917,8 +992,10 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Sets the Windows power plan. High Performance keeps the CPU at full speed at all times. Balanced scales performance based on load.",
-      "PresetTier": "Safe"
+      "WhyThisMatters": "Sets the Windows power plan. Balanced scales performance based on load. High Performance keeps the CPU at full speed. Ultimate Performance removes all power-saving throttling for maximum throughput. Ultimate Performance may not be available on all systems.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Prevent Edge Shortcut Creation",
@@ -934,7 +1011,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": {
@@ -957,7 +1034,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Stops Microsoft Edge from recreating its desktop shortcut after updates. Applies to all Edge release channels.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "QoS Packet Scheduler",
@@ -973,7 +1052,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -989,7 +1068,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The Quality of Service packet scheduler can prioritize certain types of network traffic. Required for some network QoS features to work correctly.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Recommended Troubleshooting",
@@ -1008,7 +1089,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -1024,7 +1105,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether Windows automatically runs troubleshooters when problems are detected. Default still asks for your permission before running.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Registry Backup",
@@ -1040,7 +1123,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1056,7 +1139,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables automatic periodic backup of the Windows registry hive files to the RegBack folder inside the Windows directory.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Reserved Storage",
@@ -1072,7 +1157,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1088,7 +1173,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows reserves several gigabytes of disk space for updates, temporary files, and caches. Disabling reclaims this reserved space after the next update. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Restart After Update",
@@ -1104,7 +1191,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1120,7 +1207,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Allows Windows to schedule a restart as soon as possible after completing an update installation.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Restart Required Notification",
@@ -1129,20 +1218,20 @@
       "Options": null,
       "DisplayOptions": null,
       "Default": false,
-      "WinDefault": false,
+      "WinDefault": true,
       "Description": "Notify when restart is required for updates",
       "Detail": "Shows a notification in the taskbar when a Windows Update has been installed and requires a restart to complete.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "System",
-      "WinDefaultDesc": "Restart required notification is hidden",
+      "WinDefaultDesc": "Restart required notification is shown",
       "Risk": "Low",
       "Tags": [
         "updates",
@@ -1152,7 +1241,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Shows a notification in the taskbar when a Windows Update has been installed and requires a restart to complete.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Save Restartable Apps",
@@ -1168,7 +1259,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1183,7 +1274,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Windows can save the state of open apps when you sign out and reopen them automatically after your next sign in.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Search App in Store for Unknown Ext.",
@@ -1199,7 +1292,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1214,7 +1307,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When you open a file with an unknown extension, Windows can suggest looking in the Microsoft Store. Disabling skips this suggestion.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "SMB 1.0 Protocol",
@@ -1230,7 +1325,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1247,7 +1342,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "SMBv1 is an outdated and vulnerable file sharing protocol known for EternalBlue exploits. Disable unless required for very old network devices. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Sticky Keys (5x Shift)",
@@ -1263,7 +1360,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1280,7 +1377,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Pressing Shift five times quickly triggers the Sticky Keys accessibility dialog. Disable to prevent this from interrupting your work.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Storage Sense",
@@ -1296,7 +1395,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1312,7 +1411,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Automatically frees up disk space on a schedule by deleting temporary files, old downloads, and Recycle Bin contents.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Unknown Networks Profile",
@@ -1331,7 +1432,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -1347,7 +1448,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets the default network profile applied to new or unrecognized network connections when they are first detected. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Updates for Other MS Products",
@@ -1363,7 +1466,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1379,7 +1482,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When enabled, Windows Update also checks for and installs updates for other installed Microsoft software alongside Windows updates.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Verbose Startup/Shutdown Messages",
@@ -1395,7 +1500,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1411,7 +1516,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Shows detailed status messages during Windows startup and shutdown instead of just the generic loading spinner.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Win32 Long Path Limit",
@@ -1427,7 +1534,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1443,7 +1550,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes the 260-character maximum file path limit for Win32 applications. Required for some development tools and complex folder structures.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Capabilities",
@@ -1456,13 +1565,13 @@
       "DisplayOptions": null,
       "Default": null,
       "WinDefault": "Install",
-      "Description": "Manage optional features via dialog",
-      "Detail": "Opens the optional features dialog to install or uninstall optional Windows capabilities like language packs or the RSAT tools.",
-      "Caution": false,
-      "CautionReason": null,
+      "Description": "Install or remove optional Windows capabilities via dialog",
+      "Detail": "Opens the optional features dialog to add or remove Windows capabilities such as language packs or RSAT tools. This is a package-style change rather than a simple toggle, and some installs can require downloads, source files, or restart follow-up.",
+      "Caution": true,
+      "CautionReason": "May require Store or winget to recover. Installing or removing Windows capabilities changes optional component packages. Recovery can require Windows Update access, source media, DISM, or a restart instead of a simple toggle reversal.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -1477,8 +1586,10 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Opens the optional features dialog to install or uninstall optional Windows capabilities like language packs or the RSAT tools. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "WhyThisMatters": "Opens the optional features dialog to add or remove Windows capabilities such as language packs or RSAT tools. Recovery may require Windows Update access, source files, or restart follow-up, so this should be treated as package management rather than a simple toggle.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Features",
@@ -1497,7 +1608,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -1513,7 +1624,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Opens the Turn Windows features on or off dialog to enable or disable optional Windows components like Hyper-V or Telnet. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Manage Default Printer",
@@ -1529,7 +1642,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1545,7 +1658,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Lets Windows automatically set your most recently used printer as the default. Disabling keeps your manually chosen default printer fixed.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

@@ -3,11 +3,12 @@
     Runs Windows disk cleanup tasks and writes progress to the Baseline log.
 
     .VERSION
-	2.0.0
+	3.0.0 (beta)
 
 	.DATE
-	17.03.2026 - initial version
+	17.03.2026 - initial beta version
 	21.03.2026 - Added GUI
+	06.04.2026 - Major changes to the GUI, and added more features
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026

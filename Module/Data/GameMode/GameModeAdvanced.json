@@ -1,0 +1,139 @@
+{
+  "Name": "GameModeAdvanced",
+  "Version": 1,
+  "Description": "Optional advanced Game Mode tweaks shown only in the advanced expander.",
+  "Entries": [
+    {
+      "Function": "FullscreenOptimizations",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Compatibility",
+      "Label": "Disable Fullscreen Optimizations",
+      "Description": "Troubleshooting-only. Can help with older games, odd fullscreen behavior, or alt-tab issues.",
+      "Risk": "High",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": true,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": true
+      }
+    },
+    {
+      "Function": "MultiplaneOverlay",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Compatibility",
+      "Label": "Disable Multiplane Overlay",
+      "Description": "May help with flicker, overlay glitches, or display composition issues.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": true
+      }
+    },
+    {
+      "Function": "NetworkAdaptersSavePower",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Performance",
+      "Label": "Disable network adapter power saving",
+      "Description": "Helps avoid aggressive network power-saving behavior during gaming sessions.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": true
+      }
+    },
+    {
+      "Function": "SleepTimeout",
+      "Type": "Choice",
+      "ApplyValue": "Disable",
+      "Category": "Session Behavior",
+      "Label": "Prevent sleep during long sessions",
+      "Description": "Useful for streaming, long downloads, and uninterrupted gaming sessions.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "XboxGameBar",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Overlay",
+      "Label": "Disable Xbox Game Bar",
+      "Description": "Turns off Win+G overlay, recording, and Game Bar features. Only disable if you know you do not need them.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "NaglesAlgorithm",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Performance",
+      "Label": "Network latency optimization (disable TCP coalescing)",
+      "Description": "Reduces network buffering for lower latency. May affect connection stability on some networks.",
+      "Risk": "Medium",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "WindowsGameMode",
+      "Type": "Toggle",
+      "ApplyValue": "Disable",
+      "Category": "Performance",
+      "Label": "Disable Windows Game Mode",
+      "Description": "Turn off Windows Game Mode process prioritization. Useful for streaming or recording stability.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": false,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": true,
+        "Troubleshooting": true
+      }
+    }
+  ]
+}

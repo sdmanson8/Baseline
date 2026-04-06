@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -31,7 +31,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds an Install option to the right-click context menu for .cab archive files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Compressed Folder in New Menu",
@@ -47,7 +49,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Compressed (zipped) Folder option in the right-click New submenu in File Explorer.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Edit with Clipchamp",
@@ -79,7 +83,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -95,7 +99,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Edit with Clipchamp video editor option in the right-click context menu for video files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Edit with Paint",
@@ -111,7 +117,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -127,7 +133,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Edit with Paint option in the right-click context menu for image files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Edit with Photos",
@@ -143,7 +151,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -159,7 +167,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Edit with Photos option in the right-click context menu for image files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "MSI Extract Context Menu",
@@ -175,7 +185,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -191,7 +201,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds an Extract option to the right-click context menu for .msi installer files, letting you browse their contents without running the installer.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Multiple Invoke Context Menu",
@@ -207,7 +219,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -223,7 +235,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When selecting 15 or more files and right-clicking, Windows normally shows a warning before displaying the context menu. This raises or removes that limit.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Open in Windows Terminal",
@@ -234,12 +248,12 @@
       "Default": true,
       "WinDefault": true,
       "Description": "'Open in Windows Terminal' context menu",
-      "Detail": null,
+      "Detail": "Shows or hides the 'Open in Windows Terminal' option in File Explorer background and folder context menus so you can open the current location directly in Windows Terminal.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -254,7 +268,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "'Open in Windows Terminal' context menu",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Print CMD Context Menu",
@@ -270,7 +286,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -286,7 +302,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Print option in the right-click context menu for .bat and .cmd script files.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Store in Open With Dialog",
@@ -302,7 +320,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -318,7 +336,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Look for an app in the Microsoft Store option that appears in the Open With dialog for unassociated file types.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Terminal as Admin Default",
@@ -329,12 +349,12 @@
       "Default": true,
       "WinDefault": false,
       "Description": "Open Windows Terminal as admin by default",
-      "Detail": null,
+      "Detail": "Controls whether the Windows Terminal context menu entry launches with elevation by default when you use the admin variant.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -349,7 +369,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Open Windows Terminal as admin by default",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

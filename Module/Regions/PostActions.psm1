@@ -18,6 +18,183 @@ function PostActions
 {
 	Write-ConsoleStatus -Action "Performing post actions"
 	LogInfo "Performing post actions"
+
+	function Get-PostActionRequirement
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[string]$Name
+		)
+
+		if (-not ($Global:BaselinePostActionRequirements -is [hashtable]))
+		{
+			return $false
+		}
+
+		if (-not $Global:BaselinePostActionRequirements.ContainsKey($Name))
+		{
+			return $false
+		}
+
+		return [bool]$Global:BaselinePostActionRequirements[$Name]
+	}
+
+	function Invoke-PostActionStep
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[string]$Action,
+
+			[Parameter(Mandatory = $true)]
+			[scriptblock]$ScriptBlock,
+
+			[switch]$ContinueOnFailure
+		)
+
+		Write-ConsoleStatus -Action $Action
+		LogInfo $Action
+
+		try
+		{
+			& $ScriptBlock
+			Write-ConsoleStatus -Status success
+		}
+		catch
+		{
+			if ($ContinueOnFailure)
+			{
+				Remove-HandledErrorRecord -ErrorRecord $_
+				LogWarning "$Action was skipped: $($_.Exception.Message)"
+				Write-ConsoleStatus -Status warning
+				return
+			}
+
+			Write-ConsoleStatus -Status failed
+			throw
+		}
+	}
+
+	function Invoke-PostActionProcess
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[string]$FilePath,
+
+			[string[]]$ArgumentList,
+
+			[Parameter(Mandatory = $true)]
+			[string]$Description,
+
+			[int]$TimeoutSeconds = 120,
+
+			[string]$StandardOutputPath,
+
+			[string]$StandardErrorPath
+		)
+
+		$processSplat = @{
+			FilePath    = $FilePath
+			WindowStyle = 'Hidden'
+			PassThru    = $true
+			ErrorAction = 'Stop'
+		}
+
+		if ($ArgumentList)
+		{
+			$processSplat['ArgumentList'] = $ArgumentList
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($StandardOutputPath))
+		{
+			$processSplat['RedirectStandardOutput'] = $StandardOutputPath
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($StandardErrorPath))
+		{
+			$processSplat['RedirectStandardError'] = $StandardErrorPath
+		}
+
+		$process = Start-Process @processSplat
+		try
+		{
+			if (-not $process.WaitForExit($TimeoutSeconds * 1000))
+			{
+				try
+				{
+					Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue | Out-Null
+				}
+				catch
+				{
+					# Ignore cleanup failures after a timeout.
+				}
+
+				throw "$Description timed out after $TimeoutSeconds seconds"
+			}
+
+			$process.Refresh()
+			$exitCode = try { $process.ExitCode } catch { $null }
+			if ($null -ne $exitCode -and $exitCode -ne 0)
+			{
+				throw "$Description returned exit code $exitCode"
+			}
+		}
+		finally
+		{
+			try
+			{
+				$process.Dispose()
+			}
+			catch
+			{
+				# Ignore process disposal failures.
+			}
+		}
+	}
+
+	function Invoke-PostActionPowerShellProcess
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[string]$Description,
+
+			[Parameter(Mandatory = $true)]
+			[string]$ScriptContent,
+
+			[int]$TimeoutSeconds = 120
+		)
+
+		$processToken = [guid]::NewGuid().ToString('N')
+		$standardOutputPath = Join-Path $env:TEMP "Baseline-$processToken-postaction.stdout.txt"
+		$standardErrorPath = Join-Path $env:TEMP "Baseline-$processToken-postaction.stderr.txt"
+		$powershellProcessPath = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+		$encodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($ScriptContent))
+
+		try
+		{
+			Invoke-PostActionProcess -FilePath $powershellProcessPath `
+				-ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', $encodedCommand) `
+				-Description $Description `
+				-TimeoutSeconds $TimeoutSeconds `
+				-StandardOutputPath $standardOutputPath `
+				-StandardErrorPath $standardErrorPath
+
+			if (Test-Path -LiteralPath $standardOutputPath)
+			{
+				return [string](Get-Content -LiteralPath $standardOutputPath -Raw -ErrorAction SilentlyContinue)
+			}
+
+			return $null
+		}
+		finally
+		{
+			Remove-Item -LiteralPath $standardOutputPath, $standardErrorPath -Force -ErrorAction Ignore | Out-Null
+		}
+	}
+
 	try
 	{
 	#region Refresh Environment
@@ -88,41 +265,38 @@ public static void PostMessage()
 	# Apply policies found in registry to re-build database database because gpedit.msc relies in its own database
 	if ((Test-Path -Path "$env:TEMP\Computer.txt") -or (Test-Path -Path "$env:TEMP\User.txt"))
 	{
-		if (Test-Path -Path "$env:TEMP\Computer.txt") {
-    		$ComputerLgpoProcess = Start-Process -FilePath "$PSScriptRoot\..\Binaries\LGPO.exe" `
-                  -ArgumentList "/t `"$env:TEMP\Computer.txt`"" `
-                  -WindowStyle Hidden `
-                  -Wait `
-                  -PassThru `
-                  -ErrorAction Stop `
-                  -RedirectStandardOutput "$env:TEMP\LGPOOutput.txt" `
-                  -RedirectStandardError "$env:TEMP\LGPOError.txt"
-			if ($ComputerLgpoProcess.ExitCode -ne 0)
-			{
-				throw "LGPO.exe returned exit code $($ComputerLgpoProcess.ExitCode) while importing Computer.txt"
-			}
-		}
+		Invoke-PostActionStep -Action "Applying Local Group Policy updates" -ScriptBlock {
+			$lgpoPath = Join-Path $PSScriptRoot '..\Binaries\LGPO.exe'
 
-		if (Test-Path -Path "$env:TEMP\User.txt") {
-    		$UserLgpoProcess = Start-Process -FilePath "$PSScriptRoot\..\Binaries\LGPO.exe" `
-                  -ArgumentList "/t `"$env:TEMP\User.txt`"" `
-                  -WindowStyle Hidden `
-                  -Wait `
-                  -PassThru `
-                  -ErrorAction Stop `
-                  -RedirectStandardOutput "$env:TEMP\LGPOOutput.txt" `
-                  -RedirectStandardError "$env:TEMP\LGPOError.txt"
-			if ($UserLgpoProcess.ExitCode -ne 0)
+			if (Test-Path -Path "$env:TEMP\Computer.txt")
 			{
-				throw "LGPO.exe returned exit code $($UserLgpoProcess.ExitCode) while importing User.txt"
+				LogInfo "Importing Local Group Policy computer settings"
+				Invoke-PostActionProcess -FilePath $lgpoPath `
+					-ArgumentList @('/t', "$env:TEMP\Computer.txt") `
+					-Description 'LGPO import for Computer.txt' `
+					-TimeoutSeconds 120 `
+					-StandardOutputPath "$env:TEMP\LGPOOutput.txt" `
+					-StandardErrorPath "$env:TEMP\LGPOError.txt"
 			}
-		}
 
-	# Run gpupdate silently
-	cmd /c "gpupdate /force > NUL 2>&1" 2>$null | Out-Null
-		if ($LASTEXITCODE -ne 0)
-		{
-			throw "gpupdate returned exit code $LASTEXITCODE"
+			if (Test-Path -Path "$env:TEMP\User.txt")
+			{
+				LogInfo "Importing Local Group Policy user settings"
+				Invoke-PostActionProcess -FilePath $lgpoPath `
+					-ArgumentList @('/t', "$env:TEMP\User.txt") `
+					-Description 'LGPO import for User.txt' `
+					-TimeoutSeconds 120 `
+					-StandardOutputPath "$env:TEMP\LGPOOutput.txt" `
+					-StandardErrorPath "$env:TEMP\LGPOError.txt"
+			}
+
+			LogInfo $Localization.GPOUpdate
+			Invoke-PostActionProcess -FilePath (Join-Path $env:WINDIR 'System32\gpupdate.exe') `
+				-ArgumentList @('/force') `
+				-Description 'gpupdate /force' `
+				-TimeoutSeconds 180 `
+				-StandardOutputPath "$env:TEMP\gpupdate-output.txt" `
+				-StandardErrorPath "$env:TEMP\gpupdate-error.txt"
 		}
 	}
 
@@ -130,23 +304,25 @@ public static void PostMessage()
 	# https://github.com/PowerShell/PowerShell/issues/21070
 	Get-ChildItem -Path "$env:TEMP\Computer.txt", "$env:TEMP\User.txt" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue | Out-Null
 
-	# Kill all explorer instances in case "launch folder windows in a separate process" enabled
-	Get-Process -Name explorer | Stop-Process -Force -ErrorAction SilentlyContinue | Out-Null
-	Start-Sleep -Seconds 3
+	Invoke-PostActionStep -Action "Restarting Explorer shell" -ScriptBlock {
+		# Kill all explorer instances in case "launch folder windows in a separate process" enabled
+		Get-Process -Name explorer -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue | Out-Null
+		Start-Sleep -Seconds 3
 
-	# Restoring closed folders
-	if (Get-Variable -Name OpenedFolder -ErrorAction Ignore)
-	{
-		foreach ($Script:OpenedFolder in $Script:OpenedFolders)
+		# Restoring closed folders
+		if (Get-Variable -Name OpenedFolders -ErrorAction Ignore)
 		{
-			if (Test-Path -Path $Script:OpenedFolder)
+			foreach ($Script:OpenedFolder in $Script:OpenedFolders)
 			{
-				Start-Process -FilePath explorer -ArgumentList $Script:OpenedFolder | Out-Null
+				if (Test-Path -Path $Script:OpenedFolder)
+				{
+					Start-Process -FilePath explorer -ArgumentList $Script:OpenedFolder | Out-Null
+				}
 			}
 		}
 	}
 
-	# Open Startup page — wait for the explorer shell to be fully running after the
+	# Open Startup page - wait for the explorer shell to be fully running after the
 	# restart above, then use cmd /c start which correctly dispatches ms-settings:
 	# URIs from an elevated process without triggering the file-system error dialog.
 	try
@@ -167,7 +343,10 @@ public static void PostMessage()
 			cmd /c "start ms-settings:startupapps" 2>$null | Out-Null
 		}
 	}
-	catch { }
+	catch
+	{
+		LogWarning "Failed to open the Startup apps settings page after post actions: $($_.Exception.Message)"
+	}
 
 <#
 	# Checking whether any of scheduled tasks were created. Unless open Task Scheduler
@@ -213,51 +392,84 @@ public static void PostMessage()
 	Pause
 #>
 
-	# Restore guest SMB access and the Print Management console expected by this preset.
-	New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" `
-                 -Name "AllowInsecureGuestAuth" `
-                 -PropertyType DWord `
-                 -Value 1 `
-                 -Force `
-                 -ErrorAction SilentlyContinue | Out-Null
+	if (Get-PostActionRequirement -Name 'EnsureSmbGuestAuth')
+	{
+		Invoke-PostActionStep -Action "Restoring guest SMB access" -ScriptBlock {
+			New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" `
+				-Name "AllowInsecureGuestAuth" `
+				-PropertyType DWord `
+				-Value 1 `
+				-Force `
+				-ErrorAction SilentlyContinue | Out-Null
+		}
+	}
 
-		# Reinstall Print Management Console only when the capability exists on this machine.
-		$PrintManagementCapability = $null
-		$PrintManagementLookupFailed = $false
-		try
-		{
-			$PrintManagementCapability = Get-WindowsCapability -Online -Name "Print.Management.Console*" -ErrorAction Stop |
-				Select-Object -First 1
-		}
-		catch
-		{
-			$PrintManagementLookupFailed = $true
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogInfo "Print Management Console capability lookup is not available on this machine. Skipping reinstall."
-		}
-		if ($PrintManagementCapability)
-		{
-			if ($PrintManagementCapability.State -ne "Installed")
+	if (Get-PostActionRequirement -Name 'EnsurePrintManagementConsole')
+	{
+		Invoke-PostActionStep -Action "Ensuring Print Management Console is installed" -ContinueOnFailure -ScriptBlock {
+			$PrintManagementCapability = $null
+			$capabilityJson = Invoke-PostActionPowerShellProcess -Description 'Print Management Console capability lookup' `
+				-ScriptContent @'
+$ProgressPreference = 'SilentlyContinue'
+$Capability = Get-WindowsCapability -Online -Name 'Print.Management.Console*' -ErrorAction Stop |
+	Select-Object -First 1
+
+if ($Capability)
+{
+	[PSCustomObject]@{
+		Name = [string]$Capability.Name
+		State = [string]$Capability.State
+	} | ConvertTo-Json -Compress
+}
+'@ `
+				-TimeoutSeconds 90
+
+			if (-not [string]::IsNullOrWhiteSpace($capabilityJson))
 			{
-				Invoke-SilencedProgress {
-					Add-WindowsCapability -Online -Name $PrintManagementCapability.Name -ErrorAction Stop | Out-Null
+				$PrintManagementCapability = $capabilityJson | ConvertFrom-Json
+			}
+
+			if ($PrintManagementCapability)
+			{
+				if ([string]$PrintManagementCapability.State -ne 'Installed')
+				{
+					LogInfo "Installing Print Management Console capability: $($PrintManagementCapability.Name)"
+					$installScript = @"
+`$ProgressPreference = 'SilentlyContinue'
+Add-WindowsCapability -Online -Name '$($PrintManagementCapability.Name)' -ErrorAction Stop | Out-Null
+"@
+					$null = Invoke-PostActionPowerShellProcess -Description 'Print Management Console install' `
+						-ScriptContent $installScript `
+						-TimeoutSeconds 300
+				}
+				else
+				{
+					LogInfo "Print Management Console is already installed."
 				}
 			}
 			else
 			{
-				LogInfo "Print Management Console is already installed."
+				LogInfo "Print Management Console capability is not available on this machine. Skipping reinstall."
 			}
 		}
-		elseif (-not $PrintManagementLookupFailed)
-		{
-			LogInfo "Print Management Console capability is not available on this machine. Skipping reinstall."
-		}
-		Write-ConsoleStatus -Status success
+	}
+
+		Write-ConsoleStatus -Action "Performing post actions" -Status success
 	}
 	catch
 	{
 		LogError "Post actions failed: $($_.Exception.Message)"
-		Write-ConsoleStatus -Status failed
+		Write-ConsoleStatus -Action "Performing post actions" -Status failed
+	}
+	finally
+	{
+		if ($Global:BaselinePostActionRequirements -is [hashtable])
+		{
+			$Global:BaselinePostActionRequirements['EnsurePrintManagementConsole'] = $false
+			$Global:BaselinePostActionRequirements['EnsureSmbGuestAuth'] = $false
+		}
 	}
 }
 #endregion Post Actions
+
+Export-ModuleMember -Function '*'

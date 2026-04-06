@@ -207,7 +207,7 @@ function EditWithClipchampContext
 
 	if (-not (Get-AppxPackage -Name Clipchamp.Clipchamp -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -241,10 +241,7 @@ function EditWithClipchampContext
 			LogInfo "Showing 'Edit with Clipchamp' item in the media files context menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{8AB635F8-9A67-4698-AB99-784AD929F3B4}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{8AB635F8-9A67-4698-AB99-784AD929F3B4}" -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{8AB635F8-9A67-4698-AB99-784AD929F3B4}" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -296,7 +293,7 @@ function EditWithPaintContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.Paint -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -330,10 +327,7 @@ function EditWithPaintContext
 			LogInfo "Showing 'Edit with Paint' item in the media files context menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{2430F218-B743-4FD6-97BF-5C76541B4AE9}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{2430F218-B743-4FD6-97BF-5C76541B4AE9}" -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{2430F218-B743-4FD6-97BF-5C76541B4AE9}" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -385,7 +379,7 @@ function EditWithPhotosContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.Windows.Photos -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -419,10 +413,7 @@ function EditWithPhotosContext
 			LogInfo "Showing 'Edit with Photos' item in the media files context menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{BFE0E2A4-C70C-4AD7-AC3D-10D1ECEBB5B4}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{BFE0E2A4-C70C-4AD7-AC3D-10D1ECEBB5B4}" -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{BFE0E2A4-C70C-4AD7-AC3D-10D1ECEBB5B4}" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -578,10 +569,7 @@ function MultipleInvokeContext
 			LogInfo "Disabling 'Open', 'Print', and 'Edit' items if more than 15 files selected"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer -Name MultipleInvokePromptMinimum -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer -Name MultipleInvokePromptMinimum -Force -ErrorAction Stop
-				}
+				Remove-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'MultipleInvokePromptMinimum' | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -633,7 +621,7 @@ function OpenWindowsTerminalContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
 
@@ -647,10 +635,7 @@ function OpenWindowsTerminalContext
 			LogInfo "Showing 'Open in Windows Terminal' item in the folders context menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -743,14 +728,8 @@ function PrintCMDContext
 			LogInfo "Showing 'Print' item in the .bat and .cmd context menu"
 			try
 			{
-				if (Get-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\batfile\shell\print -Name ProgrammaticAccessOnly -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\batfile\shell\print -Name ProgrammaticAccessOnly -Force -ErrorAction Stop | Out-Null
-				}
-				if (Get-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\cmdfile\shell\print -Name ProgrammaticAccessOnly -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\cmdfile\shell\print -Name ProgrammaticAccessOnly -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path 'Registry::HKEY_CLASSES_ROOT\batfile\shell\print' -Name 'ProgrammaticAccessOnly' | Out-Null
+				Remove-RegistryValueSafe -Path 'Registry::HKEY_CLASSES_ROOT\cmdfile\shell\print' -Name 'ProgrammaticAccessOnly' | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -832,10 +811,7 @@ function UseStoreOpenWith
 			LogInfo "Showing 'Look for an app in the Microsoft Store' item in the 'Open with' dialog"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name NoUseStoreOpenWith -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name NoUseStoreOpenWith -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'NoUseStoreOpenWith' | Out-Null
 				Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name NoUseStoreOpenWith -Type CLEAR | Out-Null
 				Write-ConsoleStatus -Status success
 			}
@@ -888,7 +864,7 @@ function OpenWindowsTerminalAdminContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -906,11 +882,10 @@ function OpenWindowsTerminalAdminContext
 	}
 	catch [System.ArgumentException]
 	{
-		LogWarning (($Global:Error.Exception.Message | Select-Object -First 1))
-		LogError (($Global:Error.Exception.Message | Select-Object -First 1))
+		LogError $_.Exception.Message
 
 		Invoke-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -923,14 +898,8 @@ function OpenWindowsTerminalAdminContext
 			LogInfo "Enabling opening Windows Terminal in context menu as administrator by default"
 			try
 			{
-				if (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -ErrorAction Stop | Out-Null
-				}
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" | Out-Null
+				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" | Out-Null
 				if ($Terminal.profiles.defaults.elevate)
 				{
 					$Terminal.profiles.defaults.elevate = $true
@@ -985,3 +954,5 @@ function OpenWindowsTerminalAdminContext
 }
 
 #endregion Context menu
+
+Export-ModuleMember -Function '*'

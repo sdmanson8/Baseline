@@ -19,7 +19,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -34,7 +34,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Cursor theme selection",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

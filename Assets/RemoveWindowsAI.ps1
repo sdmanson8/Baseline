@@ -1,13 +1,14 @@
-<#
+﻿<#
     .SYNOPSIS
     Disables and removes Windows AI features such as Copilot, Recall, and related packages.
 
     .VERSION
-	2.0.0
+	3.0.0 (beta)
 
 	.DATE
-	17.03.2026 - initial version
+	17.03.2026 - initial beta version
 	21.03.2026 - Added GUI
+	06.04.2026 - Major changes to the GUI, and added more features
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -25,18 +26,23 @@
     deletion. Some actions use elevated or TrustedInstaller-level operations.
 
     .EXAMPLE
+    # ExecutionPolicy Bypass: required for direct invocation when the system execution policy blocks unsigned scripts
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1
 
     .EXAMPLE
+    # ExecutionPolicy Bypass: required for direct invocation when the system execution policy blocks unsigned scripts
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -revertMode
-    
+
     .EXAMPLE
+    # ExecutionPolicy Bypass: required for non-interactive/headless invocation where no user is present to adjust policy
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -AllOptions
 
     .EXAMPLE
+    # ExecutionPolicy Bypass: required for non-interactive/headless invocation where no user is present to adjust policy
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -AllOptions -backupMode
 
     .EXAMPLE
+    # ExecutionPolicy Bypass: required for non-interactive/headless invocation with selective options
     powershell.exe -ExecutionPolicy Bypass -File .\Assets\RemoveWindowsAI.ps1 -nonInteractive -Options RemoveAIFiles,RemoveRecallTasks
 #>
 
@@ -66,8 +72,6 @@ if ($nonInteractive) {
         exit
     }
 }
-
-$Host.UI.RawUI.WindowTitle = "Remove Windows AI - Baseline"
 
 # Resolve the local files this script depends on before any removal work begins.
 $LocalizationRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Localizations"))
@@ -106,19 +110,12 @@ if (($ScriptFiles | Test-Path) -contains $false)
 	exit
 }
 
-# Load localized strings and the root module used by the script.
-Import-LocalizedData -BindingVariable Global:Localization -UICulture "en-US" -FileName "Baseline.psd1" -BaseDirectory $LocalizationRoot
+# Load JSON localization helper and localized strings.
+. (Join-Path $ModuleRoot 'SharedHelpers\Localization.Helpers.ps1')
+$Global:Localization = Import-BaselineLocalization -BaseDirectory $LocalizationRoot -UICulture $PSUICulture
 Import-Module -Name $ManifestPath -ErrorAction Stop
 
 Remove-Module -Name Baseline -Force -ErrorAction Ignore
-try
-{
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName Baseline -ErrorAction Stop
-}
-catch
-{
-	Import-LocalizedData -BindingVariable Global:Localization -UICulture $PSUICulture -BaseDirectory $LocalizationRoot -FileName "Baseline"
-}
 
 # Validate that the module can be loaded by the current PowerShell runtime.
 try
@@ -132,6 +129,15 @@ catch [System.InvalidOperationException]
 }
 
 Import-Module -Name $HelpersModulePath -Force
+
+try {
+    if ($Host -and $Host.UI -and $Host.UI.RawUI -and -not $Global:GUIMode) {
+        $Host.UI.RawUI.WindowTitle = "Remove Windows AI - Baseline"
+    }
+}
+catch {
+    # Silently skip — background runspaces do not support WindowTitle
+}
 
 # Track whether the host is Windows PowerShell 5.1 or PowerShell 7+.
 $version = $PSVersionTable.PSVersion
@@ -167,6 +173,7 @@ $RemoteRemoveWindowsAIPackageBaseUrl = 'https://raw.githubusercontent.com/sdmans
 # Relaunch as administrator before making system changes.
 If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]'Administrator')) {
     #leave out the trailing " to add supplied params first 
+    # ExecutionPolicy Bypass: required for child process elevation — the relaunched admin process must bypass policy to execute the remote script
     $arglist = "-NoProfile -ExecutionPolicy Bypass -C `"& ([scriptblock]::Create((irm '$RemoteRemoveWindowsAIScriptUrl')))"
     #pass the correct params if supplied
     if ($nonInteractive) {
@@ -1447,7 +1454,7 @@ function Install-NOAIPackage {
                 $ProgressPreference = 'SilentlyContinue'
                 $packageDownloadUrl = "$RemoteRemoveWindowsAIPackageBaseUrl/$arch/SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab"
                 try {
-                    Invoke-WebRequest -Uri $packageDownloadUrl -OutFile "$($tempDir)SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" -UseBasicParsing -ErrorAction Stop | Out-Null
+                    Invoke-WebRequest -Uri $packageDownloadUrl -OutFile "$($tempDir)SdManson8RemoveWindowsAI-$($arch)1.0.0.0.cab" -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
                 }
                 catch {
                     LogError "Unable to Download Package at: $packageDownloadUrl" 
@@ -1634,6 +1641,82 @@ function DownloadAppxPackage {
         'arm64' { 'arm64' }
         default { 'neutral' } # should never get here
     }
+
+    function Get-LatestAppxPackages {
+        param(
+            [string]$RawResponse,
+            [string]$Architecture
+        )
+
+        # hashtable of packages by $name
+        #  > values = hashtables of packages by $version
+        #    > values = arrays of packages as objects (containing: url, filename, name, version, arch, publisherId, type)
+        [Collections.Generic.Dictionary[string, Collections.Generic.Dictionary[string, array]]] $packageList = @{}
+
+        # populate $packageList
+        $patternUrlAndText = '<tr style.*<a href=\"(?<url>.*)"\s.*>(?<text>.*\.(app|msi)x.*)<\/a>'
+        $RawResponse | Select-String $patternUrlAndText -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object {
+            $url = ($_.Groups['url']).Value
+            $text = ($_.Groups['text']).Value
+            $textSplitUnderscore = $text.split('_')
+            $name = $textSplitUnderscore.split('_')[0]
+            $version = $textSplitUnderscore.split('_')[1]
+            $arch = ($textSplitUnderscore.split('_')[2]).ToLower()
+            $publisherId = ($textSplitUnderscore.split('_')[4]).split('.')[0]
+            $textSplitPeriod = $text.split('.')
+            $type = ($textSplitPeriod[$textSplitPeriod.length - 1]).ToLower()
+
+            # create $name hash key hashtable, if it doesn't already exist
+            if (!($packageList.keys -match ('^' + [Regex]::escape($name) + '$'))) {
+                $packageList["$name"] = @{}
+            }
+            # create $version hash key array, if it doesn't already exist
+            if (!(($packageList["$name"]).keys -match ('^' + [Regex]::escape($version) + '$'))) {
+                ($packageList["$name"])["$version"] = @()
+            }
+
+            # add package to the array in the hashtable
+            ($packageList["$name"])["$version"] += @{
+                url         = $url
+                filename    = $text
+                name        = $name
+                version     = $version
+                arch        = $arch
+                publisherId = $publisherId
+                type        = $type
+            }
+        }
+
+        # an array of packages as objects, meant to only contain one of each $name
+        $latestPackages = @()
+        # grabs the most updated package for $name and puts it into $latestPackages
+        $packageList.GetEnumerator() | ForEach-Object { ($_.value).GetEnumerator() | Select-Object -Last 1 } | ForEach-Object {
+            $packagesByType = $_.value
+            $msixbundle = ($packagesByType | Where-Object { $_.type -match '^msixbundle$' })
+            $appxbundle = ($packagesByType | Where-Object { $_.type -match '^appxbundle$' })
+            $msix = ($packagesByType | Where-Object { ($_.type -match '^msix$') -And ($_.arch -match ('^' + [Regex]::Escape($Architecture) + '$')) })
+            $appx = ($packagesByType | Where-Object { ($_.type -match '^appx$') -And ($_.arch -match ('^' + [Regex]::Escape($Architecture) + '$')) })
+            if ($msixbundle) { $latestPackages += $msixbundle }
+            elseif ($appxbundle) { $latestPackages += $appxbundle }
+            elseif ($msix) { $latestPackages += $msix }
+            elseif ($appx) { $latestPackages += $appx }
+        }
+
+        return @($latestPackages)
+    }
+
+    function Get-AppxPackageKey {
+        param(
+            [hashtable]$Package
+        )
+
+        @(
+            $Package.name
+            $Package.arch
+            $Package.publisherId
+            $Package.type
+        ) -join '|'
+    }
       
     if (Test-Path $outputDir -PathType Container) {
         New-Item -Path "$outputDir\$PackageFamilyName" -ItemType Directory -Force | Out-Null
@@ -1667,12 +1750,12 @@ function DownloadAppxPackage {
     if (-Not $apiWebSession) {
         $global:apiWebSession = $null
         $apiHostname = (($apiUrl.split('/'))[0..2]) -Join '/'
-        Invoke-WebRequest -Uri $apiHostname -UserAgent $UserAgent -SessionVariable $apiWebSession -UseBasicParsing 
+        Invoke-WebRequest -Uri $apiHostname -UserAgent $UserAgent -SessionVariable $apiWebSession -UseBasicParsing -TimeoutSec 15
     }
       
     $raw = $null
     try {
-        $raw = Invoke-RestMethod -Method Post -Uri $apiUrl -Headers $headers -Body $body -WebSession $apiWebSession
+        $raw = Invoke-RestMethod -Method Post -Uri $apiUrl -Headers $headers -Body $body -WebSession $apiWebSession -TimeoutSec 30
     }
     catch {
         $errorMsg = 'An error occurred: ' + $_
@@ -1680,103 +1763,99 @@ function DownloadAppxPackage {
         $errored = $true
         return $false
     }
-      
-    # hashtable of packages by $name
-    #  > values = hashtables of packages by $version
-    #    > values = arrays of packages as objects (containing: url, filename, name, version, arch, publisherId, type)
-    [Collections.Generic.Dictionary[string, Collections.Generic.Dictionary[string, array]]] $packageList = @{}
-    # populate $packageList
-    $patternUrlAndText = '<tr style.*<a href=\"(?<url>.*)"\s.*>(?<text>.*\.(app|msi)x.*)<\/a>'
-    $raw | Select-String $patternUrlAndText -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object {
-        $url = ($_.Groups['url']).Value
-        $text = ($_.Groups['text']).Value
-        $textSplitUnderscore = $text.split('_')
-        $name = $textSplitUnderscore.split('_')[0]
-        $version = $textSplitUnderscore.split('_')[1]
-        $arch = ($textSplitUnderscore.split('_')[2]).ToLower()
-        $publisherId = ($textSplitUnderscore.split('_')[4]).split('.')[0]
-        $textSplitPeriod = $text.split('.')
-        $type = ($textSplitPeriod[$textSplitPeriod.length - 1]).ToLower()
-      
-        # create $name hash key hashtable, if it doesn't already exist
-        if (!($packageList.keys -match ('^' + [Regex]::escape($name) + '$'))) {
-            $packageList["$name"] = @{}
-        }
-        # create $version hash key array, if it doesn't already exist
-        if (!(($packageList["$name"]).keys -match ('^' + [Regex]::escape($version) + '$'))) {
-            ($packageList["$name"])["$version"] = @()
-        }
-       
-        # add package to the array in the hashtable
-        ($packageList["$name"])["$version"] += @{
-            url         = $url
-            filename    = $text
-            name        = $name
-            version     = $version
-            arch        = $arch
-            publisherId = $publisherId
-            type        = $type
-        }
-    }
-      
-    # an array of packages as objects, meant to only contain one of each $name
-    $latestPackages = @()
-    # grabs the most updated package for $name and puts it into $latestPackages
-    $packageList.GetEnumerator() | ForEach-Object { ($_.value).GetEnumerator() | Select-Object -Last 1 } | ForEach-Object {
-        $packagesByType = $_.value
-        $msixbundle = ($packagesByType | Where-Object { $_.type -match '^msixbundle$' })
-        $appxbundle = ($packagesByType | Where-Object { $_.type -match '^appxbundle$' })
-        $msix = ($packagesByType | Where-Object { ($_.type -match '^msix$') -And ($_.arch -match ('^' + [Regex]::Escape($architecture) + '$')) })
-        $appx = ($packagesByType | Where-Object { ($_.type -match '^appx$') -And ($_.arch -match ('^' + [Regex]::Escape($architecture) + '$')) })
-        if ($msixbundle) { $latestPackages += $msixbundle }
-        elseif ($appxbundle) { $latestPackages += $appxbundle }
-        elseif ($msix) { $latestPackages += $msix }
-        elseif ($appx) { $latestPackages += $appx }
+
+    $latestPackages = Get-LatestAppxPackages -RawResponse $raw -Architecture $architecture
+    $latestPackageLookup = @{}
+    foreach ($latestPackage in $latestPackages) {
+        $latestPackageLookup[(Get-AppxPackageKey -Package $latestPackage)] = $latestPackage
     }
       
     # download packages
     foreach ($package in $latestPackages) {
-        $url = $package.url
-        $filename = $package.filename
-        # TODO: may need to include detection in the future of expired package download URLs - .. in the case that downloads take over 10 minutes to complete
-      
-        $downloadFile = Join-Path $downloadFolder $filename
-      
-        # If file already exists, ask to replace it
-        if (Test-Path $downloadFile) {
-            Write-Host "`"${filename}`" already exists at `"${downloadFile}`"."
-            $confirmation = ''
-            while (!(($confirmation -eq 'Y') -Or ($confirmation -eq 'N'))) {
-                $confirmation = Read-Host "`nWould you like to re-download and overwrite the file at `"${downloadFile}`" (Y/N)?"
-                $confirmation = $confirmation.ToUpper()
+        $currentPackage = $package
+        $packageKey = Get-AppxPackageKey -Package $package
+
+        for ($attempt = 0; $attempt -lt 2; $attempt++) {
+            $url = $currentPackage.url
+            $filename = $currentPackage.filename
+            $downloadFile = Join-Path $downloadFolder $filename
+
+            # If file already exists, ask to replace it.
+            if ($attempt -eq 0 -and (Test-Path $downloadFile)) {
+                if ($nonInteractive -or -not (Test-InteractiveHost)) {
+                    LogInfo "Package `"$filename`" already exists at `"$downloadFile`". Reusing the existing file because prompting is unavailable."
+                    $DownloadedFiles += $downloadFile
+                    break
+                }
+
+                Write-Host "`"${filename}`" already exists at `"${downloadFile}`"."
+                $confirmation = ''
+                while (!(($confirmation -eq 'Y') -Or ($confirmation -eq 'N'))) {
+                    $confirmation = Read-Host "`nWould you like to re-download and overwrite the file at `"${downloadFile}`" (Y/N)?"
+                    $confirmation = $confirmation.ToUpper()
+                }
+                if ($confirmation -eq 'Y') {
+                    Remove-Item -Path $downloadFile -Force
+                }
+                else {
+                    $DownloadedFiles += $downloadFile
+                    break
+                }
             }
-            if ($confirmation -eq 'Y') {
-                Remove-Item -Path $downloadFile -Force
+            elseif ($attempt -gt 0 -and (Test-Path $downloadFile)) {
+                Remove-Item -Path $downloadFile -Force -ErrorAction SilentlyContinue
             }
-            else {
-                $DownloadedFiles += $downloadFile
-            }
-        }
-      
-        if (!(Test-Path $downloadFile)) {
+
             # Write-Host "Attempting download of `"${filename}`" to `"${downloadFile}`" . . ."
-            $fileDownloaded = $null
+            $fileDownloaded = $false
+            $downloadError = $null
             $PreviousProgressPreference = $ProgressPreference
             $ProgressPreference = 'SilentlyContinue' # avoids slow download when using Invoke-WebRequest
             try {
-                Invoke-WebRequest -Uri $url -OutFile $downloadFile
-                $fileDownloaded = $?
+                Invoke-WebRequest -Uri $url -OutFile $downloadFile -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+                $fileDownloaded = $true
             }
             catch {
-                $ProgressPreference = $PreviousProgressPreference # return ProgressPreference back to normal
-                $errorMsg = 'An error occurred: ' + $_
-                LogError $errorMsg
-                $errored = $true
-                break
+                $downloadError = $_
+                if (Test-Path $downloadFile) {
+                    Remove-Item -Path $downloadFile -Force -ErrorAction SilentlyContinue
+                }
+                if ($attempt -eq 0) {
+                    LogWarning "Download attempt $($attempt + 1) for `"$filename`" failed. Refreshing package metadata and retrying."
+                }
             }
             $ProgressPreference = $PreviousProgressPreference # return ProgressPreference back to normal
-            if ($fileDownloaded) { $DownloadedFiles += $downloadFile }
-            else { $allFilesDownloaded = $false }
+            if ($fileDownloaded) {
+                $DownloadedFiles += $downloadFile
+                break
+            }
+
+            if ($attempt -eq 0) {
+                try {
+                    $raw = Invoke-RestMethod -Method Post -Uri $apiUrl -Headers $headers -Body $body -WebSession $apiWebSession -TimeoutSec 30
+                    $refreshedPackages = Get-LatestAppxPackages -RawResponse $raw -Architecture $architecture
+                    $latestPackageLookup = @{}
+                    foreach ($refreshedPackage in $refreshedPackages) {
+                        $latestPackageLookup[(Get-AppxPackageKey -Package $refreshedPackage)] = $refreshedPackage
+                    }
+                    if ($latestPackageLookup.ContainsKey($packageKey)) {
+                        $currentPackage = $latestPackageLookup[$packageKey]
+                        LogWarning "Refreshed download metadata for `"$filename`". Retrying with a fresh URL."
+                    }
+                    else {
+                        LogWarning "Unable to find a refreshed download URL for `"$filename`". Retrying with the existing URL."
+                    }
+                }
+                catch {
+                    LogWarning "Unable to refresh package metadata for `"$filename`". Retrying with the existing URL."
+                }
+                continue
+            }
+
+            $allFilesDownloaded = $false
+            LogError "An error occurred: $downloadError"
+            $errored = $true
+            break
         }
     }
       

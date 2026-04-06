@@ -10,12 +10,12 @@
       "Default": true,
       "WinDefault": false,
       "Description": "Time in Notification Center",
-      "Detail": null,
+      "Detail": "Shows or hides the clock in Notification Center so time remains visible when opening the notifications flyout.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -31,7 +31,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Time in Notification Center",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Seconds on Taskbar Clock",
@@ -42,12 +44,12 @@
       "Default": false,
       "WinDefault": false,
       "Description": "Seconds on the taskbar clock",
-      "Detail": null,
+      "Detail": "Shows or hides seconds in the taskbar clock for a more precise time display at the cost of a slightly busier clock readout.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Seconds on the taskbar clock",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

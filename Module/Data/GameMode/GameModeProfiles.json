@@ -1,0 +1,27 @@
+{
+  "Name": "GameModeProfiles",
+  "Version": 1,
+  "Description": "Game Mode profile definitions. Each profile provides a focused gaming plan with its own decision prompts and default selections.",
+  "Entries": [
+    {
+      "Name": "Casual",
+      "Label": "Casual Gaming",
+      "Summary": "Conservative gaming quality-of-life with Game Bar support and light tuning."
+    },
+    {
+      "Name": "Competitive",
+      "Label": "Competitive Gaming",
+      "Summary": "Low-latency focused picks with explicit overlay and compatibility decisions."
+    },
+    {
+      "Name": "Streaming",
+      "Label": "Streaming / Content",
+      "Summary": "Capture-friendly defaults that preserve overlays and streaming helpers."
+    },
+    {
+      "Name": "Troubleshooting",
+      "Label": "Troubleshooting",
+      "Summary": "Targeted compatibility prompts for stubborn games, overlays, or flicker issues."
+    }
+  ]
+}

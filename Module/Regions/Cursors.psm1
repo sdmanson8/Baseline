@@ -63,25 +63,23 @@ function Install-Cursors
 	if (-not $Default)
 	{
 		$DownloadsFolder = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name "{374DE290-123F-4565-9164-39C4925E467B}"
+		$cursorArchivePath = Join-Path $DownloadsFolder 'Windows11Cursors.zip'
 
 		try
 		{
-			# Download cursors
-			# The archive was saved in the "Cursors" folder using DeviantArt API via GitHub CI/CD
-			# https://github.com/farag2/Sophia-Script-for-Windows/tree/master/Cursors
-			# https://github.com/farag2/Sophia-Script-for-Windows/blob/master/.github/workflows/Cursors.yml
-			$Parameters = @{
-				Uri             = "https://raw.githubusercontent.com/farag2/Sophia-Script-for-Windows/refs/heads/master/Cursors/Windows11Cursors.zip"
-				OutFile         = "$DownloadsFolder\Windows11Cursors.zip"
-				UseBasicParsing = $true
-				#Verbose         = $true
-			}
-			Invoke-WebRequest @Parameters
+			# Download cursors from the curated upstream mirror, then verify the
+			# archive fingerprint before extraction.
+			Invoke-DownloadFile `
+				-Uri 'https://raw.githubusercontent.com/farag2/Sophia-Script-for-Windows/refs/heads/master/Cursors/Windows11Cursors.zip' `
+				-OutFile $cursorArchivePath
+			$null = Assert-FileHash `
+				-Path $cursorArchivePath `
+				-ExpectedSha256 '04C9A4797F02AB88FD5DF15A9377A32B3F66497F05CAF89460F3441968A7024C' `
+				-Label 'Windows 11 cursor archive'
 		}
-		catch [System.Net.WebException]
+		catch
 		{
-			LogError (($Localization.NoResponse -f "https://raw.githubusercontent.com"), ($Localization.RestartFunction -f $MyInvocation.Line.Trim()) -join " ")
-
+			LogError ("Failed to download or verify the Windows cursor archive: {0}" -f $_.Exception.Message)
 			return
 		}
 	}
@@ -100,7 +98,7 @@ function Install-Cursors
 				}
 
 				# Extract archive from "dark" folder only
-				& "$env:SystemRoot\System32\tar.exe" -xf "$DownloadsFolder\Windows11Cursors.zip" -C "$env:SystemRoot\Cursors\W11 Cursor Dark Free" --strip-components=1 dark/ | Out-Null
+				& "$env:SystemRoot\System32\tar.exe" -xf $cursorArchivePath -C "$env:SystemRoot\Cursors\W11 Cursor Dark Free" --strip-components=1 dark/ | Out-Null
 				if ($LASTEXITCODE -ne 0)
 				{
 					throw "tar.exe returned exit code $LASTEXITCODE"
@@ -153,7 +151,7 @@ function Install-Cursors
 
 				Start-Sleep -Seconds 1
 
-				Remove-Item -Path "$DownloadsFolder\Windows11Cursors.zip", "$env:SystemRoot\Cursors\W11 Cursor Dark Free\Install.inf" -Force -ErrorAction SilentlyContinue | Out-Null
+				Remove-Item -Path $cursorArchivePath, "$env:SystemRoot\Cursors\W11 Cursor Dark Free\Install.inf" -Force -ErrorAction SilentlyContinue | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -174,7 +172,7 @@ function Install-Cursors
 				}
 
 				# Extract archive from "light" folder only
-				& "$env:SystemRoot\System32\tar.exe" -xf "$DownloadsFolder\Windows11Cursors.zip" -C "$env:SystemRoot\Cursors\W11 Cursor Light Free" --strip-components=1 light/ | Out-Null
+				& "$env:SystemRoot\System32\tar.exe" -xf $cursorArchivePath -C "$env:SystemRoot\Cursors\W11 Cursor Light Free" --strip-components=1 light/ | Out-Null
 				if ($LASTEXITCODE -ne 0)
 				{
 					throw "tar.exe returned exit code $LASTEXITCODE"
@@ -227,7 +225,7 @@ function Install-Cursors
 
 				Start-Sleep -Seconds 1
 
-				Remove-Item -Path "$DownloadsFolder\Windows11Cursors.zip", "$env:SystemRoot\Cursors\W11 Cursor Light Free\Install.inf" -Force -ErrorAction SilentlyContinue | Out-Null
+				Remove-Item -Path $cursorArchivePath, "$env:SystemRoot\Cursors\W11 Cursor Light Free\Install.inf" -Force -ErrorAction SilentlyContinue | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -290,3 +288,5 @@ public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint
 }
 
 #endregion Cursors
+
+Export-ModuleMember -Function '*'

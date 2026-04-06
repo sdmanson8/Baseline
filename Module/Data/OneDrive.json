@@ -12,13 +12,13 @@
       "DisplayOptions": null,
       "Default": "Uninstall",
       "WinDefault": "Install",
-      "Description": "OneDrive installation state",
-      "Detail": "Installs or completely uninstalls the OneDrive cloud sync client. Uninstalling removes sync, breaks OneDrive shell integration and links, and requires a manual reinstall if you want it back.",
-      "Caution": false,
-      "CautionReason": null,
+      "Description": "Install or remove the OneDrive sync client",
+      "Detail": "Installs the OneDrive desktop sync client, or removes the app and its Explorer integration. Uninstall is not equivalent to toggling sync off: it removes the client, stops background sync, and can require rerunning setup and signing in again later.",
+      "Caution": true,
+      "CautionReason": "May affect licensing or cloud sync. Removing OneDrive uninstalls the sync client and shell integration, stopping all cloud file sync. Restoring requires rerunning OneDrive setup, signing back in, and waiting for a full resync of all files.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -33,8 +33,10 @@
       "Impact": "Low",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Installs or completely uninstalls the OneDrive cloud sync client. Uninstalling removes sync, breaks OneDrive links and shell integration, and requires a manual reinstall if you want it back.",
-      "PresetTier": "Balanced"
+      "WhyThisMatters": "Installs the OneDrive desktop sync client, or removes the app and its Explorer integration. Uninstall is a package removal workflow, not a simple toggle, and bringing it back may require rerunning setup, signing in again, and waiting for sync to recover.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     }
   ]
 }

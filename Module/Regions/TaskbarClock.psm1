@@ -150,3 +150,5 @@ function SecondsInSystemClock
 }
 
 #endregion Taskbar Clock
+
+Export-ModuleMember -Function '*'

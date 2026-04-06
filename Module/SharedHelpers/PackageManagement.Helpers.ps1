@@ -2,13 +2,35 @@
 
 function Update-ProcessPathFromRegistry
 {
+	<# .SYNOPSIS Refreshes $env:Path from machine and user registry environment variables. #>
 	$MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
 	$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 	$env:Path = (@($MachinePath, $UserPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ";"
 }
 
+function Write-PackageHelperWarning
+{
+	<# .SYNOPSIS Writes a warning via LogWarning or Write-Warning fallback. #>
+	param([string]$Message)
+
+	if ([string]::IsNullOrWhiteSpace($Message))
+	{
+		return
+	}
+
+	if (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue)
+	{
+		LogWarning $Message
+	}
+	else
+	{
+		Write-Warning $Message
+	}
+}
+
 function Resolve-WinGetExecutable
 {
+	<# .SYNOPSIS Resolves the winget.exe path from command lookup or known install locations. #>
 	Update-ProcessPathFromRegistry
 
 	$WingetCommand = Get-Command -Name winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source -ErrorAction SilentlyContinue
@@ -27,6 +49,7 @@ function Resolve-WinGetExecutable
 
 function Get-WinGetVersion
 {
+	<# .SYNOPSIS Returns the installed winget version string. #>
 	$WingetPath = Resolve-WinGetExecutable
 	if (-not $WingetPath)
 	{
@@ -55,6 +78,7 @@ function Get-WinGetVersion
 
 function Invoke-DownloadFile
 {
+	<# .SYNOPSIS Downloads a file with retry logic and WebClient fallback. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -69,23 +93,14 @@ function Invoke-DownloadFile
 		$MaxAttempts = 3
 	)
 
-	try
-	{
-		[Net.ServicePointManager]::SecurityProtocol = `
-			[Net.SecurityProtocolType]::Tls12 -bor `
-			[Net.SecurityProtocolType]::Tls11 -bor `
-			[Net.SecurityProtocolType]::Tls
-	}
-	catch
-	{
-	}
+	Set-DownloadSecurityProtocol
 
 	$attemptErrors = [System.Collections.Generic.List[string]]::new()
 	for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)
 	{
 		try
 		{
-			Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -ErrorAction Stop
+			Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -UserAgent 'Baseline' -TimeoutSec 30 -ErrorAction Stop
 			if (Test-Path -LiteralPath $OutFile)
 			{
 				return
@@ -99,9 +114,11 @@ function Invoke-DownloadFile
 		}
 	}
 
+	$webClient = $null
 	try
 	{
-		$webClient = New-Object System.Net.WebClient
+		Set-DownloadSecurityProtocol
+		$webClient = [System.Net.WebClient]::new()
 		$webClient.Headers['User-Agent'] = 'Baseline'
 		$webClient.DownloadFile($Uri, $OutFile)
 		if (Test-Path -LiteralPath $OutFile)
@@ -114,12 +131,188 @@ function Invoke-DownloadFile
 		$attemptErrors.Add("webclient fallback: $($_.Exception.Message)")
 		Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
 	}
+	finally
+	{
+		if ($null -ne $webClient)
+		{
+			try
+			{
+				$webClient.Dispose()
+			}
+			catch
+			{
+				Write-PackageHelperWarning "Failed to dispose WebClient after download attempt: $($_.Exception.Message)"
+			}
+		}
+	}
 
 	throw ("Failed to download '{0}'. {1}" -f $Uri, ($attemptErrors -join ' | '))
 }
 
+function Set-DownloadSecurityProtocol
+{
+	<# .SYNOPSIS Enforces TLS 1.2 for downloads via SecurityProtocol. #>
+	try
+	{
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+	}
+	catch
+	{
+		Write-PackageHelperWarning "Could not enforce TLS 1.2 for download. Current protocol: $([Net.ServicePointManager]::SecurityProtocol)"
+	}
+}
+
+function Assert-FileHash
+{
+	<# .SYNOPSIS Verifies a file's SHA256 hash matches an expected value. #>
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[string]$Path,
+
+		[Parameter(Mandatory = $true)]
+		[string]$ExpectedSha256,
+
+		[string]$Label = 'Downloaded file'
+	)
+
+	if (-not (Test-Path -LiteralPath $Path -PathType Leaf))
+	{
+		throw "$Label was not found: $Path"
+	}
+
+	$expected = $ExpectedSha256.Trim().ToUpperInvariant()
+	$actual = $null
+	if (Get-Command -Name 'Get-FileHash' -ErrorAction SilentlyContinue)
+	{
+		$actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
+	}
+	else
+	{
+		$stream = [System.IO.File]::OpenRead($Path)
+		try
+		{
+			$sha256 = [System.Security.Cryptography.SHA256]::Create()
+			try
+			{
+				$hashBytes = $sha256.ComputeHash($stream)
+			}
+			finally
+			{
+				$sha256.Dispose()
+			}
+		}
+		finally
+		{
+			$stream.Dispose()
+		}
+
+		$actual = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToUpperInvariant()
+	}
+
+	if ($actual -ne $expected)
+	{
+		throw "$Label failed SHA-256 verification. Expected $expected but received $actual."
+	}
+
+	return $actual
+}
+
+function Assert-AuthenticodeSignature
+{
+	<# .SYNOPSIS Verifies Authenticode signature on a file against allowed subjects. #>
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[string]$Path,
+
+		[string[]]$AllowedSubjects = @('CN=Microsoft Corporation')
+	)
+
+	if (-not (Get-Command -Name 'Get-AuthenticodeSignature' -ErrorAction SilentlyContinue))
+	{
+		throw "Get-AuthenticodeSignature is not available to verify '$Path'."
+	}
+
+	$signature = Get-AuthenticodeSignature -FilePath $Path -ErrorAction Stop
+	if ($signature.Status -ne 'Valid')
+	{
+		throw "Authenticode signature verification failed for '$Path' (status: $($signature.Status))."
+	}
+
+	if ($AllowedSubjects.Count -gt 0)
+	{
+		$subject = if ($signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { '' }
+		$subjectMatched = $false
+		foreach ($allowedSubject in @($AllowedSubjects))
+		{
+			if ([string]::IsNullOrWhiteSpace([string]$allowedSubject)) { continue }
+			if ($subject -like "*$allowedSubject*")
+			{
+				$subjectMatched = $true
+				break
+			}
+		}
+
+		if (-not $subjectMatched)
+		{
+			throw "Authenticode signer for '$Path' was '$subject', which is not in the allowed subject list."
+		}
+	}
+
+	return $signature
+}
+
+function Get-PowerShellInstallerArchitecture
+{
+	<# .SYNOPSIS Determines the PowerShell installer architecture for the current platform. #>
+	if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64')
+	{
+		return 'win-arm64'
+	}
+
+	if ([Environment]::Is64BitOperatingSystem)
+	{
+		return 'win-x64'
+	}
+
+	return 'win-x86'
+}
+
+function Resolve-PowerShellInstallerUri
+{
+	<# .SYNOPSIS Fetches the latest PowerShell release and resolves the installer URL. #>
+	param (
+		[string]$ReleaseApiUri = 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'
+	)
+
+	Set-DownloadSecurityProtocol
+	$release = Invoke-RestMethod -Uri $ReleaseApiUri -Headers @{ 'User-Agent' = 'Baseline' } -TimeoutSec 30 -ErrorAction Stop
+	$assetSuffix = Get-PowerShellInstallerArchitecture
+	$assets = @($release.assets)
+	if ($assets.Count -eq 0)
+	{
+		throw "PowerShell release metadata did not include any downloadable assets."
+	}
+
+	$installerAsset = $assets | Where-Object {
+		$assetName = [string]$_.name
+		$assetUrl = [string]$_.browser_download_url
+		($assetName -match ("^PowerShell-.*-{0}\.msi$" -f [regex]::Escape($assetSuffix))) -and
+		(-not [string]::IsNullOrWhiteSpace($assetUrl))
+	} | Select-Object -First 1
+
+	if (-not $installerAsset)
+	{
+		throw "Could not find a PowerShell MSI installer for architecture '$assetSuffix'."
+	}
+
+	return [string]$installerAsset.browser_download_url
+}
+
 function Get-OneDriveSetupPath
 {
+	<# .SYNOPSIS Locates OneDriveSetup.exe across system and ProgramFiles paths. #>
 	$preferredPaths = @()
 
 	if ([Environment]::Is64BitOperatingSystem)
@@ -148,6 +341,7 @@ function Get-OneDriveSetupPath
 
 function ConvertTo-NormalizedVersion
 {
+	<# .SYNOPSIS Parses and normalizes a version string to a System.Version object. #>
 	param
 	(
 		[AllowNull()]
@@ -188,6 +382,7 @@ function ConvertTo-NormalizedVersion
 
 function Get-InstalledVCRedistVersion
 {
+	<# .SYNOPSIS Retrieves the Visual C++ Redistributable version from registry. #>
 	param
 	(
 		[ValidateSet("x86", "x64")]
@@ -222,6 +417,7 @@ function Get-InstalledVCRedistVersion
 
 function Get-InstalledDotNetRuntimeVersion
 {
+	<# .SYNOPSIS Retrieves the installed .NET Runtime version by major version. #>
 	param
 	(
 		[ValidateRange(1, 99)]
@@ -262,6 +458,7 @@ function Get-InstalledDotNetRuntimeVersion
 
 function Get-LatestDotNetRuntimeRelease
 {
+	<# .SYNOPSIS Fetches the latest .NET Runtime release metadata from Microsoft. #>
 	param
 	(
 		[ValidateRange(1, 99)]
@@ -270,7 +467,7 @@ function Get-LatestDotNetRuntimeRelease
 	)
 
 	$ReleaseMetadataUri = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/$MajorVersion.0/releases.json"
-	$ReleaseMetadata = Invoke-RestMethod -Uri $ReleaseMetadataUri -UseBasicParsing
+	$ReleaseMetadata = Invoke-RestMethod -Uri $ReleaseMetadataUri -UseBasicParsing -TimeoutSec 30
 	$LatestReleaseVersion = [string]$ReleaseMetadata."latest-release"
 	$Release = $null
 
@@ -310,6 +507,7 @@ function Get-LatestDotNetRuntimeRelease
 
 function Install-VCRedist
 {
+	<# .SYNOPSIS Downloads and installs Visual C++ 2015-2022 redistributables. #>
 	[CmdletBinding()]
 	param
 	(
@@ -326,9 +524,14 @@ function Install-VCRedist
 
 	try
 	{
+		# Version metadata from the ScoopInstaller community bucket (mutable ref -
+		# tracks latest VC++ 2015-2022 redistributable). If the upstream JSON
+		# schema changes, the .version field access will fail and the catch block
+		# below will leave $vcredistVersion as $null, skipping the upgrade check.
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/ScoopInstaller/Extras/refs/heads/master/bucket/vcredist2022.json"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$vcredistVersion = ConvertTo-NormalizedVersion -Version (Invoke-RestMethod @Parameters).version
 	}
@@ -337,7 +540,8 @@ function Install-VCRedist
 		LogWarning "Unable to determine the latest Visual C++ Redistributable version. Installed packages will be left unchanged unless missing."
 	}
 
-	$DownloadsFolder = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name "{374DE290-123F-4565-9164-39C4925E467B}"
+	$DownloadsFolder = Join-Path $env:TEMP "Baseline-Downloads-$([System.IO.Path]::GetRandomFileName())"
+	New-Item -ItemType Directory -Path $DownloadsFolder -Force -ErrorAction Stop | Out-Null
 
 	foreach ($Redistributable in $Redistributables)
 	{
@@ -380,8 +584,12 @@ function Install-VCRedist
 						Uri             = "https://aka.ms/vs/17/release/VC_redist.x86.exe"
 						OutFile         = "$DownloadsFolder\VC_redist.x86.exe"
 						UseBasicParsing = $true
+						TimeoutSec      = 30
 					}
 					Invoke-WebRequest @Parameters
+
+					$sig = Get-AuthenticodeSignature -FilePath "$DownloadsFolder\VC_redist.x86.exe"
+					if ($sig.Status -ne 'Valid') { throw "Authenticode signature verification failed for VC_redist.x86.exe (status: $($sig.Status))" }
 
 					$VCx86Process = Start-Process -FilePath "$DownloadsFolder\VC_redist.x86.exe" -ArgumentList "/install /passive /norestart" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
 					if ($VCx86Process.ExitCode -ne 0) { throw "VC_redist.x86.exe returned exit code $($VCx86Process.ExitCode)" }
@@ -396,7 +604,7 @@ function Install-VCRedist
 				catch [System.Net.WebException]
 				{
 					LogError ($Localization.NoResponse -f "https://download.visualstudio.microsoft.com")
-					LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
+					LogError ($Localization.RestartFunction -f (Get-TweakSkipLabel $MyInvocation))
 					Write-ConsoleStatus -Status failed
 
 					return
@@ -445,8 +653,12 @@ function Install-VCRedist
 						Uri             = "https://aka.ms/vs/17/release/VC_redist.x64.exe"
 						OutFile         = "$DownloadsFolder\VC_redist.x64.exe"
 						UseBasicParsing = $true
+						TimeoutSec      = 30
 					}
 					Invoke-WebRequest @Parameters
+
+					$sig = Get-AuthenticodeSignature -FilePath "$DownloadsFolder\VC_redist.x64.exe"
+					if ($sig.Status -ne 'Valid') { throw "Authenticode signature verification failed for VC_redist.x64.exe (status: $($sig.Status))" }
 
 					$VCx64Process = Start-Process -FilePath "$DownloadsFolder\VC_redist.x64.exe" -ArgumentList "/install /passive /norestart" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
 					if ($VCx64Process.ExitCode -ne 0) { throw "VC_redist.x64.exe returned exit code $($VCx64Process.ExitCode)" }
@@ -461,7 +673,7 @@ function Install-VCRedist
 				catch [System.Net.WebException]
 				{
 					LogError ($Localization.NoResponse -f "https://download.visualstudio.microsoft.com")
-					LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
+					LogError ($Localization.RestartFunction -f (Get-TweakSkipLabel $MyInvocation))
 					Write-ConsoleStatus -Status failed
 
 					return
@@ -477,8 +689,150 @@ function Install-VCRedist
 	}
 }
 
+function Install-DotNetRuntimeVersion
+{
+	<#
+		.SYNOPSIS
+		Shared helper that installs or updates a single .NET runtime version.
+
+		.DESCRIPTION
+		Downloads and installs a .NET Desktop Runtime for the specified major version.
+		Returns a status string: "success", "skip", "return", or "continue" so the
+		caller can apply the appropriate flow-control (continue / return) inside its
+		foreach loop.
+	#>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[int]
+		$MajorVersion,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$DisplayName,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$DownloadsFolder,
+
+		[Parameter(Mandatory = $true)]
+		[System.Management.Automation.InvocationInfo]
+		$CallerInvocation
+	)
+
+	$InstalledVersion = Get-InstalledDotNetRuntimeVersion -MajorVersion $MajorVersion
+	$LatestVersion = $null
+	$DownloadUrl = $null
+	$FileName = $null
+	$SourceHost = "https://builds.dotnet.microsoft.com"
+
+	try
+	{
+		$Release = Get-LatestDotNetRuntimeRelease -MajorVersion $MajorVersion
+		if ($null -ne $Release)
+		{
+			$LatestVersion = $Release.Version
+			$DownloadUrl = $Release.DownloadUrl
+			$FileName = $Release.FileName
+			$SourceHost = $Release.SourceHost
+		}
+	}
+	catch [System.Net.WebException]
+	{
+		if ($null -ne $InstalledVersion)
+		{
+			LogWarning "Unable to determine the latest $DisplayName version. Detected installed version $InstalledVersion, so the install will be skipped."
+		}
+		else
+		{
+			LogError ($Localization.NoResponse -f "https://builds.dotnet.microsoft.com")
+			LogError ($Localization.RestartFunction -f (Get-TweakSkipLabel $CallerInvocation))
+			Write-ConsoleStatus -Action "Installing $DisplayName"
+			Write-ConsoleStatus -Status failed
+
+			return "return"
+		}
+	}
+
+	$ShouldInstall = $null -eq $InstalledVersion
+
+	if ($null -ne $InstalledVersion -and $null -ne $LatestVersion)
+	{
+		$ShouldInstall = $LatestVersion -gt $InstalledVersion
+	}
+
+	if (-not $ShouldInstall)
+	{
+		LogInfo "$DisplayName already installed (version $InstalledVersion)."
+		Write-ConsoleStatus -Action "Checking $DisplayName"
+		Write-ConsoleStatus -Status success
+		return "skip"
+	}
+
+	if ($null -eq $LatestVersion)
+	{
+		LogError "Unable to determine the latest $DisplayName version."
+		Write-ConsoleStatus -Action "Installing $DisplayName"
+		Write-ConsoleStatus -Status failed
+		return "return"
+	}
+
+	if ($null -eq $InstalledVersion)
+	{
+		LogInfo "$DisplayName not detected. Installing version $LatestVersion."
+	}
+	else
+	{
+		LogInfo "$DisplayName version $InstalledVersion detected. Updating to $LatestVersion."
+	}
+
+	try
+	{
+		Write-ConsoleStatus -Action "Installing .NET $LatestVersion x64"
+		LogInfo "Installing .NET $LatestVersion x64"
+
+		$Parameters = @{
+			Uri             = $DownloadUrl
+			OutFile         = "$DownloadsFolder\$FileName"
+			UseBasicParsing = $true
+			TimeoutSec      = 30
+		}
+		Invoke-WebRequest @Parameters
+
+		$sig = Get-AuthenticodeSignature -FilePath "$DownloadsFolder\$FileName"
+		if ($sig.Status -ne 'Valid') { throw "Authenticode signature verification failed for $FileName (status: $($sig.Status))" }
+
+		$InstallProcess = Start-Process -FilePath "$DownloadsFolder\$FileName" -ArgumentList "/install /passive /norestart" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+		if ($InstallProcess.ExitCode -ne 0) { throw "$FileName returned exit code $($InstallProcess.ExitCode)" }
+
+		$Paths = @(
+			"$DownloadsFolder\$FileName",
+			"$env:TEMP\Microsoft_.NET_Runtime*.log"
+		)
+		Get-ChildItem -Path $Paths -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue | Out-Null
+		Write-ConsoleStatus -Status success
+		return "success"
+	}
+	catch [System.Net.WebException]
+	{
+		LogError ($Localization.NoResponse -f $SourceHost)
+		LogError ($Localization.RestartFunction -f (Get-TweakSkipLabel $CallerInvocation))
+		Write-ConsoleStatus -Status failed
+
+		return "return"
+	}
+	catch
+	{
+		LogError "Failed to install .NET $LatestVersion x64: $($_.Exception.Message)"
+		Write-ConsoleStatus -Status failed
+		return "continue"
+	}
+}
+
 function Install-DotNetRuntimes
 {
+	<# .SYNOPSIS Installs specified .NET runtimes by name (NET8x64, NET9x64). #>
 	[CmdletBinding()]
 	param
 	(
@@ -491,7 +845,8 @@ function Install-DotNetRuntimes
 		$Runtimes
 	)
 
-	$DownloadsFolder = Get-ItemPropertyValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -Name "{374DE290-123F-4565-9164-39C4925E467B}"
+	$DownloadsFolder = Join-Path $env:TEMP "Baseline-Downloads-$([System.IO.Path]::GetRandomFileName())"
+	New-Item -ItemType Directory -Path $DownloadsFolder -Force -ErrorAction Stop | Out-Null
 
 	foreach ($Runtime in $Runtimes)
 	{
@@ -499,215 +854,15 @@ function Install-DotNetRuntimes
 		{
 			NET8x64
 			{
-				$DisplayName = ".NET 8 x64"
-				$InstalledVersion = Get-InstalledDotNetRuntimeVersion -MajorVersion 8
-				$NET8Version = $null
-				$NET8DownloadUrl = $null
-				$NET8FileName = $null
-				$NET8SourceHost = "https://builds.dotnet.microsoft.com"
-
-				try
-				{
-					$NET8Release = Get-LatestDotNetRuntimeRelease -MajorVersion 8
-					if ($null -ne $NET8Release)
-					{
-						$NET8Version = $NET8Release.Version
-						$NET8DownloadUrl = $NET8Release.DownloadUrl
-						$NET8FileName = $NET8Release.FileName
-						$NET8SourceHost = $NET8Release.SourceHost
-					}
-				}
-				catch [System.Net.WebException]
-				{
-					if ($null -ne $InstalledVersion)
-					{
-						LogWarning "Unable to determine the latest $DisplayName version. Detected installed version $InstalledVersion, so the install will be skipped."
-					}
-					else
-					{
-						LogError ($Localization.NoResponse -f "https://builds.dotnet.microsoft.com")
-						LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
-						Write-ConsoleStatus -Action "Installing $DisplayName"
-						Write-ConsoleStatus -Status failed
-
-						return
-					}
-				}
-
-				$ShouldInstall = $null -eq $InstalledVersion
-
-				if ($null -ne $InstalledVersion -and $null -ne $NET8Version)
-				{
-					$ShouldInstall = $NET8Version -gt $InstalledVersion
-				}
-
-				if (-not $ShouldInstall)
-				{
-					LogInfo "$DisplayName already installed (version $InstalledVersion)."
-					Write-ConsoleStatus -Action "Checking $DisplayName"
-					Write-ConsoleStatus -Status success
-					continue
-				}
-
-				if ($null -eq $NET8Version)
-				{
-					LogError "Unable to determine the latest $DisplayName version."
-					Write-ConsoleStatus -Action "Installing $DisplayName"
-					Write-ConsoleStatus -Status failed
-					return
-				}
-
-				if ($null -eq $InstalledVersion)
-				{
-					LogInfo "$DisplayName not detected. Installing version $NET8Version."
-				}
-				else
-				{
-					LogInfo "$DisplayName version $InstalledVersion detected. Updating to $NET8Version."
-				}
-
-				try
-				{
-					Write-ConsoleStatus -Action "Installing .NET $NET8Version x64"
-					LogInfo "Installing .NET $NET8Version x64"
-
-					$Parameters = @{
-						Uri             = $NET8DownloadUrl
-						OutFile         = "$DownloadsFolder\$NET8FileName"
-						UseBasicParsing = $true
-					}
-					Invoke-WebRequest @Parameters
-
-					$NET8Process = Start-Process -FilePath "$DownloadsFolder\$NET8FileName" -ArgumentList "/install /passive /norestart" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
-					if ($NET8Process.ExitCode -ne 0) { throw "$NET8FileName returned exit code $($NET8Process.ExitCode)" }
-
-					$Paths = @(
-						"$DownloadsFolder\$NET8FileName",
-						"$env:TEMP\Microsoft_.NET_Runtime*.log"
-					)
-					Get-ChildItem -Path $Paths -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-				catch [System.Net.WebException]
-				{
-					LogError ($Localization.NoResponse -f $NET8SourceHost)
-					LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
-					Write-ConsoleStatus -Status failed
-
-					return
-				}
-				catch
-				{
-					LogError "Failed to install .NET $NET8Version x64: $($_.Exception.Message)"
-					Write-ConsoleStatus -Status failed
-					continue
-				}
+				$Result = Install-DotNetRuntimeVersion -MajorVersion 8 -DisplayName ".NET 8 x64" -DownloadsFolder $DownloadsFolder -CallerInvocation $MyInvocation
+				if ($Result -eq "return") { return }
+				if ($Result -eq "continue" -or $Result -eq "skip") { continue }
 			}
 			NET9x64
 			{
-				$DisplayName = ".NET 9 x64"
-				$InstalledVersion = Get-InstalledDotNetRuntimeVersion -MajorVersion 9
-				$NET9Version = $null
-				$NET9DownloadUrl = $null
-				$NET9FileName = $null
-				$NET9SourceHost = "https://builds.dotnet.microsoft.com"
-
-				try
-				{
-					$NET9Release = Get-LatestDotNetRuntimeRelease -MajorVersion 9
-					if ($null -ne $NET9Release)
-					{
-						$NET9Version = $NET9Release.Version
-						$NET9DownloadUrl = $NET9Release.DownloadUrl
-						$NET9FileName = $NET9Release.FileName
-						$NET9SourceHost = $NET9Release.SourceHost
-					}
-				}
-				catch [System.Net.WebException]
-				{
-					if ($null -ne $InstalledVersion)
-					{
-						LogWarning "Unable to determine the latest $DisplayName version. Detected installed version $InstalledVersion, so the install will be skipped."
-					}
-					else
-					{
-						LogError ($Localization.NoResponse -f "https://builds.dotnet.microsoft.com")
-						LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
-						Write-ConsoleStatus -Action "Installing $DisplayName"
-						Write-ConsoleStatus -Status failed
-
-						return
-					}
-				}
-
-				$ShouldInstall = $null -eq $InstalledVersion
-
-				if ($null -ne $InstalledVersion -and $null -ne $NET9Version)
-				{
-					$ShouldInstall = $NET9Version -gt $InstalledVersion
-				}
-
-				if (-not $ShouldInstall)
-				{
-					LogInfo "$DisplayName already installed (version $InstalledVersion)."
-					Write-ConsoleStatus -Action "Checking $DisplayName"
-					Write-ConsoleStatus -Status success
-					continue
-				}
-
-				if ($null -eq $NET9Version)
-				{
-					LogError "Unable to determine the latest $DisplayName version."
-					Write-ConsoleStatus -Action "Installing $DisplayName"
-					Write-ConsoleStatus -Status failed
-					return
-				}
-
-				if ($null -eq $InstalledVersion)
-				{
-					LogInfo "$DisplayName not detected. Installing version $NET9Version."
-				}
-				else
-				{
-					LogInfo "$DisplayName version $InstalledVersion detected. Updating to $NET9Version."
-				}
-
-				try
-				{
-					Write-ConsoleStatus -Action "Installing .NET $NET9Version x64"
-					LogInfo "Installing .NET $NET9Version x64"
-
-					$Parameters = @{
-						Uri             = $NET9DownloadUrl
-						OutFile         = "$DownloadsFolder\$NET9FileName"
-						UseBasicParsing = $true
-					}
-					Invoke-WebRequest @Parameters
-
-					$NET9Process = Start-Process -FilePath "$DownloadsFolder\$NET9FileName" -ArgumentList "/install /passive /norestart" -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
-					if ($NET9Process.ExitCode -ne 0) { throw "$NET9FileName returned exit code $($NET9Process.ExitCode)" }
-
-					$Paths = @(
-						"$DownloadsFolder\$NET9FileName",
-						"$env:TEMP\Microsoft_.NET_Runtime*.log"
-					)
-					Get-ChildItem -Path $Paths -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-				catch [System.Net.WebException]
-				{
-					LogError ($Localization.NoResponse -f $NET9SourceHost)
-					LogError ($Localization.RestartFunction -f $MyInvocation.Line.Trim())
-					Write-ConsoleStatus -Status failed
-
-					return
-				}
-				catch
-				{
-					LogError "Failed to install .NET $NET9Version x64: $($_.Exception.Message)"
-					Write-ConsoleStatus -Status failed
-					continue
-				}
+				$Result = Install-DotNetRuntimeVersion -MajorVersion 9 -DisplayName ".NET 9 x64" -DownloadsFolder $DownloadsFolder -CallerInvocation $MyInvocation
+				if ($Result -eq "return") { return }
+				if ($Result -eq "continue" -or $Result -eq "skip") { continue }
 			}
 		}
 	}

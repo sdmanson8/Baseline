@@ -1,0 +1,77 @@
+{
+  "Name": "GameModeAllowlist",
+  "Version": 1,
+  "Description": "Reviewed cross-category items allowed to participate in Game Mode profile building.",
+  "Entries": [
+    {
+      "Function": "PowerPlan",
+      "Type": "Choice",
+      "ApplyValueByProfile": {
+        "Casual": "High",
+        "Competitive": "High",
+        "Streaming": "High",
+        "Troubleshooting": "High"
+      },
+      "ScenarioTags": [
+        "gaming",
+        "casual",
+        "competitive",
+        "streaming",
+        "troubleshooting"
+      ],
+      "GamingPreviewGroup": "Core Performance",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": null,
+      "Notes": "Use the existing PowerPlan choice entry from System.json. High is the Game Mode default; restore/default remains Balanced."
+    },
+    {
+      "Function": "NetworkAdaptersSavePower",
+      "Type": "Toggle",
+      "ApplyValueByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": true
+      },
+      "ScenarioTags": [
+        "gaming",
+        "competitive",
+        "troubleshooting",
+        "networking"
+      ],
+      "GamingPreviewGroup": "Compatibility & Troubleshooting",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": "NetworkAdaptersSavePower",
+      "Notes": "Disable adapter power saving for Competitive and Troubleshooting only."
+    },
+    {
+      "Function": "SleepTimeout",
+      "Type": "Choice",
+      "ApplyValueByProfile": {
+        "Casual": false,
+        "Competitive": false,
+        "Streaming": true,
+        "Troubleshooting": false
+      },
+      "ApplyChoiceValueByProfile": {
+        "Streaming": "Disable"
+      },
+      "ScenarioTags": [
+        "gaming",
+        "streaming",
+        "quality-of-life",
+        "power"
+      ],
+      "GamingPreviewGroup": "Background & Notifications",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "TroubleshootingOnly": false,
+      "DecisionPromptKey": null,
+      "Notes": "Use only for Streaming so long capture/stream sessions do not sleep the system."
+    }
+  ]
+}

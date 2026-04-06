@@ -1,0 +1,63 @@
+﻿{
+    "generated":  "2026-04-05T09:52:25.0122924+02:00",
+    "platform":  {
+                     "os":  "Microsoft Windows NT 10.0.26100.0",
+                     "edition":  "Desktop",
+                     "psVersion":  "5.1.26100.1",
+                     "hostname":  "SHELDON"
+                 },
+    "layers":  {
+                   "smoke":  {
+                                 "name":  "Smoke Tests",
+                                 "script":  "E:\\Baseline\\Tools\\Test-SmokeTest.ps1",
+                                 "result":  "Passed",
+                                 "passed":  0,
+                                 "failed":  0,
+                                 "skipped":  0,
+                                 "duration":  14.52,
+                                 "output":  ""
+                             },
+                   "unit":  {
+                                "name":  "Unit Tests",
+                                "script":  "E:\\Baseline\\Tests\\Unit",
+                                "result":  "Failed",
+                                "passed":  1881,
+                                "failed":  13,
+                                "skipped":  4,
+                                "duration":  55.4,
+                                "output":  "Tests: 1898 | Passed: 1881 | Failed: 13 | Skipped: 4"
+                            },
+                   "composition":  {
+                                       "name":  "GUI Composition Tests",
+                                       "script":  "E:\\Baseline\\Tests\\GUI.Composition.Tests.ps1",
+                                       "result":  "Failed",
+                                       "passed":  22,
+                                       "failed":  1,
+                                       "skipped":  0,
+                                       "duration":  1.14,
+                                       "output":  "Tests: 23 | Passed: 22 | Failed: 1 | Skipped: 0"
+                                   },
+                   "preset":  {
+                                  "name":  "Preset Validation",
+                                  "script":  "E:\\Baseline\\Tools\\Test-PresetGeneration.ps1",
+                                  "result":  "Failed",
+                                  "passed":  0,
+                                  "failed":  0,
+                                  "skipped":  0,
+                                  "duration":  7.35,
+                                  "output":  ""
+                              }
+               },
+    "summary":  {
+                    "totalPassed":  1903,
+                    "totalFailed":  14,
+                    "totalSkipped":  4,
+                    "overallResult":  "Failed"
+                },
+    "badge":  {
+                  "schemaVersion":  1,
+                  "label":  "tests",
+                  "message":  "14 failed",
+                  "color":  "red"
+              }
+}

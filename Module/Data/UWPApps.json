@@ -12,10 +12,10 @@
       "Description": "Background Apps",
       "Detail": "Controls whether apps are allowed to run and update in the background when they are not in focus. Disabling saves CPU and memory.",
       "Caution": true,
-      "CautionReason": "Disabling Background Apps prevents apps from running in the background and may affect notifications, updates, and sync functionality.",
+      "CautionReason": "May prevent automatic updates. Disabling Background Apps stops all apps from running in the background, breaking push notifications, live tiles, email sync, and automatic app updates from the Microsoft Store.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -32,7 +32,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether apps are allowed to run and update in the background when they are not in focus. Disabling saves CPU and memory. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Copilot App",
@@ -45,29 +47,31 @@
       "DisplayOptions": null,
       "Default": null,
       "WinDefault": "Install",
-      "Description": "Microsoft AI assistant integration. Uninstall removes Copilot and all Windows AI features. Install restores them and installs Copilot from the Microsoft Store.",
-      "Detail": "Installs or uninstalls the Microsoft Copilot AI assistant app and all related Windows AI integration features.",
-      "Caution": false,
-      "CautionReason": null,
+      "Description": "Install or remove Copilot, Recall, and Windows AI components",
+      "Detail": "Uninstall removes: Copilot app and Store package, Copilot in Windows Search, Copilot sidebar in Edge, Image Creator in Paint, Recall and its scheduled tasks, AI voice effects, App Actions, WSAIFabric and Agent Activation services, .copilot file extension, AI Appx packages, and related registry policies. Install attempts to restore the Copilot Store app via winget or Microsoft Store.",
+      "Caution": true,
+      "CautionReason": "May require Store or winget to recover. Uninstall removes Copilot, Recall, AI services, and related packages. Restoring requires winget or Microsoft Store access, a supported Windows build, and manual package recovery steps.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
       "SubCategory": "App Management",
       "SourceRegion": "UWPApps",
-      "Risk": "Low",
+      "Risk": "Medium",
       "Tags": [
         "uwp",
         "ai",
         "privacy"
       ],
-      "Impact": "Low",
-      "Safe": true,
+      "Impact": "Medium",
+      "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Installs or uninstalls the Microsoft Copilot AI assistant app and all related Windows AI integration features.",
-      "PresetTier": "Safe"
+      "WhyThisMatters": "Removes Copilot, Recall, and all related Windows AI components. Reinstalling requires winget or Microsoft Store access.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Cortana Autostart",
@@ -83,7 +87,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -99,7 +103,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Prevents Cortana from launching automatically at startup. Cortana can still be opened manually if needed.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Edge Debloat",
@@ -112,10 +118,10 @@
       "Description": "Edge debloat Group Policy settings",
       "Detail": "Applies Group Policy settings to disable telemetry, shopping assistant, collections, Copilot sidebar, and other optional Edge extras.",
       "Caution": true,
-      "CautionReason": "Enforces multiple Group Policy settings that affect Edge functionality system-wide including telemetry, personalization, shopping assistant, collections, rewards, and Copilot sidebar.",
+      "CautionReason": "May require Store or winget to recover. Enforces system-wide Group Policy settings that disable Edge telemetry, personalization, shopping, collections, rewards, and Copilot sidebar. Reverting requires clearing the applied policies manually.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -132,7 +138,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies Group Policy settings to disable telemetry, shopping assistant, collections, Copilot sidebar, and other optional Edge extras. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "New Outlook",
@@ -148,7 +156,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -164,7 +172,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether the new Outlook app is available. Disable to keep using the classic Mail and Calendar apps instead.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Notifications",
@@ -177,10 +187,10 @@
       "Description": "Notification Tray/Calendar",
       "Detail": "Master switch for the entire Windows notification system. Disabling stops all app notifications and hides the notification center.",
       "Caution": true,
-      "CautionReason": "Disabling Notifications completely turns off Windows notifications. You will not receive app alerts, system warnings, reminders, or calendar events. The notification tray and calendar flyout will not function.",
+      "CautionReason": "May prevent automatic updates. Disabling Notifications completely turns off Windows notifications. You will not receive app alerts, system security warnings, update reminders, calendar events, or two-factor authentication prompts. The notification tray and calendar flyout will not function.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -196,7 +206,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Master switch for the entire Windows notification system. Disabling stops all app notifications and hides the notification center. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Revert Start Menu (24H2)",
@@ -209,10 +221,10 @@
       "Description": "Revert to original Start Menu from 24H2",
       "Detail": "Reverts the Start Menu to the pre-24H2 layout on Windows 11 24H2 builds. May affect compatibility with future Windows updates.",
       "Caution": true,
-      "CautionReason": "Advanced. Reverting the Start Menu may break future Windows updates that depend on the new layout and requires additional tooling.",
+      "CautionReason": "May prevent automatic updates. Reverting the Start Menu to pre-24H2 layout may break future Windows cumulative updates that depend on the new Start Menu components, requiring additional tooling or a clean install to recover.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -229,7 +241,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Reverts the Start Menu to the pre-24H2 layout on Windows 11 24H2 builds. May affect compatibility with future Windows updates. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "UWP Apps (Bulk)",
@@ -242,13 +256,13 @@
       "DisplayOptions": null,
       "Default": "Uninstall",
       "WinDefault": "Install",
-      "Description": "Apply action to all selected apps. A GUI selection window will appear to choose specific apps.",
-      "Detail": "Opens a selection dialog to bulk uninstall or reinstall Windows Store apps. Some apps cannot be reinstalled once removed.",
+      "Description": "Bulk install or uninstall selected Windows Store apps",
+      "Detail": "Opens a selection dialog to remove or restore selected Windows Store apps. This is package management rather than a simple toggle, and some removals cannot be reversed automatically.",
       "Caution": true,
-      "CautionReason": "Uninstall: A selection dialog shows all installed UWP app bundles. Excluded from removal: Edge, Windows Store, Terminal, Notepad, WSL, media codecs, drivers. Some apps (e.g. Xbox Identity Provider, Gaming Services) cannot be reinstalled from the Store if uninstalled.\nInstall: A selection dialog shows missing apps that can be restored (Outlook, Calculator, Camera, Photos, Gaming Services, Phone Link, Dolby Access, Voice Recorder). Uses multiple fallback methods.",
+      "CautionReason": "May require Store or winget to recover. Uninstall removes selected Windows app packages, not just UI shortcuts. Some apps cannot be restored from the Microsoft Store once removed, and recovery may require winget, DISM, or a Windows repair install. Excluded from removal: Edge, Windows Store, Terminal, Notepad, WSL, media codecs, and drivers.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -262,8 +276,10 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Opens a selection dialog to bulk uninstall or reinstall Windows Store apps. Some apps cannot be reinstalled once removed. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "WhyThisMatters": "Opens a selection dialog to remove or restore selected Windows Store apps. Some removals are one-way, and even supported restore paths can still require Microsoft Store, winget, or manual reinstall follow-up. This is a high-risk package operation rather than a simple toggle.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     }
   ]
 }

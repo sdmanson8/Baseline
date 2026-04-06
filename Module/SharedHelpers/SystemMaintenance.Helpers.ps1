@@ -1,7 +1,8 @@
-# Shared helper slice for Baseline.
+# Shared helper slice for Baseline -- system maintenance, RAM checks, and service management.
 
 function Test-Windows11SmbDuplicateSidIssue
 {
+	<# .SYNOPSIS Checks Event ID 6167 for SMB duplicate SID issues in a lookback period. #>
 	param
 	(
 		[int]$LookbackDays = 30
@@ -21,13 +22,20 @@ function Test-Windows11SmbDuplicateSidIssue
 	catch
 	{
 		Remove-HandledErrorRecord -ErrorRecord $_
-		LogInfo "Unable to query LSASS Event ID 6167: $($_.Exception.Message)"
+		LogWarning "Unable to query LSASS Event ID 6167 (check inconclusive): $($_.Exception.Message)"
 		return $false
 	}
 }
 
+function Get-MinimumRecommendedMemoryCompressionRamGB
+{
+	<# .SYNOPSIS Returns the minimum RAM threshold (8 GB) for safe Memory Compression disable. #>
+	return 8
+}
+
 function Invoke-AdditionalServiceOptimizations
 {
+	<# .SYNOPSIS Disables Memory Compression and optional services (PeerDist, diagnosticshub, RemoteRegistry). #>
 	Write-ConsoleStatus -Action "Applying additional service optimizations"
 	LogInfo "Applying additional service optimizations"
 
@@ -49,31 +57,40 @@ function Invoke-AdditionalServiceOptimizations
 	}
 	else
 	{
-		try
+		$totalRAMGB = [math]::Round((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue).TotalPhysicalMemory / 1GB, 1)
+		$minimumRecommendedRamGB = Get-MinimumRecommendedMemoryCompressionRamGB
+		if ($totalRAMGB -gt 0 -and $totalRAMGB -lt $minimumRecommendedRamGB)
 		{
-			Disable-MMAgent -mc -ErrorAction Stop | Out-Null
-
-			$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
-			if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
-			{
-				LogInfo "Disabled Memory Compression"
-			}
-			else
-			{
-				LogInfo "Requested Memory Compression disable"
-			}
+			LogWarning "Skipping Memory Compression disable - system has only ${totalRAMGB} GB RAM. Disabling on systems below ${minimumRecommendedRamGB} GB can degrade performance."
 		}
-		catch
+		else
 		{
-			$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
-			if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
+			try
 			{
-				LogInfo "Memory Compression already disabled"
+				Disable-MMAgent -mc -ErrorAction Stop | Out-Null
+
+				$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
+				if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
+				{
+					LogInfo "Disabled Memory Compression"
+				}
+				else
+				{
+					LogInfo "Requested Memory Compression disable"
+				}
 			}
-			else
+			catch
 			{
-				$hadIssue = $true
-				LogWarning "Failed to disable Memory Compression: $($_.Exception.Message)"
+				$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
+				if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
+				{
+					LogInfo "Memory Compression already disabled"
+				}
+				else
+				{
+					$hadIssue = $true
+					LogWarning "Failed to disable Memory Compression: $($_.Exception.Message)"
+				}
 			}
 		}
 	}
@@ -92,14 +109,18 @@ function Invoke-AdditionalServiceOptimizations
 
 			if ($service)
 			{
+				$priorStartType = $service.StartType
 				Set-Service -Name $serviceName -StartupType Disabled -ErrorAction Stop
 				Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+				LogInfo "Disabled service $serviceName (was: $priorStartType)"
 			}
 			else
 			{
+				# Service not in SCM - fall back to direct registry write (service may be driver-only or partially installed).
 				$registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
 				if (Test-Path -Path $registryPath)
 				{
+					LogWarning "Service $serviceName not found in SCM - disabling via registry fallback"
 					Set-ItemProperty -Path $registryPath -Name "Start" -Type DWord -Value 4 -Force -ErrorAction Stop | Out-Null
 				}
 				else

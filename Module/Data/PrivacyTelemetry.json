@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -32,7 +32,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Records your activity across devices when signed into a Microsoft account and can sync it to the cloud. Disabling keeps activity local.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Advertising ID",
@@ -48,7 +50,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -65,7 +67,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows assigns a unique advertising ID to your account that apps can use to show targeted ads. Disabling stops this tracking.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Auto Reboot on Crash (BSOD)",
@@ -74,20 +78,20 @@
       "Options": null,
       "DisplayOptions": null,
       "Default": false,
-      "WinDefault": false,
+      "WinDefault": true,
       "Description": "Automatic reboot on crash",
       "Detail": "When Windows crashes (blue screen), it can automatically restart. Disabling keeps the error on screen so you can read the stop code.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "PrivacyTelemetry",
-      "WinDefaultDesc": "Automatic reboot on crash is disabled",
+      "WinDefaultDesc": "Automatic reboot on crash is enabled",
       "Risk": "Low",
       "Tags": [
         "system",
@@ -98,7 +102,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "When Windows crashes (blue screen), it can automatically restart. Disabling keeps the error on screen so you can read the stop code.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Auto Restart After Update",
@@ -114,7 +120,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -130,7 +136,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Prevents Windows from automatically restarting after installing updates without your input. Gives you control over when reboots happen.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Automatic Map Updates",
@@ -146,7 +154,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -162,7 +170,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows Maps can automatically download updated offline map data in the background. Disabling saves bandwidth if you do not use the Maps app.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Camera Access",
@@ -178,7 +188,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -195,7 +205,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Master toggle controlling whether apps can request access to your camera. Disabling prevents all apps from using the camera. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Clipboard History",
@@ -211,7 +223,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -227,7 +239,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Stores a history of copied items so you can paste from previous clips using Win+V. Enable to turn this feature on.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Connected User Experiences (DiagTrack)",
@@ -243,7 +257,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -260,7 +274,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "The DiagTrack service collects and uploads Windows usage and diagnostic data to Microsoft servers. Disabling it stops background telemetry uploads. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Device Sensors",
@@ -276,7 +292,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -292,7 +308,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls access to hardware sensors like accelerometer, gyroscope, and ambient light sensor. Mainly relevant for tablets and convertible devices.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Diagnostic Data Level",
@@ -311,41 +329,46 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "PrivacyTelemetry",
       "WinDefaultDesc": "Diagnostic data collection set to Default",
-      "Risk": "Medium",
+      "Risk": "Low",
       "Tags": [
         "privacy",
         "telemetry"
       ],
-      "Impact": "Medium",
-      "Safe": false,
+      "Impact": "Low",
+      "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls how much diagnostic data Windows sends to Microsoft. Minimal sends only basic device info and reliability data. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Minimal"
+      "WhyThisMatters": "Controls how much diagnostic data Windows sends to Microsoft. Minimal sends only basic device info and reliability data.",
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Diagnostics Tracking Tasks",
       "Function": "ScheduledTasks",
-      "Type": "Toggle",
-      "Options": null,
+      "Type": "Choice",
+      "Options": [
+        "Disable",
+        "Enable"
+      ],
       "DisplayOptions": null,
-      "Default": false,
-      "WinDefault": true,
+      "Default": "Disable",
+      "WinDefault": "Enable",
       "Description": "Diagnostics tracking scheduled tasks",
       "Detail": "Several scheduled tasks run in the background to collect and upload diagnostic data. Disabling stops these tasks from running automatically.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
-      "OnParam": "Enable",
-      "OffParam": "Disable",
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "PrivacyTelemetry",
@@ -360,7 +383,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Several scheduled tasks run in the background to collect and upload diagnostic data. Disabling stops these tasks from running automatically. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Display and Sleep Timeouts",
@@ -376,7 +401,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -392,7 +417,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls when the display turns off and when the PC enters sleep mode after inactivity. Disable to prevent automatic sleep.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Driver Updates via Windows Update",
@@ -408,7 +435,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -424,7 +451,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Controls whether Windows Update automatically downloads and installs hardware drivers. Disabling lets you manage drivers manually. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Fast Startup",
@@ -440,7 +469,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -456,7 +485,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "A hybrid shutdown mode that saves the kernel state to disk so Windows boots faster. Can cause issues with dual-boot setups or full shutdowns.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Feedback Frequency",
@@ -475,7 +506,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -491,7 +522,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls how often Windows asks you to rate your experience or submit feedback. Setting to Never stops all feedback prompts.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Language List Access for Websites",
@@ -507,7 +540,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -523,7 +556,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows websites to read your Windows language preference list to tailor content. Disable to prevent websites from detecting your language settings.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Location Services",
@@ -539,7 +574,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -556,7 +591,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether apps can access your device's geographic location. Disabling prevents location tracking by all apps. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Lock Screen Widgets",
@@ -572,7 +609,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -588,7 +625,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The Windows Web Experience Pack adds widgets and dynamic content to the lock screen and taskbar. Disabling removes these.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Maintenance Wake-up",
@@ -604,7 +643,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -620,7 +659,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Windows can wake your PC from sleep overnight to run automatic maintenance tasks. Disabling prevents unwanted overnight wake-ups.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Malicious Software Removal Tool (MSRT)",
@@ -636,7 +677,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -652,7 +693,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether Windows Update offers the Malicious Software Removal Tool scan. Disabling prevents it from being pushed via Windows Update. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Microphone Access",
@@ -668,7 +711,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -685,7 +728,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Master toggle controlling whether apps can request access to your microphone. Disabling prevents all apps from using the mic. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Microsoft Product Updates",
@@ -701,7 +746,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -717,7 +762,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When enabled, Windows Update also checks for updates to other Microsoft products like Office. Disabling limits updates to Windows only.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "NTFS Last Access Timestamps",
@@ -733,7 +780,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -749,7 +796,9 @@
       "Safe": true,
       "RequiresRestart": true,
       "WhyThisMatters": "Updates a timestamp on every file each time it is read. Disabling reduces disk write activity on systems with many small file reads.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "NTFS Long Paths",
@@ -765,7 +814,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -780,7 +829,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes the 260-character limit on file paths. Required for some development tools and deeply nested folder structures.",
-      "PresetTier": "Safe"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "PowerShell 7 Telemetry",
@@ -788,7 +839,7 @@
       "Type": "Toggle",
       "Options": null,
       "DisplayOptions": null,
-      "Default": true,
+      "Default": false,
       "WinDefault": true,
       "Description": "PowerShell 7 telemetry collection",
       "Detail": "PowerShell 7 sends anonymous usage data to Microsoft by default. Disabling opts out of this telemetry. Linked to the Install/Update PowerShell 7 option.",
@@ -796,7 +847,7 @@
       "CautionReason": null,
       "LinkedWith": "Update-Powershell",
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -813,7 +864,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "PowerShell 7 sends anonymous usage data to Microsoft by default. Disabling opts out of this telemetry. Linked to the Install/Update PowerShell 7 option.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Shared Experiences",
@@ -829,7 +882,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -845,7 +898,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows Windows to share activity between your devices via your Microsoft account. Disabling keeps activity local to this machine only.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Sign-in Info After Update",
@@ -861,7 +916,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -877,7 +932,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Uses your sign-in credentials to automatically finish setting up your profile after a Windows update. Disable for more privacy.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Sleep Button",
@@ -893,7 +950,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -908,7 +965,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether the Sleep option appears in the Start Menu and whether the sleep keyboard button is active.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Superfetch Service",
@@ -924,7 +983,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -940,7 +999,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "SysMain preloads frequently used apps into RAM to speed up launch times. On SSDs it provides little benefit and can usually be safely disabled. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Tailored Experiences",
@@ -956,7 +1017,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -973,7 +1034,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Uses your diagnostic data to show personalized tips, ads, and recommendations from Microsoft. Disabling opts you out.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Account Info",
@@ -989,7 +1052,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1005,7 +1068,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can access your account name, picture, and other account information.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Calendar",
@@ -1021,7 +1086,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1037,7 +1102,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can read and write to your calendar data.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Call History",
@@ -1053,7 +1120,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1069,7 +1136,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can read your call history.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Contacts",
@@ -1085,7 +1154,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1101,7 +1170,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can access your contacts list.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Diagnostic Info",
@@ -1117,7 +1188,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1133,7 +1204,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can collect diagnostic information about your device and its state.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Email",
@@ -1149,7 +1222,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1165,7 +1238,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can read and send email on your behalf.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP File System",
@@ -1181,7 +1256,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1198,7 +1273,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can access files anywhere on your file system beyond their own app folders. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Messaging",
@@ -1214,7 +1291,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1230,7 +1307,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can read and send text messages.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Notifications",
@@ -1246,7 +1325,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1262,7 +1341,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can send notifications to the Windows notification center.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Other Devices",
@@ -1278,7 +1359,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1294,7 +1375,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can access other paired devices not covered by more specific categories.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Phone Calls",
@@ -1310,7 +1393,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1326,7 +1409,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can make and manage phone calls.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Radios (Bluetooth)",
@@ -1342,7 +1427,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1359,7 +1444,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can control Bluetooth and other wireless radio devices.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Swap File",
@@ -1375,7 +1462,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1392,7 +1479,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "The UWP swap file (swapfile.sys) is used by Windows Store apps for virtual memory paging. Disabling frees disk space if you do not use Store apps. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Tasks",
@@ -1408,7 +1497,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1424,7 +1513,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can access your task and to-do lists.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "UWP Voice Activation",
@@ -1440,7 +1531,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1457,7 +1548,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether UWP apps can be activated using voice commands in the background.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "WAP Push Messaging",
@@ -1473,7 +1566,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1489,7 +1582,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The WAP Push messaging service receives over-the-air messages from mobile carriers. Rarely needed on a PC not connected to a mobile network.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Web Language Sync",
@@ -1505,7 +1600,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1521,7 +1616,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Syncs your preferred language list to a Microsoft server so web content can match your preferences. Disable for more privacy.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "WiFi Sense",
@@ -1537,7 +1634,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1554,7 +1651,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "WiFi Sense can automatically share your WiFi password with your contacts. Disabling prevents this sharing behavior.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Error Reporting",
@@ -1570,7 +1669,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1586,7 +1685,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "When an application crashes, Windows Error Reporting can send a report to Microsoft. Disabling stops this data from leaving your machine.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Windows Update Auto Downloads",
@@ -1602,7 +1703,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -1618,7 +1719,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls whether Windows Update automatically downloads updates in the background. Disabling lets you choose when to download updates. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

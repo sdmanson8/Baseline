@@ -3,11 +3,12 @@
     Logging module for Baseline.
 
     .VERSION
-	2.0.0
+	3.0.0 (beta)
 
 	.DATE
-	17.03.2026 - initial version
+	17.03.2026 - initial beta version
 	21.03.2026 - Added GUI
+	06.04.2026 - Major changes to the GUI, and added more features
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -19,8 +20,10 @@
 
 using module .\SharedHelpers.psm1
 
+# Log file is written to $env:TEMP with a timestamp-based name. The admin
+# requirement mitigates symlink attacks but the location is still predictable.
 $script:LogFilePath = $null
-$script:LogLock = New-Object System.Threading.Mutex($false, "Global\RemoveWindowsAILogLock")
+$script:LogLock = New-Object System.Threading.Mutex($false, "Global\BaselineLogLock")
 $script:LogStatistics = @{
     Info = 0
     Warning = 0
@@ -28,6 +31,47 @@ $script:LogStatistics = @{
 }
 $script:UILogHandler = $null
 $script:ConsoleStatusContext = $null
+$script:LogMode = $null
+$script:DefaultLogMutexTimeoutMs = 5000
+$script:UILogWarningCache = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$script:SessionStatistics = @{
+    SessionStartTime    = $null
+    PresetName          = $null
+    TweaksSelected      = 0
+    PreviewRunCount     = 0
+    ApplyRunCount       = 0
+    SucceededCount      = 0
+    FailedCount         = 0
+    SkippedCount        = 0
+    IsGUI               = $false
+    GameModeActive      = $false
+    GameModeProfile     = $null
+}
+
+function Write-UILogWarning {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        return
+    }
+
+    $shouldWrite = $true
+    if ($script:UILogWarningCache) {
+        try {
+            $shouldWrite = $script:UILogWarningCache.Add($Message)
+        }
+        catch {
+            $shouldWrite = $true
+        }
+    }
+
+    if ($shouldWrite) {
+        Write-Warning $Message
+    }
+}
 
 function Send-UILogEntry {
     param(
@@ -40,7 +84,9 @@ function Send-UILogEntry {
             & $script:UILogHandler $Entry
             return $true
         }
-        catch { }
+        catch {
+            Write-UILogWarning "Baseline UI log handler failed: $($_.Exception.Message)"
+        }
     }
 
     $queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction Ignore
@@ -49,7 +95,9 @@ function Send-UILogEntry {
             $queue.Enqueue($Entry)
             return $true
         }
-        catch { }
+        catch {
+            Write-UILogWarning "Baseline UI log queue enqueue failed: $($_.Exception.Message)"
+        }
     }
 
     return $false
@@ -61,6 +109,23 @@ function Reset-LogStatistics {
         Warning = 0
         Error = 0
     }
+}
+
+function Set-LogMode {
+    param(
+        [string]$Mode
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Mode)) {
+        $script:LogMode = $null
+        return
+    }
+
+    $script:LogMode = $Mode.Trim()
+}
+
+function Clear-LogMode {
+    $script:LogMode = $null
 }
 
 <#
@@ -94,10 +159,10 @@ function Set-LogFile {
     
     if ($Clear) {
         # Only clear if explicitly requested
-        Set-Content -Path $Path -Value "=== Log Started at $(Get-Date) ==="
+        Set-Content -Path $Path -Value "=== Log Started at $(Get-Date) ===" -Encoding UTF8
     } elseif (!(Test-Path $Path)) {
         # Create if doesn't exist
-        Set-Content -Path $Path -Value "=== Log Started at $(Get-Date) ==="
+        Set-Content -Path $Path -Value "=== Log Started at $(Get-Date) ===" -Encoding UTF8
     }
 }
 
@@ -136,7 +201,8 @@ function Write-LogMessage {
     }
 
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm"
-    $logMessage = "$timestamp $Level`: $Message"
+    $contextPrefix = if ([string]::IsNullOrWhiteSpace($script:LogMode)) { '' } else { "[Mode=$($script:LogMode)] " }
+    $logMessage = "$timestamp $Level`: $contextPrefix$Message"
     if ($AddGap) { $logMessage += "`n" }
 
     switch ($Level) {
@@ -151,6 +217,7 @@ function Write-LogMessage {
         Message = $Message
     })
     
+    # Write-Host: intentional — console logging output channel
     # Show log output in the console only when explicitly requested.
     if ($ShowConsole) {
         switch ($Level) {
@@ -161,20 +228,30 @@ function Write-LogMessage {
     }
     
     # Use a mutex so multiple log writes do not corrupt the log file.
-    $acquired = $script:LogLock.WaitOne(5000)  # 5 second timeout
+    $acquired = $false
+    try {
+        $acquired = $script:LogLock.WaitOne($script:DefaultLogMutexTimeoutMs)
+    }
+    catch {
+        # Mutex handle may be closed if the runspace was disposed — write directly
+        try { Add-Content -Path $script:LogFilePath -Value $logMessage -Encoding UTF8 } catch { }
+        return
+    }
     try {
         if ($acquired) {
             Add-Content -Path $script:LogFilePath -Value $logMessage -Encoding UTF8
         } else {
-            # Fallback if mutex times out
-            Write-Host "WARNING: Log mutex timeout - retrying..." -ForegroundColor Yellow
-            Start-Sleep -Milliseconds 100
-            Add-Content -Path $script:LogFilePath -Value $logMessage -Encoding UTF8
+            try {
+                Write-Host "WARNING: Log mutex timeout after $($script:DefaultLogMutexTimeoutMs) ms; message not written to file: $logMessage" -ForegroundColor Yellow
+            }
+            catch {
+                Write-Warning "Log mutex timeout after $($script:DefaultLogMutexTimeoutMs) ms; message not written to file: $logMessage"
+            }
         }
     }
     finally {
         if ($acquired) {
-            $script:LogLock.ReleaseMutex()
+            try { $script:LogLock.ReleaseMutex() } catch { }
         }
     }
 }
@@ -353,5 +430,131 @@ function Write-ConsoleStatus {
     $script:ConsoleStatusContext = $null
 }
 
+function Initialize-SessionStatistics {
+    $script:SessionStatistics = @{
+        SessionStartTime    = Get-Date
+        PresetName          = $null
+        TweaksSelected      = 0
+        PreviewRunCount     = 0
+        ApplyRunCount       = 0
+        SucceededCount      = 0
+        FailedCount         = 0
+        SkippedCount        = 0
+        IsGUI               = $false
+        GameModeActive      = $false
+        GameModeProfile     = $null
+    }
+}
+
+function Update-SessionStatistics {
+    param(
+        [hashtable]$Values
+    )
+
+    if (-not $script:SessionStatistics -or -not $Values) { return }
+
+    foreach ($key in $Values.Keys)
+    {
+        if ($script:SessionStatistics.ContainsKey($key))
+        {
+            $script:SessionStatistics[$key] = $Values[$key]
+        }
+    }
+}
+
+function Add-SessionStatistic {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [int]$Increment = 1
+    )
+
+    if (-not $script:SessionStatistics -or -not $script:SessionStatistics.ContainsKey($Name)) { return }
+
+    $script:SessionStatistics[$Name] = [int]$script:SessionStatistics[$Name] + $Increment
+}
+
+function Get-SessionStatistics {
+    if (-not $script:SessionStatistics) { return $null }
+    return $script:SessionStatistics.Clone()
+}
+
+function Write-SessionSummaryToLog {
+    <#
+        .SYNOPSIS
+        Writes a single structured session summary line at the end of the log file.
+
+        .DESCRIPTION
+        Gathers local-only session statistics (preset, tweak counts, run counts,
+        success/failure/skip counts, mode, game mode, duration) and appends a
+        human-readable summary block to the Baseline log. This is never sent
+        anywhere -- it stays in the local log file so users can include it
+        when filing issues.
+    #>
+
+    if (-not $script:LogFilePath) { return }
+    if (-not $script:SessionStatistics) { return }
+
+    $stats = $script:SessionStatistics
+
+    # Skip writing if no meaningful activity was tracked (e.g. background runspace
+    # that imported the module but never ran through the main session flow).
+    $hasActivity = ($stats.PreviewRunCount -gt 0 -or $stats.ApplyRunCount -gt 0 -or
+                    $stats.SucceededCount -gt 0 -or $stats.FailedCount -gt 0 -or
+                    $stats.SkippedCount -gt 0 -or $stats.TweaksSelected -gt 0)
+    if (-not $hasActivity) { return }
+
+    # Calculate duration
+    $durationText = '?'
+    if ($stats.SessionStartTime)
+    {
+        $elapsed = (Get-Date) - [datetime]$stats.SessionStartTime
+        if ($elapsed.TotalHours -ge 1)
+        {
+            $durationText = '{0}h {1}m {2}s' -f [int][Math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds
+        }
+        elseif ($elapsed.TotalMinutes -ge 1)
+        {
+            $durationText = '{0}m {1}s' -f [int][Math]::Floor($elapsed.TotalMinutes), $elapsed.Seconds
+        }
+        else
+        {
+            $durationText = '{0}s' -f [int][Math]::Floor($elapsed.TotalSeconds)
+        }
+    }
+
+    $presetDisplay    = if ([string]::IsNullOrWhiteSpace([string]$stats.PresetName)) { 'None' } else { [string]$stats.PresetName }
+    $modeDisplay      = if ($stats.IsGUI) { 'GUI' } else { 'Headless' }
+    $gameModeDisplay  = if ($stats.GameModeActive) {
+        if ([string]::IsNullOrWhiteSpace([string]$stats.GameModeProfile)) { 'Yes' } else { "Yes ($($stats.GameModeProfile))" }
+    } else { 'No' }
+
+    $summaryLine = "Preset: $presetDisplay | Tweaks selected: $($stats.TweaksSelected) | Preview runs: $($stats.PreviewRunCount) | Apply runs: $($stats.ApplyRunCount) | Succeeded: $($stats.SucceededCount) | Failed: $($stats.FailedCount) | Skipped: $($stats.SkippedCount) | Mode: $modeDisplay | Game Mode: $gameModeDisplay | Duration: $durationText"
+
+    $block = @(
+        ''
+        '--- Session Summary ---'
+        $summaryLine
+    )
+
+    $acquired = $script:LogLock.WaitOne($script:DefaultLogMutexTimeoutMs)
+    try {
+        if ($acquired) {
+            Add-Content -Path $script:LogFilePath -Value ($block -join "`n") -Encoding UTF8
+        }
+    }
+    finally {
+        if ($acquired) {
+            $script:LogLock.ReleaseMutex()
+        }
+    }
+}
+
+# Dispose the log mutex when the module is removed to release the system handle.
+$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+    if ($script:LogLock) { $script:LogLock.Dispose() }
+}
+
 # Export the logging functions used by the loader and region modules.
-Export-ModuleMember -Function Set-LogFile, Reset-LogStatistics, Get-LogStatistics, Set-UILogHandler, Clear-UILogHandler, LogInfo, LogWarning, LogError, Write-LogMessage, Write-ConsoleStatus
+Export-ModuleMember -Function Set-LogFile, Reset-LogStatistics, Get-LogStatistics, Set-LogMode, Clear-LogMode, Set-UILogHandler, Clear-UILogHandler, LogInfo, LogWarning, LogError, Write-LogMessage, Write-ConsoleStatus, Initialize-SessionStatistics, Update-SessionStatistics, Add-SessionStatistic, Get-SessionStatistics, Write-SessionSummaryToLog
+

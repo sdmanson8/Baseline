@@ -1,4 +1,4 @@
-using module ..\Logging.psm1
+﻿using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
 #region UWP apps
@@ -40,15 +40,31 @@ function BackgroundApps
 		{
 			Write-ConsoleStatus -Action "Enabling Background Apps"
 			LogInfo "Enabling Background Apps"
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Background Apps: $($_.Exception.Message)"
+			}
 		}
 		"Disable"
 		{
 			Write-ConsoleStatus -Action "Disabling Background Apps"
 			LogInfo "Disabling Background Apps"
-			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Background Apps: $($_.Exception.Message)"
+			}
 		}
 	}
 }
@@ -100,35 +116,90 @@ function Copilot
 	)
 
 	$osInfo = Get-OSInfo
-	if ($osInfo.IsWindowsServer)
-	{
-		LogWarning "Microsoft Copilot and Windows AI removal is not applicable on Windows Server. Skipping."
-		return
-	}
-
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Install"
 		{
-			Write-Host "Installing Microsoft Copilot and other AI features: "
-			LogInfo "Installing Microsoft Copilot and other AI features:"
-			# store in environment for child processes
-			[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
-			& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -revertMode -AllOptions
-			Start-Sleep -Seconds 2
-			winget install -s msstore -e --silent --accept-source-agreements --accept-package-agreements --id 9NHT9RB2F4HD 2>$null | Out-Null
-			if ($LASTEXITCODE -ne 0)
+			Write-ConsoleStatus -Action "Installing Microsoft Copilot app"
+			LogInfo "Installing Microsoft Copilot app and restoring related Windows AI components"
+			if ($osInfo.IsWindowsServer)
 			{
-				LogError "winget failed to install Microsoft Copilot with exit code $LASTEXITCODE"
+				LogWarning "Skipping Microsoft Copilot install because this Windows AI package flow is not applicable on Windows Server."
+				Write-ConsoleStatus -Status warning
+				return
+			}
+
+			try
+			{
+				# Store the log path in the environment for the helper process.
+				[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
+				$global:LASTEXITCODE = 0
+				& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -revertMode -AllOptions
+				if (-not $?)
+				{
+					throw "RemoveWindowsAI restore mode did not complete successfully."
+				}
+				if ($LASTEXITCODE -ne 0)
+				{
+					throw "RemoveWindowsAI restore mode returned exit code $LASTEXITCODE."
+				}
+
+				Start-Sleep -Seconds 2
+				$WingetCommand = Get-Command winget -ErrorAction SilentlyContinue
+				if (-not $WingetCommand)
+				{
+					throw "winget is required to install the Copilot Store app, but it is not available on this system."
+				}
+
+				$WingetProcess = Start-Process -FilePath $WingetCommand.Source -ArgumentList "install -s msstore -e --silent --accept-source-agreements --accept-package-agreements --id 9NHT9RB2F4HD" -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop
+				if ($WingetProcess.ExitCode -ne 0)
+				{
+					throw "winget failed to install Microsoft Copilot with exit code $($WingetProcess.ExitCode)."
+				}
+
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to install Microsoft Copilot and related Windows AI components: $($_.Exception.Message)"
+				throw
 			}
 		}
 		"Uninstall"
 		{
-			Write-Host "Uninstalling Microsoft Copilot and other AI features:"
-			LogInfo "Uninstalling Microsoft Copilot and other AI features:"
-			# store in environment for child processes
-			[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
-			& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -AllOptions
+			Write-ConsoleStatus -Action "Uninstalling Microsoft Copilot app"
+			LogInfo "Uninstalling Microsoft Copilot app and related Windows AI components"
+			if ($osInfo.IsWindowsServer)
+			{
+				LogWarning "Skipping Microsoft Copilot uninstall because this Windows AI package flow is not applicable on Windows Server."
+				Write-ConsoleStatus -Status warning
+				return
+			}
+
+			try
+			{
+				# Store the log path in the environment for the helper process.
+				[Environment]::SetEnvironmentVariable("REMOVE_WINDOWS_AI_LOG", $global:LogFilePath, "Process")
+				$global:LASTEXITCODE = 0
+				& "$PSScriptRoot\..\..\Assets\RemoveWindowsAI.ps1" -nonInteractive -AllOptions
+				if (-not $?)
+				{
+					throw "RemoveWindowsAI removal mode did not complete successfully."
+				}
+				if ($LASTEXITCODE -ne 0)
+				{
+					throw "RemoveWindowsAI removal mode returned exit code $LASTEXITCODE."
+				}
+
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to uninstall Microsoft Copilot and related Windows AI components: $($_.Exception.Message)"
+				throw
+			}
 		}
 	}
 }
@@ -173,13 +244,24 @@ function CortanaAutostart
 
 	if (-not (Get-AppxPackage -Name Microsoft.549981C3F5F10 -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
 
-	if (-not (Test-Path -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId"))
+	try
 	{
-		New-Item -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Force | Out-Null
+		if (-not (Test-Path -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId"))
+		{
+			New-Item -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Force -ErrorAction Stop | Out-Null
+		}
+	}
+	catch
+	{
+		$actionText = if ($PSCmdlet.ParameterSetName -eq "Disable") { "Disabling Cortana autostarting" } else { "Enabling Cortana autostarting" }
+		Write-ConsoleStatus -Action $actionText
+		Write-ConsoleStatus -Status failed
+		LogError "Failed to create Cortana startup registry key: $($_.Exception.Message)"
+		return
 	}
 
 	switch ($PSCmdlet.ParameterSetName)
@@ -188,15 +270,31 @@ function CortanaAutostart
 		{
 			Write-ConsoleStatus -Action "Disabling Cortana autostarting"
 			LogInfo "Disabling Cortana autostarting"
-			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 1 -Force | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Cortana autostarting: $($_.Exception.Message)"
+			}
 		}
 		"Enable"
 		{
 			Write-ConsoleStatus -Action "Enabling Cortana autostarting"
 			LogInfo "Enabling Cortana autostarting"
-			New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 2 -Force | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				New-ItemProperty -Path "Registry::HKEY_CLASSES_ROOT\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\Microsoft.549981C3F5F10_8wekyb3d8bbwe\CortanaStartupId" -Name State -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Cortana autostarting: $($_.Exception.Message)"
+			}
 		}
 	}
 }
@@ -506,7 +604,7 @@ function RevertStartMenu
 				
 				# Download ViVeTool
 				$zipPath = "$tempDir\ViVeTool.zip"
-				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
+				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
 				LogInfo "Downloaded ViVeTool"
 				
 				# Extract
@@ -529,7 +627,7 @@ function RevertStartMenu
 				# Cleanup
 				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 				LogInfo "Cleaned up temporary files"
-				LogInfo "Please restart your computer to apply the changes."
+				LogInfo $Localization.RestartWarning
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -537,6 +635,7 @@ function RevertStartMenu
 				if ($_.Exception.Message -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
 				{
 					LogWarning "$DownloadFailedMessage Error: $($_.Exception.Message)"
+					# Write-Host: intentional — user-visible progress indicator
 					Write-Host "skipped!" -ForegroundColor Yellow
 				}
 				else
@@ -566,16 +665,16 @@ function RevertStartMenu
 					Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 				}
 				New-Item -Path $tempDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-				
+
 				# Download ViVeTool
 				$zipPath = "$tempDir\ViVeTool.zip"
-				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop | Out-Null
+				Invoke-WebRequest $viveToolUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
 				LogInfo "Downloaded ViVeTool"
-				
+
 				# Extract
 				Expand-Archive $zipPath -DestinationPath $tempDir -Force -ErrorAction Stop | Out-Null
 				LogInfo "Extracted ViVeTool"
-				
+
 				# Run ViVeTool
 				$viveExe = "$tempDir\ViVeTool.exe"
 				if (-not (Test-Path $viveExe))
@@ -588,11 +687,11 @@ function RevertStartMenu
 					throw "ViVeTool returned exit code $($ViVeProcess.ExitCode)"
 				}
 				LogInfo "Applied ViVeTool setting to enable feature $featureId"
-				
+
 				# Cleanup
 				Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 				LogInfo "Cleaned up temporary files"
-				LogInfo "Please restart your computer to apply the changes."
+				LogInfo $Localization.RestartWarning
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -601,6 +700,7 @@ function RevertStartMenu
 					if ($revertDisableError -match 'github\.com|remote name could not be resolved|The remote server returned an error|Unable to connect|connection could not be established')
 					{
 						LogWarning ("{0} Error: {1}" -f $DownloadFailedMessage, $revertDisableError)
+						# Write-Host: intentional — user-visible progress indicator
 						Write-Host "skipped!" -ForegroundColor Yellow
 					}
 					else
@@ -657,17 +757,135 @@ function UWPApps
 
 		[Parameter(Mandatory = $false)]
 		[switch]
-		$ForAllUsers
+		$ForAllUsers,
+
+		[Parameter(Mandatory = $false)]
+		[string[]]
+		$SelectedPackages,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
+		$CollectSelectionOnly,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
+		$NonInteractive
 	)
+
+	$script:UWPAppsSelectionResult = $null
+	$script:UWPAppsSelectionSeed = if ($null -ne $SelectedPackages) { @($SelectedPackages) } else { @() }
+	$script:UWPAppsExecutionResult = $null
+	$SelectedPackagesProvided = $PSBoundParameters.ContainsKey('SelectedPackages')
+
+	function Request-GuiUWPAppsSelection
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[ValidateSet('Install', 'Uninstall')]
+			[string]
+			$Mode,
+
+			[Parameter(Mandatory = $false)]
+			[bool]
+			$ForAllUsersSelection = $false,
+
+			[Parameter(Mandatory = $false)]
+			[string[]]
+			$SeedPackages = @()
+		)
+
+		$queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction Ignore
+		if (-not $queue)
+		{
+			throw 'GUI execution could not open the UWP app picker because the GUI request queue is unavailable.'
+		}
+
+		$responseState = [hashtable]::Synchronized(@{
+			Done = $false
+			Result = $null
+			Error = $null
+		})
+
+		$queue.Enqueue([PSCustomObject]@{
+			Kind = '_InteractiveSelectionRequest'
+			RequestType = 'UWPApps'
+			Mode = $Mode
+			ForAllUsers = [bool]$ForAllUsersSelection
+			SelectedPackages = @($SeedPackages)
+			ResponseState = $responseState
+		})
+
+		while (-not [bool]$responseState['Done'])
+		{
+			$runState = Get-Variable -Name 'runState' -ValueOnly -ErrorAction Ignore
+			if ($runState -and $runState.ContainsKey('AbortRequested') -and [bool]$runState['AbortRequested'])
+			{
+				return $null
+			}
+
+			Start-Sleep -Milliseconds 200
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace([string]$responseState['Error']))
+		{
+			throw [System.InvalidOperationException]::new([string]$responseState['Error'])
+		}
+
+		return $responseState['Result']
+	}
+
+	function Set-UWPAppsExecutionResult
+	{
+		param
+		(
+			[Parameter(Mandatory = $true)]
+			[ValidateSet('Success', 'Partial', 'Failed')]
+			[string]
+			$Outcome,
+
+			[Parameter(Mandatory = $true)]
+			[string]
+			$Message
+		)
+
+		$script:UWPAppsExecutionResult = [PSCustomObject]@{
+			Outcome = $Outcome
+			Message = $Message
+		}
+	}
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Install"
 		{
+            if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedPackagesProvided)
+            {
+                $selectionResult = Request-GuiUWPAppsSelection -Mode 'Install' -ForAllUsersSelection ([bool]$ForAllUsers) -SeedPackages @($SelectedPackages)
+                if ($null -ne $selectionResult)
+                {
+                    $ForAllUsers = [bool]$selectionResult.ForAllUsers
+                    $SelectedPackages = @($selectionResult.SelectedPackages)
+                    $script:UWPAppsSelectionSeed = @($SelectedPackages)
+                    $SelectedPackagesProvided = $true
+                }
+            }
+
+            if ($NonInteractive -and -not $SelectedPackagesProvided)
+            {
+                Write-ConsoleStatus -Action "Installing UWP apps"
+                LogWarning "Skipping UWP app install because no preselected packages were provided for noninteractive execution."
+                Write-ConsoleStatus -Status warning
+                return
+            }
+
             # Show the app picker and install the packages the user selects.
             Add-Type -AssemblyName PresentationCore, PresentationFramework
-            Write-ConsoleStatus -Action "Installing UWP apps"
-            LogInfo "Installing UWP apps:"
+            if (-not $CollectSelectionOnly)
+            {
+                Write-ConsoleStatus -Action "Installing UWP apps"
+                LogInfo "Installing UWP apps:"
+            }
 
             # Check for admin rights when "All Users" is selected
             if ($ForAllUsers)
@@ -675,8 +893,16 @@ function UWPApps
                 $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
                 if (-not $IsAdmin)
                 {
-                    $wshell = New-Object -ComObject Wscript.Shell
-                    $wshell.Popup("Installing for all users requires administrator privileges.`nPlease run PowerShell as Administrator.", 0, "Admin Required", 0)
+                    LogWarning "Skipping UWP app install for all users because administrator privileges are required."
+                    if (-not $CollectSelectionOnly)
+                    {
+                        Write-ConsoleStatus -Status warning
+                    }
+                    if (-not $NonInteractive)
+                    {
+                        $wshell = New-Object -ComObject Wscript.Shell
+                        $wshell.Popup("Installing for all users requires administrator privileges.`nPlease run PowerShell as Administrator.", 0, "Admin Required", 0)
+                    }
                     return
                 }
             }
@@ -818,6 +1044,7 @@ function UWPApps
 
 			if ($null -eq $Form)
             {
+                # TODO: Consider replacing with Write-Log
                 Write-Host "Failed to load XAML" -ForegroundColor Red
                 return
             }
@@ -829,6 +1056,7 @@ function UWPApps
 			$PanelContainer = $Form.FindName("PanelContainer")
 			if ($null -eq $PanelContainer)
             {
+                # TODO: Consider replacing with Write-Log
                 Write-Host "PanelContainer not found!" -ForegroundColor Red
                 return
             }
@@ -939,11 +1167,22 @@ function UWPApps
 
             function ButtonInstallClick
             {
+           	if ($CollectSelectionOnly)
+                {
+                    $script:UWPAppsSelectionResult = [PSCustomObject]@{
+                        Mode = 'Install'
+                        ForAllUsers = [bool]$CheckBoxForAllUsers.IsChecked
+                        SelectedPackages = @($PackagesToInstall)
+                    }
+                    $Window.Close()
+                    return
+                }
+
            	$Window.Close()
 
            	$SuccessfulPackages = [System.Collections.Generic.List[string]]::new()
-           	#$FailedPackages = [System.Collections.Generic.List[string]]::new()
            	$ManualPackages = [System.Collections.Generic.List[string]]::new()
+                $scope = if ($CheckBoxForAllUsers.IsChecked) { "all users" } else { "current user" }
 
            	# Store URLs for apps that need Store installation
            	$StoreUrls = @{
@@ -1019,7 +1258,7 @@ function UWPApps
 
          			if ($Provisioned)
          			{
-            				try {
+           				try {
            					Add-AppxProvisionedPackage -Online -PackageName $Provisioned.PackageName -SkipLicense -ErrorAction Stop | Out-Null
            					Start-Sleep -Seconds 3
 
@@ -1032,7 +1271,7 @@ function UWPApps
            					    }
                             }
             				catch {
-           					LogError "Provisioned package installation failed for $PackageName"
+           					LogWarning "Provisioned package installation did not complete for $PackageName. Trying other recovery methods."
             				}
          			}
 
@@ -1055,7 +1294,7 @@ function UWPApps
 
 								if ($WingetProcess.ExitCode -ne 0)
 								{
-									LogError "winget failed to install $PackageName with exit code $($WingetProcess.ExitCode)"
+									LogWarning "winget failed to install $PackageName with exit code $($WingetProcess.ExitCode). Trying other recovery methods."
 								}
 
            					Start-Sleep -Seconds 5
@@ -1074,6 +1313,13 @@ function UWPApps
          			$StoreUrl = $StoreUrls[$PackageName]
          			if ($StoreUrl)
          			{
+                            if ($NonInteractive)
+                            {
+                                LogWarning "$PackageName requires Microsoft Store or manual follow-up in noninteractive mode."
+                                $ManualPackages.Add($PackageName)
+                                continue
+                            }
+
             				#LogInfo "Opening Microsoft Store for $PackageName. Please install manually..."
             				Start-Process $StoreUrl
 
@@ -1090,32 +1336,24 @@ function UWPApps
             				else
             				{
                					$ManualPackages.Add($PackageName)
-               					LogError "User will install $PackageName manually later"
+               					LogWarning "$PackageName requires manual installation from the Microsoft Store."
             				}
          			}
          			else
          			{
-                        LogError "$PackageName - Could not install automatically"
+                        LogWarning "$PackageName could not be installed automatically and needs manual follow-up."
             			$ManualPackages.Add($PackageName)
          			}
           		}
           		catch {
-         			LogError "$PackageName - Installation failed: $($_.Exception.Message)"
+         			LogWarning "$PackageName - Installation needs manual follow-up: $($_.Exception.Message)"
          			$ManualPackages.Add($PackageName)
           		}
            	}
 
-           	if ($ManualPackages.Count -gt 0)
-           	{
-          		#LogInfo "The following apps need manual installation: $($ManualPackages -join ', ')"
-           	}
-
-           	#LogInfo "Installation complete: $($SuccessfulPackages.Count) installed, $($ManualPackages.Count) need manual attention"
-
             # Log results
             if ($SuccessfulPackages.Count -gt 0)
             {
-                $scope = if ($CheckBoxForAllUsers.IsChecked) { "all users" } else { "current user" }
                 foreach ($Package in $SuccessfulPackages)
                 {
                     LogInfo "Successfully installed $Package for $scope"
@@ -1124,21 +1362,38 @@ function UWPApps
 
             if ($ManualPackages.Count -gt 0)
             {
-                #LogInfo "The following apps need manual installation: $($ManualPackages -join ', ')"
+                $manualPackageList = $ManualPackages -join ', '
+                if ($SuccessfulPackages.Count -gt 0)
+                {
+                    $message = "Partial success: Installed $($SuccessfulPackages.Count) selected UWP app(s) for $scope, but $($ManualPackages.Count) still need Microsoft Store or manual follow-up: $manualPackageList."
+                    LogWarning $message
+                    Set-UWPAppsExecutionResult -Outcome Partial -Message $message
+                    return
+                }
+
+                $message = "Failed to install selected UWP apps for $scope. Microsoft Store or manual follow-up is still needed for: $manualPackageList."
+                LogError $message
+                Set-UWPAppsExecutionResult -Outcome Failed -Message $message
+                return
             }
 
-            #LogInfo "Installation complete: $($SuccessfulPackages.Count) installed, $($ManualPackages.Count) need manual attention"
+            $message = "Installed $($SuccessfulPackages.Count) selected UWP app(s) for $scope."
+            LogInfo $message
+            Set-UWPAppsExecutionResult -Outcome Success -Message $message
         }
 
             function Add-Control
             {
            	param($Packages, $Panel)
 
+            $selectionSeed = @($script:UWPAppsSelectionSeed)
+            $useSelectionSeed = ($selectionSeed.Count -gt 0)
+
            	foreach ($Package in $Packages)
            	{
           		$CheckBox = New-Object System.Windows.Controls.CheckBox
           		$CheckBox.Tag = $Package.PackageFullName
-          		$CheckBox.IsChecked = $true
+          		$CheckBox.IsChecked = $(if ($useSelectionSeed) { $Package.PackageFullName -in $selectionSeed } else { $true })
           		$CheckBox.Margin = "5,5,5,5"
           		$CheckBox.VerticalAlignment = "Center"
 
@@ -1154,7 +1409,10 @@ function UWPApps
           		$StackPanel.Children.Add($TextBlock) | Out-Null
 
           		$Panel.Children.Add($StackPanel) | Out-Null
-          		$PackagesToInstall.Add($Package.PackageFullName) | Out-Null
+                if ($CheckBox.IsChecked)
+                {
+          		    $PackagesToInstall.Add($Package.PackageFullName) | Out-Null
+                }
 
           		$CheckBox.Add_Click({CheckBoxClick})
            	}
@@ -1216,7 +1474,20 @@ function UWPApps
 
             if ($MissingPackages.Count -eq 0)
             {
-           	LogInfo "No apps found to install"
+           	LogWarning "Skipping UWP app install because no apps were missing for the chosen scope."
+                if (-not $CollectSelectionOnly)
+                {
+                    Write-ConsoleStatus -Status warning
+                }
+                if ($CollectSelectionOnly)
+                {
+                    return [PSCustomObject]@{
+                        Mode = 'Install'
+                        ForAllUsers = [bool]$ForAllUsers
+                        SelectedPackages = @()
+                    }
+                }
+                return
             }
             else
             {
@@ -1227,17 +1498,93 @@ function UWPApps
 		$ButtonInstall.IsEnabled = $true
 	}
 
-	Initialize-WpfWindowForeground -Window $Form
-	$Form.ShowDialog() | Out-Null
+    if ($SelectedPackagesProvided -and -not $CollectSelectionOnly)
+    {
+        $Window = New-Object psobject
+        $Window | Add-Member -MemberType ScriptMethod -Name Close -Value { return $null } -Force
+        $CheckBoxForAllUsers = [pscustomobject]@{ IsChecked = [bool]$ForAllUsers }
+        $PackagesToInstall.Clear()
+        foreach ($selectedPackage in @($SelectedPackages))
+        {
+            if (-not [string]::IsNullOrWhiteSpace([string]$selectedPackage))
+            {
+                $PackagesToInstall.Add([string]$selectedPackage) | Out-Null
+            }
+        }
+        if ($PackagesToInstall.Count -gt 0)
+        {
+            ButtonInstallClick
+        }
     }
-    Write-ConsoleStatus -Status success
+    elseif ($Global:GUIMode -and -not $CollectSelectionOnly)
+    {
+        # GUI-mode runs collect the package selection on the main UI thread when this tweak starts.
+    }
+    else
+    {
+	    try
+	    {
+		    Initialize-WpfWindowForeground -Window $Form
+		    $Form.ShowDialog() | Out-Null
+	    }
+	    catch
+	    {
+		    LogError "Install UWP Apps dialog failed to open: $($_.Exception.Message)"
+            if (-not $CollectSelectionOnly)
+            {
+		        Write-ConsoleStatus -Status failed
+            }
+		    return
+	    }
+    }
+    }
+    if ($CollectSelectionOnly)
+    {
+        return $script:UWPAppsSelectionResult
+    }
+    if ($null -eq $script:UWPAppsExecutionResult)
+    {
+        LogWarning "Skipping UWP app install because no packages were confirmed."
+        Write-ConsoleStatus -Status warning
+        return
+    }
+    if ($script:UWPAppsExecutionResult.Outcome -eq 'Success')
+    {
+        Write-ConsoleStatus -Status success
+        return
+    }
+    Write-ConsoleStatus -Status failed
+    throw $script:UWPAppsExecutionResult.Message
 }
 		"Uninstall"
 		{
+            if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedPackagesProvided)
+            {
+                $selectionResult = Request-GuiUWPAppsSelection -Mode 'Uninstall' -ForAllUsersSelection ([bool]$ForAllUsers) -SeedPackages @($SelectedPackages)
+                if ($null -ne $selectionResult)
+                {
+                    $ForAllUsers = [bool]$selectionResult.ForAllUsers
+                    $SelectedPackages = @($selectionResult.SelectedPackages)
+                    $script:UWPAppsSelectionSeed = @($SelectedPackages)
+                    $SelectedPackagesProvided = $true
+                }
+            }
+
+            if ($NonInteractive -and -not $SelectedPackagesProvided)
+            {
+                Write-ConsoleStatus -Action "Uninstalling UWP apps"
+                LogWarning "Skipping UWP app uninstall because no preselected packages were provided for noninteractive execution."
+                Write-ConsoleStatus -Status warning
+                return
+            }
+
 			# Show the app picker and remove the packages the user selects.
 			Add-Type -AssemblyName PresentationCore, PresentationFramework
-			Write-ConsoleStatus -Action "Uninstalling UWP apps"
-			LogInfo "Uninstalling UWP apps:"
+            if (-not $CollectSelectionOnly)
+            {
+			    Write-ConsoleStatus -Action "Uninstalling UWP apps"
+			    LogInfo "Uninstalling UWP apps:"
+            }
 			#region Variables
 			# The following UWP apps will have their checkboxes unchecked
 			$UncheckedAppxPackages = @(
@@ -1376,22 +1723,14 @@ function UWPApps
 				xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 				xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 				Name="Window"
-				MinHeight="400" MinWidth="415"
+				MinHeight="400" MinWidth="415" MaxHeight="700"
 				SizeToContent="Width" WindowStartupLocation="CenterScreen"
 				TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
 				FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
 				Background="#F1F1F1" Foreground="#262626">
 				<Window.Resources>
-					<Style TargetType="StackPanel">
-						<Setter Property="Orientation" Value="Horizontal"/>
-						<Setter Property="VerticalAlignment" Value="Top"/>
-					</Style>
 					<Style TargetType="CheckBox">
-						<Setter Property="Margin" Value="10, 13, 10, 10"/>
 						<Setter Property="IsChecked" Value="True"/>
-					</Style>
-					<Style TargetType="TextBlock">
-						<Setter Property="Margin" Value="0, 10, 10, 10"/>
 					</Style>
 					<Style TargetType="Button">
 						<Setter Property="Margin" Value="20"/>
@@ -1416,23 +1755,23 @@ function UWPApps
 						<RowDefinition Height="*"/>
 						<RowDefinition Height="Auto"/>
 					</Grid.RowDefinitions>
-					<Grid Grid.Row="0">
+					<Grid Grid.Row="0" Margin="10,8,10,8">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*"/>
-							<ColumnDefinition Width="*"/>
+							<ColumnDefinition Width="Auto"/>
 						</Grid.ColumnDefinitions>
-						<StackPanel Name="PanelSelectAll" Grid.Column="0" HorizontalAlignment="Left">
-							<CheckBox Name="CheckBoxSelectAll" IsChecked="False"/>
-							<TextBlock Name="TextBlockSelectAll" Margin="10,10, 0, 10"/>
+						<StackPanel Name="PanelSelectAll" Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+							<CheckBox Name="CheckBoxSelectAll" IsChecked="False" VerticalAlignment="Center" Margin="0,0,6,0"/>
+							<TextBlock Name="TextBlockSelectAll" VerticalAlignment="Center"/>
 						</StackPanel>
-						<StackPanel Name="PanelRemoveForAll" Grid.Column="1" HorizontalAlignment="Right">
-							<TextBlock Name="TextBlockRemoveForAll" Margin="10,10, 0, 10"/>
-							<CheckBox Name="CheckBoxForAllUsers" IsChecked="False"/>
+						<StackPanel Name="PanelRemoveForAll" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+							<TextBlock Name="TextBlockRemoveForAll" VerticalAlignment="Center" Margin="0,0,6,0"/>
+							<CheckBox Name="CheckBoxForAllUsers" IsChecked="False" VerticalAlignment="Center"/>
 						</StackPanel>
 					</Grid>
 					<Border>
 						<ScrollViewer>
-							<StackPanel Name="PanelContainer" Orientation="Vertical"/>
+							<StackPanel Name="PanelContainer" Orientation="Vertical" Margin="10,6,10,6"/>
 						</ScrollViewer>
 					</Border>
 					<Button Name="ButtonUninstall" Grid.Row="2"/>
@@ -1449,8 +1788,7 @@ function UWPApps
 			$Window.Title               = "Uninstall UWP Apps"
 			$ButtonUninstall.Content    = "Uninstall"
 			$TextBlockRemoveForAll.Text = "Uninstall for all users"
-			# Extract the localized "Select all" string from shell32.dll
-			$TextBlockSelectAll.Text    = [WinAPI.GetStrings]::GetString(31276)
+			$TextBlockSelectAll.Text    = Get-LocalizedShellString -ResourceId 31276 -Fallback 'Select all' -StripAccelerators
 
 			$ButtonUninstall.Add_Click({ButtonUninstallClick})
 			$CheckBoxForAllUsers.Add_Click({CheckBoxForAllUsersClick})
@@ -1519,6 +1857,26 @@ function UWPApps
 				'Microsoft.WindowsSoundRecorder'
 			)
 
+			function New-UwpAppsInfoIcon
+			{
+				param (
+					[string]$TooltipText
+				)
+
+				$icon = New-Object -TypeName System.Windows.Controls.TextBlock
+				$icon.Text = [char]0x24D8  # info icon
+				$icon.FontSize = 14
+				$icon.Foreground = [System.Windows.Media.Brushes]::DodgerBlue
+				$icon.VerticalAlignment = 'Center'
+				$icon.Margin = [System.Windows.Thickness]::new(0, 0, 4, 0)
+				$icon.Cursor = [System.Windows.Input.Cursors]::Arrow
+				$icon.ToolTip = $(if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'This item has extra information.' } else { $TooltipText })
+				[System.Windows.Controls.ToolTipService]::SetPlacement($icon, [System.Windows.Controls.Primitives.PlacementMode]::Right)
+				[System.Windows.Controls.ToolTipService]::SetShowDuration($icon, 20000)
+				[System.Windows.Controls.ToolTipService]::SetInitialShowDelay($icon, 150)
+				return $icon
+			}
+
 			function Add-Control
 			{
 				[CmdletBinding()]
@@ -1535,12 +1893,18 @@ function UWPApps
 
 				process
 				{
+                    $selectionSeed = @($script:UWPAppsSelectionSeed)
+                    $useSelectionSeed = ($selectionSeed.Count -gt 0)
 					foreach ($Package in $Packages)
 					{
 						$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
 						$CheckBox.Tag = $Package.PackageFullName
+						$CheckBox.VerticalAlignment = 'Center'
+						$CheckBox.Margin = [System.Windows.Thickness]::new(0, 0, 12, 0)
 
 						$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
+						$TextBlock.VerticalAlignment = 'Center'
+						$TextBlock.Margin = [System.Windows.Thickness]::new(0, 0, 12, 0)
 
 						if ($Package.DisplayName)
 						{
@@ -1551,26 +1915,54 @@ function UWPApps
 							$TextBlock.Text = $Package.Name
 						}
 
-						$StackPanel = New-Object -TypeName System.Windows.Controls.StackPanel
-						$StackPanel.Orientation = 'Horizontal'
-						$StackPanel.Children.Add($CheckBox) | Out-Null
-						$StackPanel.Children.Add($TextBlock) | Out-Null
+						$rowPanel = New-Object -TypeName System.Windows.Controls.DockPanel
+						$rowPanel.LastChildFill = $true
+						$rowPanel.HorizontalAlignment = 'Stretch'
+						$rowPanel.Margin = [System.Windows.Thickness]::new(0, 0, 0, 6)
+
+						[System.Windows.Controls.DockPanel]::SetDock($CheckBox, [System.Windows.Controls.Dock]::Left)
+						[void]$rowPanel.Children.Add($CheckBox)
 
 						# Warn if the app cannot be reinstalled via the Install dialog
 						if ($Package.Name -notin $ReinstallablePackageNames)
 						{
+							$warningPanel = New-Object -TypeName System.Windows.Controls.StackPanel
+							$warningPanel.Orientation = 'Horizontal'
+							$warningPanel.VerticalAlignment = 'Center'
+							$warningPanel.HorizontalAlignment = 'Right'
+							$warningPanel.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+
+							$infoIcon = New-UwpAppsInfoIcon -TooltipText 'This app cannot be reinstalled from the Microsoft Store.'
+							if ($infoIcon)
+							{
+								$warningPanel.Children.Add($infoIcon) | Out-Null
+							}
+
 							$warnTb = New-Object -TypeName System.Windows.Controls.TextBlock
-							$warnTb.Text       = "  (cannot reinstall from Store)"
-							$warnTb.Foreground  = [System.Windows.Media.Brushes]::IndianRed
-							$warnTb.FontSize    = 11
-							$warnTb.FontStyle   = [System.Windows.FontStyles]::Italic
+							$warnTb.Text = 'Warning'
+							$warnTb.Foreground = [System.Windows.Media.Brushes]::IndianRed
+							$warnTb.FontSize = 12
+							$warnTb.FontWeight = [System.Windows.FontWeights]::SemiBold
 							$warnTb.VerticalAlignment = 'Center'
-							$StackPanel.Children.Add($warnTb) | Out-Null
+							$warnTb.ToolTip = 'This app cannot be reinstalled from the Microsoft Store.'
+							$warningPanel.Children.Add($warnTb) | Out-Null
+
+							[System.Windows.Controls.DockPanel]::SetDock($warningPanel, [System.Windows.Controls.Dock]::Right)
+							[void]$rowPanel.Children.Add($warningPanel)
 						}
 
-						$PanelContainer.Children.Add($StackPanel) | Out-Null
+						[void]$rowPanel.Children.Add($TextBlock)
+						$PanelContainer.Children.Add($rowPanel) | Out-Null
 
-						if ($UncheckedAppxPackages.Contains($Package.Name))
+						if ($useSelectionSeed)
+                        {
+                            $CheckBox.IsChecked = ($Package.PackageFullName -in $selectionSeed)
+                            if ($CheckBox.IsChecked)
+                            {
+                                $PackagesToRemove.Add($Package.PackageFullName)
+                            }
+                        }
+                        elseif ($UncheckedAppxPackages.Contains($Package.Name))
 						{
 							$CheckBox.IsChecked = $false
 						}
@@ -1597,43 +1989,106 @@ function UWPApps
 
 			function ButtonUninstallClick
 			{
+                if ($CollectSelectionOnly)
+                {
+                    $script:UWPAppsSelectionResult = [PSCustomObject]@{
+                        Mode = 'Uninstall'
+                        ForAllUsers = [bool]$CheckBoxForAllUsers.IsChecked
+                        SelectedPackages = @($PackagesToRemove)
+                    }
+                    $Window.Close() | Out-Null
+                    return
+                }
+
 				$Window.Close() | Out-Null
+                $RemovedPackages = [System.Collections.Generic.List[string]]::new()
+                $FailedPackages = [System.Collections.Generic.List[string]]::new()
+                $AncillaryIssues = [System.Collections.Generic.List[string]]::new()
+                $scope = if ($CheckBoxForAllUsers.IsChecked) { 'all users' } else { 'current user' }
 
 				# If MSTeams is selected to uninstall, delete quietly "Microsoft Teams Meeting Add-in for Microsoft Office" too
 				# & "$env:SystemRoot\System32\msiexec.exe" --% /x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn
 				if ($PackagesToRemove -match "MSTeams")
 				{
-					$MSIProcess = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList "/x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn" -PassThru -WindowStyle Hidden -ErrorAction Stop
+                    try
+                    {
+					    $MSIProcess = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" -ArgumentList "/x {A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91} /qn" -PassThru -WindowStyle Hidden -ErrorAction Stop
 						$teamsRemovalFinished = $MSIProcess.WaitForExit(60000)
 						if (-not $teamsRemovalFinished)
 						{
-							LogError "msiexec timed out removing Teams Meeting Add-in - killing process"
+							LogWarning "Teams Meeting Add-in removal timed out and needs manual follow-up."
+                            $AncillaryIssues.Add('Teams Meeting Add-in')
 							$MSIProcess.Kill()
 						}
-					elseif ($MSIProcess.ExitCode -ne 0)
-					{
-						LogError "msiexec failed to remove the Teams Meeting Add-in with exit code $($MSIProcess.ExitCode)"
-					}
+					    elseif ($MSIProcess.ExitCode -ne 0)
+					    {
+						    LogWarning "Teams Meeting Add-in removal returned exit code $($MSIProcess.ExitCode) and needs manual follow-up."
+                            $AncillaryIssues.Add('Teams Meeting Add-in')
+					    }
+                    }
+                    catch
+                    {
+                        LogWarning "Teams Meeting Add-in removal needs manual follow-up: $($_.Exception.Message)"
+                        $AncillaryIssues.Add('Teams Meeting Add-in')
+                    }
 				}
 
-				Invoke-SilencedProgress {
-					$PackagesToRemove | Remove-AppxPackage -AllUsers:$CheckBoxForAllUsers.IsChecked
+                foreach ($Package in $PackagesToRemove)
+				{
+                    $PackageDisplayName = ([string]$Package).Split('_')[0]
+                    try
+                    {
+				        Invoke-SilencedProgress {
+						    Remove-AppxPackage -Package $Package -AllUsers:$CheckBoxForAllUsers.IsChecked -ErrorAction Stop
+				        }
+
+                        Start-Sleep -Milliseconds 500
+                        $RemainingPackage = Get-AppxPackage -AllUsers:$CheckBoxForAllUsers.IsChecked -ErrorAction SilentlyContinue -WarningAction SilentlyContinue |
+                            Where-Object -FilterScript { $_.PackageFullName -eq $Package }
+                        if ($RemainingPackage)
+                        {
+                            throw "Package still appears to be installed after the removal attempt."
+                        }
+
+                        $RemovedPackages.Add($PackageDisplayName)
+                        LogInfo "Successfully removed $PackageDisplayName for $scope"
+                    }
+                    catch
+                    {
+                        $FailedPackages.Add($PackageDisplayName)
+                        LogError "$PackageDisplayName - Removal failed: $($_.Exception.Message)"
+                    }
 				}
 
-				if ($CheckBoxForAllUsers.IsChecked)
-				{
-					foreach ($Package in $PackagesToRemove)
-					{
-						LogInfo "Successfully removed $Package for all users"
-					}
-				}
-				else
-				{
-					foreach ($Package in $PackagesToRemove)
-					{
-						LogInfo "Successfully removed $Package for current user"
-					}
-				}
+                if ($FailedPackages.Count -gt 0 -or $AncillaryIssues.Count -gt 0)
+                {
+                    $issueParts = @()
+                    if ($FailedPackages.Count -gt 0)
+                    {
+                        $issueParts += "failed to remove: $($FailedPackages -join ', ')"
+                    }
+                    if ($AncillaryIssues.Count -gt 0)
+                    {
+                        $issueParts += "manual cleanup is still needed for: $($AncillaryIssues -join ', ')"
+                    }
+
+                    if ($RemovedPackages.Count -gt 0)
+                    {
+                        $message = "Partial success: Removed $($RemovedPackages.Count) selected UWP app(s) for $scope, but $($issueParts -join '; ')."
+                        LogWarning $message
+                        Set-UWPAppsExecutionResult -Outcome Partial -Message $message
+                        return
+                    }
+
+                    $message = "Failed to remove selected UWP apps for $scope. $($issueParts -join '; ')."
+                    LogError $message
+                    Set-UWPAppsExecutionResult -Outcome Failed -Message $message
+                    return
+                }
+
+                $message = "Removed $($RemovedPackages.Count) selected UWP app(s) for $scope."
+                LogInfo $message
+                Set-UWPAppsExecutionResult -Outcome Success -Message $message
 			}
 
 			function CheckBoxClick
@@ -1716,7 +2171,20 @@ function UWPApps
 
 			if ($AppXPackages.Count -eq 0)
 			{
-				LogInfo "No apps available to uninstall"
+				LogWarning "Skipping UWP app uninstall because no apps were available for the chosen scope."
+                if (-not $CollectSelectionOnly)
+                {
+                    Write-ConsoleStatus -Status warning
+                }
+                if ($CollectSelectionOnly)
+                {
+                    return [PSCustomObject]@{
+                        Mode = 'Uninstall'
+                        ForAllUsers = [bool]$ForAllUsers
+                        SelectedPackages = @()
+                    }
+                }
+                return
 			}
 			else
 			{
@@ -1726,15 +2194,46 @@ function UWPApps
 
 				Add-Type -AssemblyName System.Windows.Forms
 
+				$canUseForegroundInterop = $false
+				try
+				{
+					Initialize-ForegroundWindowInterop
+					$canUseForegroundInterop = [bool]("WinAPI.ForegroundWindow" -as [type])
+				}
+				catch
+				{
+					$canUseForegroundInterop = $false
+				}
+
 				# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-				Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Windows Utility for Windows"} | ForEach-Object -Process {
-					# Show window, if minimized
-					[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
+				Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Utility for Windows"} | ForEach-Object -Process {
+					if ($canUseForegroundInterop -and $_.MainWindowHandle -ne [System.IntPtr]::Zero)
+					{
+						try
+						{
+							# Show window, if minimized
+							[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10) | Out-Null
+						}
+						catch
+						{
+							# Allow the dialog to continue even if the foreground helper is unavailable.
+						}
+					}
 
 					Start-Sleep -Seconds 1
 
-					# Force move the console window to the foreground
-					[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
+					if ($canUseForegroundInterop -and $_.MainWindowHandle -ne [System.IntPtr]::Zero)
+					{
+						try
+						{
+							# Force move the console window to the foreground
+							[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle) | Out-Null
+						}
+						catch
+						{
+							# Allow the dialog to continue even if the foreground helper is unavailable.
+						}
+					}
 
 					Start-Sleep -Seconds 1
 
@@ -1749,12 +2248,67 @@ function UWPApps
 				}
 
 				# Restore minimized dialogs and bring them to the foreground once when shown.
-				Initialize-WpfWindowForeground -Window $Form
-				$Form.ShowDialog() | Out-Null
+                if ($SelectedPackagesProvided -and -not $CollectSelectionOnly)
+                {
+                    $Window = New-Object psobject
+                    $Window | Add-Member -MemberType ScriptMethod -Name Close -Value { return $null } -Force
+                    $CheckBoxForAllUsers = [pscustomobject]@{ IsChecked = [bool]$ForAllUsers }
+                    $PackagesToRemove.Clear()
+                    foreach ($selectedPackage in @($SelectedPackages))
+                    {
+                        if (-not [string]::IsNullOrWhiteSpace([string]$selectedPackage))
+                        {
+                            $PackagesToRemove.Add([string]$selectedPackage) | Out-Null
+                        }
+                    }
+                    if ($PackagesToRemove.Count -gt 0)
+                    {
+                        ButtonUninstallClick
+                    }
+                }
+                elseif ($Global:GUIMode -and -not $CollectSelectionOnly)
+                {
+                    # GUI-mode runs collect the package selection on the main UI thread when this tweak starts.
+                }
+                else
+                {
+				    try
+				    {
+					    Initialize-WpfWindowForeground -Window $Form
+					    $Form.ShowDialog() | Out-Null
+				    }
+				    catch
+				    {
+					    LogError "Uninstall UWP Apps dialog failed to open: $($_.Exception.Message)"
+                        if (-not $CollectSelectionOnly)
+                        {
+					        Write-ConsoleStatus -Status failed
+                        }
+					    return
+				    }
+                }
 			}
-			Write-ConsoleStatus -Status success
+            if ($CollectSelectionOnly)
+            {
+                return $script:UWPAppsSelectionResult
+            }
+            if ($null -eq $script:UWPAppsExecutionResult)
+            {
+                LogWarning "Skipping UWP app uninstall because no packages were confirmed."
+                Write-ConsoleStatus -Status warning
+                return
+            }
+            if ($script:UWPAppsExecutionResult.Outcome -eq 'Success')
+            {
+			    Write-ConsoleStatus -Status success
+                return
+            }
+            Write-ConsoleStatus -Status failed
+            throw $script:UWPAppsExecutionResult.Message
 		}
 	}
 }
 
 #endregion UWP apps
+
+Export-ModuleMember -Function '*'

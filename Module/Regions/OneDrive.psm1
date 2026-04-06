@@ -89,8 +89,8 @@ function OneDrive
 	{
 		"Uninstall"
 		{
-			Write-ConsoleStatus -Action "Uninstalling One Drive"
-			LogInfo "Uninstalling One Drive"
+			Write-ConsoleStatus -Action $Localization.OneDriveUninstalling
+			LogInfo $Localization.OneDriveUninstalling
 			try
 			{
 				$resolvedOneDriveSetup = Get-OneDriveSetupPath
@@ -99,17 +99,20 @@ function OneDrive
 				[string]$UninstallString = Get-Package -Name "Microsoft OneDrive" -ProviderName Programs -ErrorAction Ignore -WarningAction SilentlyContinue |
    				ForEach-Object { $_.Meta.Attributes["UninstallString"] }
 
-				if (-not $UninstallString) {
-    				LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
-					Write-ConsoleStatus -Status success
-   				 	return
+				if (-not $UninstallString)
+				{
+					LogWarning "Skipping OneDrive uninstall because the app is not currently installed."
+					Write-ConsoleStatus -Status warning
+					return
 				}
 
 				# Check user login
 				$UserEmail = Get-ItemProperty -Path HKCU:\Software\Microsoft\OneDrive\Accounts\Personal -Name UserEmail -ErrorAction Ignore
-				if ($UserEmail) {
-    				LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
-    				return
+				if ($UserEmail)
+				{
+					LogWarning "Skipping OneDrive uninstall because the current user is still signed in. Sign out of OneDrive first, then retry if removal is still desired."
+					Write-ConsoleStatus -Status warning
+					return
 				}
 
 				# Kill OneDrive processes safely
@@ -130,6 +133,10 @@ function OneDrive
 		            	$OneDriveUninstallProcess = Start-Process -FilePath $OneDriveSetup[0] -ArgumentList $Arguments -Wait -PassThru -ErrorAction Stop
 						if ($OneDriveUninstallProcess.ExitCode -ne 0) { throw "OneDrive uninstaller returned exit code $($OneDriveUninstallProcess.ExitCode)" }
 		        	}
+					else
+					{
+						throw "Unable to locate the OneDrive uninstall executable."
+					}
 				}
 
 				# Safely remove OneDrive user folder if exists
@@ -156,19 +163,22 @@ function OneDrive
 			{
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to uninstall OneDrive: $($_.Exception.Message)"
+				throw
 			}
 		}
 		"Install"
 		{
-			Write-ConsoleStatus -Action "Installing One Drive"
-			LogInfo "Installing One Drive"
+			Write-ConsoleStatus -Action $Localization.OneDriveInstalling
+			LogInfo $Localization.OneDriveInstalling
 			try
 			{
 				$resolvedOneDriveSetup = Get-OneDriveSetupPath
 				$OneDrive = Get-Package -Name "Microsoft OneDrive" -ProviderName Programs -Force -ErrorAction Ignore -WarningAction SilentlyContinue
 				if ($OneDrive)
 				{
-					LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
+					LogWarning "Skipping OneDrive install because the app is already installed."
+					Write-ConsoleStatus -Status warning
+					return
 				}
 
 				if ($resolvedOneDriveSetup)
@@ -177,13 +187,13 @@ function OneDrive
 
 					if ($AllUsers)
 					{
-						# Install OneDrive for all users
-						$OneDriveInstallProcess = Start-Process -FilePath $resolvedOneDriveSetup -ArgumentList "/allusers" -Wait -PassThru -ErrorAction Stop
+						# Install OneDrive silently for all users
+						$OneDriveInstallProcess = Start-Process -FilePath $resolvedOneDriveSetup -ArgumentList "/silent /allusers" -Wait -PassThru -ErrorAction Stop
 						if ($OneDriveInstallProcess.ExitCode -ne 0) { throw "OneDriveSetup.exe returned exit code $($OneDriveInstallProcess.ExitCode)" }
 					}
 					else
 					{
-						$OneDriveInstallProcess = Start-Process -FilePath $resolvedOneDriveSetup -Wait -PassThru -ErrorAction Stop
+						$OneDriveInstallProcess = Start-Process -FilePath $resolvedOneDriveSetup -ArgumentList "/silent" -Wait -PassThru -ErrorAction Stop
 						if ($OneDriveInstallProcess.ExitCode -ne 0) { throw "OneDriveSetup.exe returned exit code $($OneDriveInstallProcess.ExitCode)" }
 					}
 				}
@@ -202,17 +212,18 @@ function OneDrive
         				$Parameters = @{
             				Uri             = $OneDriveURL
             				OutFile         = "$DownloadsFolder\OneDriveSetup.exe"
+							TimeoutSec      = 30
        	 				}
         				Invoke-WebRequest @Parameters -ErrorAction Stop
 
 						if ($AllUsers)
 						{
-							& "$DownloadsFolder\OneDriveSetup.exe" /allusers 2>$null | Out-Null
+							& "$DownloadsFolder\OneDriveSetup.exe" /silent /allusers 2>$null | Out-Null
 							if ($LASTEXITCODE -ne 0) { throw "Downloaded OneDriveSetup.exe returned exit code $LASTEXITCODE" }
 						}
 						else
 						{
-							$DownloadedOneDriveProcess = Start-Process -FilePath "$DownloadsFolder\OneDriveSetup.exe" -Wait -PassThru -ErrorAction Stop
+							$DownloadedOneDriveProcess = Start-Process -FilePath "$DownloadsFolder\OneDriveSetup.exe" -ArgumentList "/silent" -Wait -PassThru -ErrorAction Stop
 							if ($DownloadedOneDriveProcess.ExitCode -ne 0) { throw "Downloaded OneDriveSetup.exe returned exit code $($DownloadedOneDriveProcess.ExitCode)" }
 						}
 
@@ -223,9 +234,7 @@ function OneDrive
 					}
 					catch [System.Net.WebException]
 					{
-						LogError (($Localization.NoResponse -f "https://oneclient.sfx.ms"), ($Localization.RestartFunction -f $MyInvocation.Line.Trim()) -join " ")
-
-						return
+						throw "Failed to download the OneDrive installer from Microsoft. Network access is required before this install can continue."
 					}
 				}
 
@@ -240,9 +249,12 @@ function OneDrive
 			{
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to install OneDrive: $($_.Exception.Message)"
+				throw
 			}
 		}
 	}
 }
 
 #endregion OneDrive
+
+Export-ModuleMember -Function '*'

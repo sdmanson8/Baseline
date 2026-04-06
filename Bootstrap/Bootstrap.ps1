@@ -1,4 +1,4 @@
-<#
+﻿<#
     .SYNOPSIS
     Download and launch Baseline from GitHub.
 
@@ -11,6 +11,13 @@
     It downloads the latest branch archive, extracts it to a temp folder, and
     launches the repo's root run.cmd entrypoint. When BASELINE_PRESET is set or
     -Preset is supplied, the preset is forwarded into the noninteractive runner.
+
+    .NOTES
+    SECURITY: This bootstrap uses pipe-to-IEX with no integrity verification
+    (no hash check, signature validation, or certificate pinning). The download
+    is protected by TLS 1.2 to GitHub over HTTPS, but a compromised DNS or TLS
+    interception could serve modified code. For higher assurance, download the
+    archive manually, verify the commit hash, and run Baseline.ps1 directly.
 #>
 
 [CmdletBinding()]
@@ -34,6 +41,13 @@ function Enable-Tls12
 {
     try
     {
+        # Ensure no prior script has disabled certificate validation (MITM risk).
+        if ($null -ne [System.Net.ServicePointManager]::ServerCertificateValidationCallback)
+        {
+            Write-Warning "ServerCertificateValidationCallback was overridden by a prior script - resetting to default."
+            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+        }
+
         $current = [System.Net.ServicePointManager]::SecurityProtocol
         $tls12 = [System.Net.SecurityProtocolType]::Tls12
         if (($current -band $tls12) -ne $tls12)
@@ -57,6 +71,7 @@ function Invoke-DownloadFile
     $invokeParams = @{
         Uri         = $Uri
         OutFile     = $OutFile
+        TimeoutSec  = 30
         ErrorAction = 'Stop'
     }
 
@@ -89,6 +104,13 @@ try
 {
     Enable-Tls12
 
+    $resolvedCache = [System.IO.Path]::GetFullPath($CacheRoot)
+    $resolvedTemp  = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedCache.StartsWith($resolvedTemp, [System.StringComparison]::OrdinalIgnoreCase))
+    {
+        throw "CacheRoot must be under `$env:TEMP ($env:TEMP). Received: $CacheRoot"
+    }
+
     if (Test-Path -LiteralPath $CacheRoot)
     {
         Remove-Item -LiteralPath $CacheRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -100,6 +122,7 @@ try
     $extractRoot = Join-Path $CacheRoot 'extract'
     $downloadUrl = "https://github.com/$Owner/$Repository/archive/refs/heads/$Branch.zip"
 
+    # Write-Host: intentional — bootstrap progress output
     Write-Host "Downloading $Repository from $downloadUrl"
     Invoke-DownloadFile -Uri $downloadUrl -OutFile $archivePath
 

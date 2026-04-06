@@ -1,22 +1,21 @@
 {
   "Name": "Minimal",
   "Entries": [
-    "CheckWinGet",
-    "Update-Powershell",
-    "Update-RegistryPaths",
-    "Update-DesktopRegistry",
-    "DiskCleanup",
-    "NTFSLongPaths -Enable",
-    "NTFSLastAccess -Enable",
-    "Win32LongPathLimit -Disable",
-    "BSoDStopError -Enable",
-    "LatestInstalled.NET -Enable",
-    "TaskManagerDetails -Enable",
-    "FileOperationsDetails -Enable",
-    "FileDeleteConfirm -Enable",
-    "DefaultTerminalApp -WindowsTerminal",
-    "NumLock -Enable",
-    "RegistryBackup -Disable",
-    "RecommendedTroubleshooting -Default"
+    "ActivityHistory -Disable",
+    "AdvertisingID -Disable",
+    "DiagnosticDataLevel -Minimal",
+    "FeedbackFrequency -Never",
+    "LockWidgets -Disable",
+    "Powershell7Telemetry -Disable",
+    "TailoredExperiences -Disable",
+    "SettingsSuggestedContent -Hide",
+    "OneDriveFileExplorerAd -Hide",
+    "BingSearch -Disable",
+    "StartRecommendationsTips -Hide",
+    "WebSearch -Disable",
+    "TaskbarWidgets -Hide",
+    "TaskbarSearch -Hide",
+    "SearchHighlights -Hide",
+    "TaskbarEndTask -Enable"
   ]
 }

@@ -38,8 +38,10 @@ function Errors
         }
     }
 
+    Write-SessionSummaryToLog
+
     LogInfo "Script is finished"
     Write-Host "Script is finished, log file can be found here '$Global:LogFilePath'" -ForegroundColor DarkYellow
-    Write-Warning "Please restart your computer to ensure all changes are fully applied."
+    Write-Warning $Localization.RestartWarning
 }
 #endregion Errors

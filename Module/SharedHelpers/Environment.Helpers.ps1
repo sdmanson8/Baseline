@@ -2,6 +2,7 @@
 
 function Initialize-ForegroundWindowInterop
 {
+	<# .SYNOPSIS Loads the WinAPI.ForegroundWindow P/Invoke type definition. #>
 	if (-not ("WinAPI.ForegroundWindow" -as [type]))
 	{
 		Add-Type -TypeDefinition @"
@@ -26,6 +27,7 @@ namespace WinAPI
 
 function Initialize-ConsoleWindowInterop
 {
+	<# .SYNOPSIS Loads the WinAPI.ConsoleWindow P/Invoke type definition. #>
 	if (-not ("WinAPI.ConsoleWindow" -as [type]))
 	{
 		Add-Type -TypeDefinition @"
@@ -49,36 +51,59 @@ namespace WinAPI
 
 function Get-ConsoleHandle
 {
+	<# .SYNOPSIS Returns the console window handle via kernel32 P/Invoke. #>
 	Initialize-ConsoleWindowInterop
 	return [WinAPI.ConsoleWindow]::GetConsoleWindow()
 }
 
 function Hide-ConsoleWindow
 {
+	<# .SYNOPSIS Hides the console window using ShowWindow(SW_HIDE). #>
 	[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 	param ()
 
 	$hwnd = Get-ConsoleHandle
 	if ($hwnd -ne [System.IntPtr]::Zero)
 	{
-		[WinAPI.ConsoleWindow]::ShowWindow($hwnd, 0) | Out-Null
+		[WinAPI.ConsoleWindow]::ShowWindow($hwnd, 0 <# SW_HIDE #>) | Out-Null
 	}
 }
 
 function Show-ConsoleWindow
 {
+	<# .SYNOPSIS Shows and restores the console window using ShowWindow(SW_RESTORE). #>
 	[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 	param ()
 
 	$hwnd = Get-ConsoleHandle
 	if ($hwnd -ne [System.IntPtr]::Zero)
 	{
-		[WinAPI.ConsoleWindow]::ShowWindow($hwnd, 9) | Out-Null
+		[WinAPI.ConsoleWindow]::ShowWindow($hwnd, 9 <# SW_RESTORE #>) | Out-Null
+	}
+}
+
+function Test-InteractiveHost
+{
+	<# .SYNOPSIS Tests whether the current PowerShell host supports interactive UI. #>
+	try
+	{
+		if ($null -eq $Host -or $null -eq $Host.UI)
+		{
+			return $false
+		}
+
+		$null = $Host.UI.RawUI
+		return $true
+	}
+	catch
+	{
+		return $false
 	}
 }
 
 function Initialize-WpfWindowForeground
 {
+	<# .SYNOPSIS Configures a WPF window to activate and bring itself to foreground. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -94,14 +119,14 @@ function Initialize-WpfWindowForeground
 		# Ignore if the supplied object is not a WPF Window.
 	}
 
-	$activationPending = $true
+	$activationPending = [ref]$true
 	$bringWindowToFront = {
-		if (-not $activationPending)
+		if (-not $activationPending.Value)
 		{
 			return
 		}
 
-		$activationPending = $false
+		$activationPending.Value = $false
 
 		try
 		{
@@ -118,7 +143,7 @@ function Initialize-WpfWindowForeground
 					$interopHelper = New-Object -TypeName System.Windows.Interop.WindowInteropHelper -ArgumentList $Window
 					if ($interopHelper.Handle -ne [IntPtr]::Zero)
 					{
-						[WinAPI.ForegroundWindow]::ShowWindowAsync($interopHelper.Handle, 9) | Out-Null
+						[WinAPI.ForegroundWindow]::ShowWindowAsync($interopHelper.Handle, 9 <# SW_RESTORE #>) | Out-Null
 						[WinAPI.ForegroundWindow]::SetForegroundWindow($interopHelper.Handle) | Out-Null
 					}
 
@@ -177,6 +202,7 @@ function Initialize-WpfWindowForeground
 
 function Get-WindowsVersionData
 {
+	<# .SYNOPSIS Retrieves Windows version details from the registry (build, UBR, display version). #>
 	$CurrentVersion = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction Stop
 	$CurrentBuild = [string]$CurrentVersion.CurrentBuild
 	$DisplayVersion = [string]$CurrentVersion.DisplayVersion
@@ -209,10 +235,13 @@ function Get-WindowsVersionData
 		$IsWindowsServer = $ProductName -match "Server"
 	}
 
+	$buildNumber = 0
+	if (-not [int]::TryParse([string]$CurrentBuild, [ref]$buildNumber)) { $buildNumber = 0 }
+
 	[pscustomobject]@{
-		IsWindows11      = ([int]$CurrentBuild -ge 22000)
+		IsWindows11      = ($buildNumber -ge 22000)
 		IsWindowsServer  = $IsWindowsServer
-		CurrentBuild     = [int]$CurrentBuild
+		CurrentBuild     = $buildNumber
 		UBR              = $UBR
 		DisplayVersion   = $DisplayVersion
 		ProductName      = $ProductName
@@ -222,6 +251,7 @@ function Get-WindowsVersionData
 
 function Get-OSInfo
 {
+	<# .SYNOPSIS Returns a summary object with OS name, build, UBR, and version data. #>
 	$VersionData = Get-WindowsVersionData
 	$OSName = if ($VersionData.IsWindowsServer)
 	{
@@ -257,6 +287,7 @@ function Get-OSInfo
 
 function ConvertTo-WindowsDisplayVersionComparable
 {
+	<# .SYNOPSIS Converts a display version string (e.g. 23H2) to a sortable integer. #>
 	param
 	(
 		[string]
@@ -278,6 +309,7 @@ function ConvertTo-WindowsDisplayVersionComparable
 
 function Test-Windows11FeatureBranchSupport
 {
+	<# .SYNOPSIS Tests whether Windows 11 meets the feature branch threshold. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -323,6 +355,7 @@ function Test-Windows11FeatureBranchSupport
 
 function Show-BootstrapLoadingSplash
 {
+	<# .SYNOPSIS Displays a loading splash window in a background runspace. #>
 	[CmdletBinding()]
 	[OutputType([System.Object])]
 	param ()
@@ -331,6 +364,19 @@ function Show-BootstrapLoadingSplash
 	{
 		Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase -ErrorAction Stop
 
+		# Check saved session for theme preference
+		$useLightTheme = $false
+		try
+		{
+			$sessionPath = Join-Path $env:LOCALAPPDATA 'Baseline\Profiles\Baseline-last-session.json'
+			if (Test-Path -LiteralPath $sessionPath)
+			{
+				$sessionJson = Get-Content -LiteralPath $sessionPath -Raw -ErrorAction Stop | ConvertFrom-Json
+				if ($sessionJson.State -and $sessionJson.State.Theme -eq 'Light') { $useLightTheme = $true }
+			}
+		}
+		catch { }
+
 		$syncHash = [hashtable]::Synchronized(@{
 			Window     = $null
 			Dispatcher = $null
@@ -338,11 +384,34 @@ function Show-BootstrapLoadingSplash
 			IsAlive    = $true
 		})
 
+		# Theme colors
+		if ($useLightTheme)
+		{
+			$splashBg = '#E4E8F0'; $splashBorder = '#A7B0C0'; $splashFg = '#1A1C2E'
+			$splashSub = '#31384A'; $splashAccent = '#1550AA'; $splashFooterBg = '#D6DBE5'
+			$splashMuted = '#646C7F'; $splashBtnFg = '#31384A'; $splashDarkMode = $false
+		}
+		else
+		{
+			$splashBg = '#1E1E2E'; $splashBorder = '#333346'; $splashFg = '#CDD6F4'
+			$splashSub = '#A6ADC8'; $splashAccent = '#89B4FA'; $splashFooterBg = '#181825'
+			$splashMuted = '#6C7086'; $splashBtnFg = '#A6ADC8'; $splashDarkMode = $true
+		}
+
 		$runspace = [runspacefactory]::CreateRunspace()
 		$runspace.ApartmentState = 'STA'
 		$runspace.ThreadOptions  = 'ReuseThread'
 		$runspace.Open()
 		$runspace.SessionStateProxy.SetVariable('syncHash', $syncHash)
+		$runspace.SessionStateProxy.SetVariable('splashBg', $splashBg)
+		$runspace.SessionStateProxy.SetVariable('splashBorder', $splashBorder)
+		$runspace.SessionStateProxy.SetVariable('splashFg', $splashFg)
+		$runspace.SessionStateProxy.SetVariable('splashSub', $splashSub)
+		$runspace.SessionStateProxy.SetVariable('splashAccent', $splashAccent)
+		$runspace.SessionStateProxy.SetVariable('splashFooterBg', $splashFooterBg)
+		$runspace.SessionStateProxy.SetVariable('splashMuted', $splashMuted)
+		$runspace.SessionStateProxy.SetVariable('splashBtnFg', $splashBtnFg)
+		$runspace.SessionStateProxy.SetVariable('splashDarkMode', $splashDarkMode)
 
 		$ps = [powershell]::Create()
 		$ps.Runspace = $runspace
@@ -357,38 +426,97 @@ function Show-BootstrapLoadingSplash
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	Title="Baseline | Windows Utility"
 	Width="520" Height="260"
-	ResizeMode="CanMinimize"
+	ResizeMode="NoResize"
 	WindowStartupLocation="CenterScreen"
-	Background="#1E1E2E"
-	Foreground="#CDD6F4"
+	Background="Transparent"
+	Foreground="$splashFg"
 	FontFamily="Segoe UI"
 	ShowInTaskbar="True"
-	Topmost="True">
+	Topmost="True"
+	WindowStyle="None"
+	AllowsTransparency="True">
+	<Border CornerRadius="8" Background="$splashBg" BorderBrush="$splashBorder" BorderThickness="1">
 	<Grid>
 		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
-		<StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
+		<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,6,0">
+			<Button Name="BtnMinimize" Content="&#x2015;" Width="28" Height="24" FontSize="11"
+				Background="Transparent" Foreground="$splashBtnFg" BorderThickness="0"
+				Cursor="Hand" ToolTip="Minimize" Margin="0,0,2,0"/>
+			<Button Name="BtnClose" Content="&#x2715;" Width="28" Height="24" FontSize="11"
+				Background="Transparent" Foreground="$splashBtnFg" BorderThickness="0"
+				Cursor="Hand" ToolTip="Close"/>
+		</StackPanel>
+		<StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
 			<TextBlock Text="Baseline" FontSize="22" FontWeight="Bold"
-				Foreground="#CDD6F4" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+				Foreground="$splashFg" HorizontalAlignment="Center" Margin="0,0,0,6"/>
 			<TextBlock Text="Windows Optimization &amp; Hardening"
-				FontSize="13" Foreground="#A6ADC8"
+				FontSize="13" Foreground="$splashSub"
 				HorizontalAlignment="Center" Margin="0,0,0,24"/>
 			<TextBlock Name="StatusText" Text="Please wait..."
-				FontSize="14" Foreground="#89B4FA"
+				FontSize="14" Foreground="$splashAccent"
 				HorizontalAlignment="Center"/>
 		</StackPanel>
-		<Border Grid.Row="1" Background="#181825" Padding="12,8">
-			<TextBlock FontSize="11" Foreground="#6C7086" HorizontalAlignment="Center"
+		<Border Grid.Row="2" Background="$splashFooterBg" Padding="12,8" CornerRadius="0,0,8,8">
+			<TextBlock FontSize="11" Foreground="$splashMuted" HorizontalAlignment="Center"
 				Text="This window will close automatically when ready."/>
 		</Border>
 	</Grid>
+	</Border>
 </Window>
 "@
 				$splash = [System.Windows.Markup.XamlReader]::Load(
 					(New-Object System.Xml.XmlNodeReader $xaml)
 				)
+
+				# Apply Windows 11 rounded corners and dark title bar
+				$splash.Add_SourceInitialized({
+					try
+					{
+						if (-not ('WinAPI.SplashChrome' -as [type]))
+						{
+							Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace WinAPI { public static class SplashChrome { [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute); } }
+"@ -ErrorAction Stop | Out-Null
+						}
+						$hwnd = (New-Object System.Windows.Interop.WindowInteropHelper($splash)).Handle
+						if ($hwnd -ne [IntPtr]::Zero)
+						{
+							$darkMode = if ($splashDarkMode) { 1 } else { 0 }
+							$immAttr = if ([Environment]::OSVersion.Version.Build -ge 18362) { 20 } else { 19 }
+							[void]([WinAPI.SplashChrome]::DwmSetWindowAttribute($hwnd, $immAttr, [ref]$darkMode, 4))
+							if ([Environment]::OSVersion.Version.Build -ge 22000)
+							{
+								$cornerPref = 2
+								[void]([WinAPI.SplashChrome]::DwmSetWindowAttribute($hwnd, 33, [ref]$cornerPref, 4))
+							}
+						}
+					}
+					catch { }
+				})
+
+				# Wire up minimize/close buttons and drag-to-move
+				$btnMin = $splash.FindName('BtnMinimize')
+				$btnCls = $splash.FindName('BtnClose')
+				if ($btnMin)
+				{
+					$btnMin.Add_Click({ $splash.WindowState = [System.Windows.WindowState]::Minimized })
+				}
+				if ($btnCls)
+				{
+					$btnCls.Add_Click({
+						$syncHash.UserClosed = $true
+						$splash.Close()
+						# Terminate the entire process when user explicitly closes the splash
+						[System.Environment]::Exit(0)
+					})
+				}
+				$splash.Add_MouseLeftButtonDown({ param($s,$e) $splash.DragMove() })
 
 				$syncHash.Window     = $splash
 				$syncHash.Dispatcher = $splash.Dispatcher
@@ -415,7 +543,13 @@ function Show-BootstrapLoadingSplash
 			Start-Sleep -Milliseconds 50
 		}
 
-		if (-not $syncHash.IsAlive) { return $null }
+		if (-not $syncHash.IsAlive)
+		{
+			# Splash never became ready - clean up the background runspace.
+			try { $ps.Stop(); $ps.Dispose() } catch {}
+			try { $runspace.Close(); $runspace.Dispose() } catch {}
+			return $null
+		}
 
 		$syncHash._PowerShell  = $ps
 		$syncHash._AsyncResult = $asyncResult
@@ -425,12 +559,15 @@ function Show-BootstrapLoadingSplash
 	}
 	catch
 	{
+		try { if ($ps) { $ps.Stop(); $ps.Dispose() } } catch {}
+		try { if ($runspace) { $runspace.Close(); $runspace.Dispose() } } catch {}
 		return $null
 	}
 }
 
 function Close-LoadingSplashWindow
 {
+	<# .SYNOPSIS Closes a splash window and optionally disposes background resources. #>
 	[CmdletBinding()]
 	[OutputType([bool])]
 	param (
@@ -516,6 +653,7 @@ function Close-LoadingSplashWindow
 
 function Show-Menu
 {
+	<# .SYNOPSIS Displays an interactive console menu with arrow key navigation. #>
 	[CmdletBinding()]
 	param
 	(
@@ -556,6 +694,7 @@ function Show-Menu
 	$minY = [Console]::CursorTop
 	$y = [Math]::Max([Math]::Min(($Default - 1), ($Menu.Count - 1)), 0)
 
+	# Returns selected menu item on Enter, or $null on Escape (callers must handle $null).
 	do
 	{
 		[Console]::CursorTop = $minY
@@ -604,6 +743,7 @@ function Show-Menu
 
 function Get-LocalizedShellString
 {
+	<# .SYNOPSIS Retrieves a localized Windows shell string by resource ID. #>
 	[CmdletBinding()]
 	param
 	(
@@ -649,11 +789,27 @@ function Get-LocalizedShellString
 
 function Restart-Script
 {
+	<# .SYNOPSIS Restarts the script under Windows PowerShell 5.1 if running in PowerShell 7+. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
 		[string]
-		$ScriptPath
+		$ScriptPath,
+
+		[string]
+		$Preset,
+
+		[string]
+		$GameModeProfile,
+
+		[string]
+		$ScenarioProfile,
+
+		[string[]]
+		$Functions,
+
+		[switch]
+		$DryRun
 	)
 	if ($PSVersionTable.PSVersion.Major -ge 7)
 	{
@@ -673,8 +829,9 @@ function Restart-Script
 
 		LogInfo "Restarting script in Windows PowerShell 5.1"
 
+		$currentPolicy = (Get-ExecutionPolicy).ToString()
 		$argList = @(
-			'-ExecutionPolicy', 'Bypass',
+			'-ExecutionPolicy', $currentPolicy,
 			'-NoProfile',
 			'-File', $ScriptPath
 		)
@@ -684,10 +841,25 @@ function Restart-Script
 			$argList += '-Preset'
 			$argList += $Preset
 		}
+		elseif ($GameModeProfile)
+		{
+			$argList += '-GameModeProfile'
+			$argList += $GameModeProfile
+		}
+		elseif ($ScenarioProfile)
+		{
+			$argList += '-ScenarioProfile'
+			$argList += $ScenarioProfile
+		}
 		elseif ($Functions)
 		{
 			$argList += '-Functions'
 			$argList += $Functions
+		}
+
+		if ($DryRun)
+		{
+			$argList += '-DryRun'
 		}
 
 		Start-Process -FilePath $powershell51 -ArgumentList $argList -WindowStyle Hidden
@@ -697,7 +869,11 @@ function Restart-Script
 
 function Get-BaselineDisplayVersion
 {
-	$moduleManifestPath = Join-Path $Script:SharedHelpersModuleRoot 'Baseline.psd1'
+	<# .SYNOPSIS Reads the module version string from Baseline.psd1. #>
+	param ([string]$ModuleRoot)
+
+	$resolvedRoot = if ($ModuleRoot) { $ModuleRoot } else { $Script:SharedHelpersModuleRoot }
+	$moduleManifestPath = Join-Path $resolvedRoot 'Baseline.psd1'
 	if (-not (Test-Path -LiteralPath $moduleManifestPath))
 	{
 		return $null
@@ -708,7 +884,12 @@ function Get-BaselineDisplayVersion
 		$moduleManifest = Import-PowerShellDataFile -Path $moduleManifestPath -ErrorAction Stop
 		if ($moduleManifest.ContainsKey('ModuleVersion') -and -not [string]::IsNullOrWhiteSpace([string]$moduleManifest.ModuleVersion))
 		{
-			return "v{0}" -f [string]$moduleManifest.ModuleVersion
+			$version = "v{0}" -f [string]$moduleManifest.ModuleVersion
+			if ($moduleManifest.ContainsKey('PrivateData') -and $moduleManifest.PrivateData -is [hashtable] -and $moduleManifest.PrivateData.ContainsKey('Prerelease') -and -not [string]::IsNullOrWhiteSpace([string]$moduleManifest.PrivateData.Prerelease))
+			{
+				$version = "{0} ({1})" -f $version, [string]$moduleManifest.PrivateData.Prerelease
+			}
+			return $version
 		}
 	}
 	catch { $null = $_ }
@@ -716,7 +897,82 @@ function Get-BaselineDisplayVersion
 	return $null
 }
 
+function Get-TweakSkipLabel
+{
+	<# .SYNOPSIS Returns the current tweak or caller name for skip log labels. #>
+	param (
+		[System.Management.Automation.InvocationInfo]$CallerInvocation
+	)
+
+	if ($Global:CurrentTweakName) { return $Global:CurrentTweakName }
+	if ($CallerInvocation -and $CallerInvocation.MyCommand) { return $CallerInvocation.MyCommand.Name }
+	return "this item"
+}
+
+<#
+.SYNOPSIS
+Kill all explorer.exe processes to apply shell/taskbar changes.
+
+.DESCRIPTION
+Terminates explorer.exe (taskbar, desktop shell, all File Explorer windows).
+The shell restarts automatically. Used during tweak execution to force
+registry changes to take immediate effect.
+#>
 function Stop-Foreground
 {
-	Stop-Process -Name "explorer" -Force | Out-Null
+	LogInfo "Stopping explorer.exe to apply shell changes"
+	Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue | Out-Null
+}
+
+<#
+.SYNOPSIS
+Execute a scriptblock via a UCPD-bypassed PowerShell copy with guaranteed cleanup.
+
+.DESCRIPTION
+Copies powershell.exe to a temporary name to bypass the Windows UCPD driver
+which blocks certain registry writes. The temporary file is removed in a
+finally block to guarantee cleanup even if the command fails.
+
+.PARAMETER ScriptBlock
+The scriptblock to execute in the temporary PowerShell process.
+#>
+function Invoke-UCPDBypassed
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[scriptblock]$ScriptBlock
+	)
+
+	$sourcePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+	$tempPath = Get-UCPDTemporaryPowerShellPath -SourcePath $sourcePath
+
+	Copy-Item -Path $sourcePath -Destination $tempPath -Force -ErrorAction Stop | Out-Null
+	try
+	{
+		# ExecutionPolicy Bypass: required for elevated child process
+	& $tempPath -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $ScriptBlock | Out-Null
+		if ($LASTEXITCODE -ne 0)
+		{
+			throw "Temporary PowerShell copy returned exit code $LASTEXITCODE"
+		}
+	}
+	finally
+	{
+		Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue | Out-Null
+	}
+}
+
+function Get-UCPDTemporaryPowerShellPath
+{
+	<# .SYNOPSIS Generates a unique temporary PowerShell executable path for UCPD bypass. #>
+	param (
+		[string]$SourcePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+	)
+
+	$sourceDirectory = Split-Path -Path $SourcePath -Parent
+	$sourceLeaf = [System.IO.Path]::GetFileNameWithoutExtension($SourcePath)
+	$uniqueName = '{0}_{1}.exe' -f $sourceLeaf, ([guid]::NewGuid().ToString('N'))
+	return (Join-Path -Path $sourceDirectory -ChildPath $uniqueName)
 }

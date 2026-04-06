@@ -2,36 +2,38 @@
   "Tab": "OS Hardening",
   "Entries": [
     {
-      "Name": "Block Remote Commands",
+      "Name": "Remote Commands (DCOM)",
       "Function": "Disable-RemoteCommands",
-      "Type": "Action",
+      "Type": "Toggle",
       "Options": null,
       "DisplayOptions": null,
-      "Default": true,
-      "WinDefault": false,
-      "Description": "Block remote command execution",
-      "Detail": "Disables DCOM remote activation and removes file associations that expose remote command surfaces. Reduces attack surface for remote execution attempts.",
-      "Caution": false,
-      "CautionReason": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Control DCOM and remote command surfaces",
+      "Detail": "Controls DCOM remote activation and device metadata file associations. DCOM is required by SCCM, remote WMI, and many enterprise tools. Disabling reduces attack surface but may break remote management.",
+      "Caution": true,
+      "CautionReason": "May break remote management. Disabling DCOM breaks SCCM, remote WMI, and other enterprise remote management tools that depend on DCOM remote activation.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": false,
-      "OnParam": null,
-      "OffParam": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "OSHardening",
-      "Risk": "Medium",
+      "Risk": "High",
       "Tags": [
         "security",
         "hardening",
         "remote"
       ],
-      "Impact": "Medium",
+      "Impact": "High",
       "Safe": false,
-      "RequiresRestart": false,
-      "WhyThisMatters": "Disables DCOM remote activation and removes file associations that expose remote command surfaces. Reduces attack surface for remote execution attempts. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "RequiresRestart": true,
+      "WhyThisMatters": "DCOM is a remote activation protocol required by enterprise management tools (SCCM, WMI). Disabling it reduces attack surface but may break remote management workflows.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Configure Cipher Suites",
@@ -63,7 +65,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Sets the preferred SCHANNEL cipher suites to strong AES-256 and AES-128 variants. Ensures strong encryption for all TLS connections. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Configure Event Log Sizes",
@@ -94,7 +98,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Increases the Windows Security event log maximum size to 1 MB. Helps retain more audit events before older entries are overwritten.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Configure Key Exchange Algorithms",
@@ -126,40 +132,44 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables Diffie-Hellman, ECDH, and PKCS key exchange algorithms in SCHANNEL. Ensures forward-secure key exchange is available for TLS connections. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
-      "Name": "Configure SSL/TLS Protocols",
+      "Name": "Legacy TLS Protocols (1.0/1.1)",
       "Function": "Update-Protocols",
-      "Type": "Action",
+      "Type": "Toggle",
       "Options": null,
       "DisplayOptions": null,
       "Default": true,
-      "WinDefault": false,
-      "Description": "Configure secure SSL/TLS protocols",
-      "Detail": "Disables old protocols (PCT, SSL 2.0, SSL 3.0) and enables TLS 1.0 through 1.2. Removes broken protocols while keeping legacy compatibility.",
-      "Caution": false,
-      "CautionReason": null,
+      "WinDefault": true,
+      "Description": "Disable deprecated TLS 1.0 and TLS 1.1 protocols",
+      "Detail": "Disables TLS 1.0 and TLS 1.1 (deprecated per RFC 8996, vulnerable to BEAST/POODLE). Also disables PCT 1.0, SSL 2.0, SSL 3.0. TLS 1.2 remains enabled. Use -Enable only for legacy devices that cannot negotiate TLS 1.2+.",
+      "Caution": true,
+      "CautionReason": "May break VPN or enterprise connectivity. Disabling legacy TLS may break connections to older devices, appliances, or internal services that cannot negotiate TLS 1.2+. Enabling allows known-vulnerable protocols (BEAST/POODLE).",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": false,
-      "OnParam": null,
-      "OffParam": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "OSHardening",
-      "Risk": "Medium",
+      "Risk": "High",
       "Tags": [
         "security",
         "hardening",
         "encryption",
         "networking"
       ],
-      "Impact": "Medium",
+      "Impact": "High",
       "Safe": false,
-      "RequiresRestart": false,
-      "WhyThisMatters": "Disables old protocols (PCT, SSL 2.0, SSL 3.0) and enables TLS 1.0 through 1.2. Removes broken protocols while keeping legacy compatibility. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "RequiresRestart": true,
+      "WhyThisMatters": "TLS 1.0 and 1.1 are deprecated with known vulnerabilities. Disabling them hardens the system against BEAST, POODLE, and related attacks. Re-enabling should only be done for legacy compatibility.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Configure Strong .NET Authentication",
@@ -191,7 +201,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Forces .NET Framework 4.x and 2.x to use system-default TLS and strong cryptography. Prevents older .NET apps from falling back to weak ciphers. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable AES Ciphers",
@@ -223,7 +235,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables older weak AES cipher entries in the Windows SCHANNEL security layer. Forces applications to negotiate stronger cipher configurations. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable AutoRun",
@@ -254,7 +268,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Prevents Windows from automatically running programs on USB drives and other removable media. Stops a common malware spread vector.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Disable IPv6",
@@ -286,7 +302,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Disables the IPv6 protocol stack system-wide. Recommended if your network does not use IPv6 to reduce unnecessary attack surface. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable RC2 and RC4 Ciphers",
@@ -318,7 +336,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables RC2 and RC4 ciphers in SCHANNEL. These algorithms are cryptographically broken and should not be used in any TLS connection. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable SMBv3 Compression",
@@ -350,7 +370,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Turns off SMB compression to protect against CVE-2020-0796. Only affects SMB traffic compression, not file access speed. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable TCP Timestamps",
@@ -382,7 +404,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes TCP timestamp information from network packets. Prevents remote systems from fingerprinting your OS based on uptime. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable Triple DES Cipher",
@@ -414,7 +438,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables Triple DES (3DES) in SCHANNEL. 3DES is vulnerable to SWEET32 birthday attacks and is no longer considered secure. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Disable Weak Hash Algorithms",
@@ -446,7 +472,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Configures SCHANNEL hash algorithm settings. Disables MD5 and enables SHA family algorithms for stronger integrity verification. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Enable Biometrics Anti-Spoofing",
@@ -478,7 +506,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Enables enhanced anti-spoofing for Windows Hello facial recognition. Only applies if you have compatible biometric hardware.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Ensure Registry Paths Exist",
@@ -510,7 +540,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Creates any missing registry paths required by other hardening tweaks before they run. This is a prerequisite step with no visible user-facing effect.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Filesystem Performance Settings",
@@ -542,7 +574,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables 8.3 short filename generation on NTFS. Improves filesystem performance and removes a legacy compatibility feature rarely needed today.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "General OS Hardening",
@@ -555,7 +589,7 @@
       "Description": "Perform general OS hardening",
       "Detail": "Applies a broad set of registry hardening values covering credential protection, UAC, NTLM, TCP/IP, and smart card removal behavior.",
       "Caution": true,
-      "CautionReason": "Changes authentication, networking, shell, and smart card related policy values. Review carefully in environments with legacy authentication, specialized networking, or smart-card workflows.",
+      "CautionReason": "May break VPN or enterprise connectivity. Changes credential protection, UAC, NTLM, TCP/IP, and smart card policy values. May break legacy authentication, VPN clients, enterprise SSO, or smart-card login workflows.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -575,7 +609,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Applies a broad set of registry hardening values covering credential protection, UAC, NTLM, TCP/IP, and smart card removal behavior. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Harden Adobe Reader",
@@ -588,7 +624,7 @@
       "Description": "Configure Adobe Reader security settings",
       "Detail": "Applies a set of security policy settings for Adobe Reader DC including protected mode, protected view, and disabling cloud and web features.",
       "Caution": true,
-      "CautionReason": "Can affect Adobe update behavior, cloud/share integrations, and document handling features that depend on less restrictive Reader settings.",
+      "CautionReason": "May affect licensing or cloud sync. Restricts Adobe Reader cloud features, automatic updates, and sharing integrations. Documents relying on JavaScript, embedded media, or cloud-based review workflows will be blocked.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -607,7 +643,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Applies a set of security policy settings for Adobe Reader DC including protected mode, protected view, and disabling cloud and web features. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Harden ClickOnce Trust Prompts",
@@ -620,7 +658,7 @@
       "Description": "Configure ClickOnce trust prompt hardening",
       "Detail": "Disables ClickOnce trust prompts for all security zones. Prevents untrusted ClickOnce applications from prompting for installation.",
       "Caution": true,
-      "CautionReason": "Advanced. Can break ClickOnce-based installers, updates, or internal applications that depend on trust prompts.",
+      "CautionReason": "May break VPN or enterprise connectivity. Disabling ClickOnce trust prompts prevents installation of ClickOnce-deployed internal enterprise applications, line-of-business tools, and auto-updating utilities.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -639,7 +677,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables ClickOnce trust prompts for all security zones. Prevents untrusted ClickOnce applications from prompting for installation. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Harden MS Office",
@@ -652,7 +692,7 @@
       "Description": "Harden MS Office security settings",
       "Detail": "Restricts macros, external content execution, and Outlook trust settings across Office versions. Reduces document-based attack vectors.",
       "Caution": true,
-      "CautionReason": "Can affect macros, Office automation, downloaded Office documents, and workflows that rely on active content or permissive Outlook trust behavior.",
+      "CautionReason": "May affect licensing or cloud sync. Restricts macros, external content, and Outlook trust settings across Office versions. May break Office automation, VBA-dependent workflows, mail merge, and documents with active content or external data connections.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -671,7 +711,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Restricts macros, external content execution, and Outlook trust settings across Office versions. Reduces document-based attack vectors. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Harden Office Links",
@@ -684,7 +726,7 @@
       "Description": "Configure Office link update hardening",
       "Detail": "Prevents Word from automatically refreshing external links in documents and email. Reduces the risk of data exfiltration via embedded document links.",
       "Caution": true,
-      "CautionReason": "Can affect documents or mail workflows that intentionally rely on automatic external link refresh behavior.",
+      "CautionReason": "May affect licensing or cloud sync. Prevents Word from auto-refreshing external links in documents and email. May break mail merge, linked spreadsheets, and templates that pull live data from external sources.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -703,7 +745,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Prevents Word from automatically refreshing external links in documents and email. Reduces the risk of data exfiltration via embedded document links. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Harden WinRM",
@@ -735,7 +779,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Disables unencrypted WinRM traffic and digest authentication, then restarts the WinRM service. Ensures remote management connections are always encrypted. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Prevent Remote DLL Hijacking",
@@ -766,7 +812,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Configures Session Manager DLL search order to prevent applications from loading DLLs from untrusted locations. Closes a common malware delivery path. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Prevent Wireless Exploitation",
@@ -799,7 +847,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Hides the network selection UI from the Windows lock screen. Prevents changing network settings before signing in. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Reduce RPC Surface",
@@ -812,7 +862,7 @@
       "Description": "Configure RPC surface reduction",
       "Detail": "Disables RPC-over-TCP for Task Scheduler and the remote Service Control Manager. Reduces exposure for remote management attack paths.",
       "Caution": true,
-      "CautionReason": "Can break remote task scheduling, remote service control, and management products that depend on those RPC paths.",
+      "CautionReason": "May break remote management. Disables RPC-over-TCP for Task Scheduler and Service Control Manager. Breaks remote task scheduling, remote service management, and enterprise tools (SCCM, Intune agents) that depend on those RPC endpoints.",
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": false,
@@ -832,7 +882,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables RPC-over-TCP for Task Scheduler and the remote Service Control Manager. Reduces exposure for remote management attack paths. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High"
     }
   ]
 }

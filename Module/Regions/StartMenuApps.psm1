@@ -54,7 +54,7 @@ function MostUsedStartApps
 
 	if (Get-Process -Name Start11Srv, StartAllBackCfg, StartMenu -ErrorAction Ignore)
 	{
-		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f $MyInvocation.Line.Trim()) -join " ")
+		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation)) -join " ")
 
 		return
 	}
@@ -88,10 +88,7 @@ function MostUsedStartApps
 				$StartSettingsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"
 				Write-ConsoleStatus -Action "Showing most used apps on Start"
 				LogInfo "Showing most used apps on Start"
-				if ((Test-Path -Path $StartSettingsPath) -and ($null -ne (Get-ItemProperty -Path $StartSettingsPath -Name ShowFrequentList -ErrorAction SilentlyContinue)))
-				{
-					Remove-ItemProperty -Path $StartSettingsPath -Name ShowFrequentList -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path $StartSettingsPath -Name 'ShowFrequentList' | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -148,7 +145,7 @@ function RecentlyAddedStartApps
 
 	if (Get-Process -Name Start11Srv, StartAllBackCfg, StartMenu -ErrorAction Ignore)
 	{
-		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f $MyInvocation.Line.Trim()) -join " ")
+		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation)) -join " ")
 
 		return
 	}
@@ -182,10 +179,7 @@ function RecentlyAddedStartApps
 				$StartSettingsPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"
 				Write-ConsoleStatus -Action "Showing recently added apps on Start"
 				LogInfo "Showing recently added apps on Start"
-				if ((Test-Path -Path $StartSettingsPath) -and ($null -ne (Get-ItemProperty -Path $StartSettingsPath -Name ShowRecentList -ErrorAction SilentlyContinue)))
-				{
-					Remove-ItemProperty -Path $StartSettingsPath -Name ShowRecentList -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path $StartSettingsPath -Name 'ShowRecentList' | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -264,7 +258,7 @@ function StartMenuAllSectionCategories
 
 	if (Get-Process -Name Start11Srv, StartAllBackCfg, StartMenu -ErrorAction Ignore)
 	{
-		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f $MyInvocation.Line.Trim()) -join " ")
+		LogWarning ($Localization.CustomStartMenu, ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation)) -join " ")
 
 		return
 	}
@@ -350,10 +344,7 @@ function MostUsedApps
 			LogInfo "Enabling most used apps list in Start Menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -429,10 +420,7 @@ function RecentlyAddedApps
 			LogInfo "Enabling recently added apps list in Start Menu"
 			try
 			{
-				if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -461,3 +449,5 @@ function RecentlyAddedApps
 		}
 	}
 }
+
+Export-ModuleMember -Function '*'

@@ -21,7 +21,7 @@ function NewsInterests
 	# Skip if Edge is not installed
 	if (-not (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
 	{
-		LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
 
@@ -29,24 +29,8 @@ function NewsInterests
 	$MachineId = [Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SQMClient", "MachineId", $null)
 	if (-not $MachineId)
 	{
-		LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
-	}
-
-	# Add C# HashData type if missing
-	if (-not ("WinAPI.Signature" -as [type]))
-	{
-		$Signature = @{
-			Namespace          = "WinAPI"
-			Name               = "Signature"
-			Language           = "CSharp"
-			CompilerParameters = $CompilerParameters
-			MemberDefinition   = @"
-[DllImport("Shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = false)]
-public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int outputLen);
-"@
-		}
-		Add-Type @Signature | Out-Null
 	}
 
 	switch ($PSCmdlet.ParameterSetName)
@@ -58,27 +42,7 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 
 			try
 			{
-				$null = {
-					$Combined = $MachineId + '_' + 2
-					$CharArray = $Combined.ToCharArray()
-					[array]::Reverse($CharArray)
-					$Reverse = -join $CharArray
-					$bytesIn = [System.Text.Encoding]::Unicode.GetBytes($Reverse)
-					$bytesOut = [byte[]]::new(4)
-					[WinAPI.Signature]::HashData($bytesIn, 0x53, $bytesOut, $bytesOut.Count)
-					$DWordData = [System.BitConverter]::ToUInt32($bytesOut,0)
-
-					if (-not (Test-Path -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"))
-					{
-						New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force -ErrorAction Stop | Out-Null
-					}
-
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "ShellFeedsTaskbarViewMode" -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "EnShellFeedsTaskbarViewMode" -PropertyType DWord -Value $DWordData -Force -ErrorAction Stop | Out-Null
-				}.Invoke()
-
+				Set-NewsInterestsTaskbarViewMode -MachineId $MachineId -ViewMode 2
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -96,27 +60,7 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 
 			try
 			{
-				$null = {
-					$Combined = $MachineId + '_' + 0
-					$CharArray = $Combined.ToCharArray()
-					[array]::Reverse($CharArray)
-					$Reverse = -join $CharArray
-					$bytesIn = [System.Text.Encoding]::Unicode.GetBytes($Reverse)
-					$bytesOut = [byte[]]::new(4)
-					[WinAPI.Signature]::HashData($bytesIn, 0x53, $bytesOut, $bytesOut.Count)
-					$DWordData = [System.BitConverter]::ToUInt32($bytesOut,0)
-
-					if (-not (Test-Path -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"))
-					{
-						New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force -ErrorAction Stop | Out-Null
-					}
-
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "ShellFeedsTaskbarViewMode" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "EnShellFeedsTaskbarViewMode" -PropertyType DWord -Value $DWordData -Force -ErrorAction Stop | Out-Null
-				}.Invoke()
-
+				Set-NewsInterestsTaskbarViewMode -MachineId $MachineId -ViewMode 0
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -204,8 +148,8 @@ function TaskbarWidgets
 
 	if (-not (Get-AppxPackage -Name MicrosoftWindows.Client.WebExperience -WarningAction SilentlyContinue))
 	{
-		LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
-		#LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+		#LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 	}
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
@@ -213,28 +157,25 @@ function TaskbarWidgets
 	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Dsh -Name AllowNewsAndInterests -Force -ErrorAction Ignore | Out-Null
 	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Dsh -Name AllowNewsAndInterests -Type CLEAR | Out-Null
 
-	# We cannot set a value to TaskbarDa, having called any of APIs, except of copying powershell.exe (or any other tricks) with a different name, due to a UCPD driver tracks all executables to block the access to the registry
-	Copy-Item -Path "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Destination "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell_temp.exe" -Force | Out-Null
-
+	# UCPD driver blocks TaskbarDa registry writes from known executables.
+	# Use copied PowerShell with guaranteed cleanup via shared helper.
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Hide"
 		{
 			Write-ConsoleStatus -Action "Disabling the widgets icon on the taskbar"
 			LogInfo "Disabling the widgets icon on the taskbar"
-			& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell_temp.exe" -Command {New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name TaskbarDa -PropertyType DWord -Value 0 -Force} | Out-Null
+			Invoke-UCPDBypassed -ScriptBlock {New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name TaskbarDa -PropertyType DWord -Value 0 -Force}
 			Write-ConsoleStatus -Status success
 		}
 		"Show"
 		{
 			Write-ConsoleStatus -Action "Enabling the widgets icon on the taskbar"
 			LogInfo "Enabling the widgets icon on the taskbar"
-			& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell_temp.exe" -Command {New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name TaskbarDa -PropertyType DWord -Value 1 -Force} | Out-Null
+			Invoke-UCPDBypassed -ScriptBlock {New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name TaskbarDa -PropertyType DWord -Value 1 -Force}
 			Write-ConsoleStatus -Status success
 		}
 	}
-
-	Remove-Item -Path "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell_temp.exe" -Force | Out-Null
 }
 
 function TaskbarSearch
@@ -376,14 +317,14 @@ function SearchHighlights
 			$DisableSearchBoxSuggestions = ([Microsoft.Win32.Registry]::GetValue("HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", $null))
 			if (($BingSearchEnabled -eq 1) -or ($DisableSearchBoxSuggestions -eq 1))
 			{
-				LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
+				LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+				Write-ConsoleStatus -Status warning
 			}
 			else
 			{
 				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings -Name IsDynamicSearchBoxEnabled -PropertyType DWord -Value 0 -Force | Out-Null
-
+				Write-ConsoleStatus -Status success
 			}
-			Write-ConsoleStatus -Status success
 		}
 		"Show"
 		{
@@ -555,7 +496,7 @@ function UnpinTaskbarShortcuts
 		([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64)
 	$IsWindows10 = [System.Environment]::OSVersion.Version.Build -lt 22000
 	# ARM64 and Windows 10 already needed the STA-runspace path (original condition).
-	# AMD64 Windows 11 also needs it — direct COM shell verb calls silently do nothing on Win11 x64.
+	# AMD64 Windows 11 also needs it - direct COM shell verb calls silently do nothing on Win11 x64.
 	$NeedsDeferredUnpin = $IsARM64 -or $IsWindows10 -or (-not $IsWindows10 -and -not $IsARM64)
 	$AppsFolder = (New-Object -ComObject Shell.Application).NameSpace("shell:::{4234d49b-0245-4df3-b780-3893943456e1}")
 
@@ -811,16 +752,28 @@ function UnpinTaskbarShortcuts
 		Invoke-ARM64ShellUnpin -AppNames $DeferredUnpinNames.ToArray() -PinnedPath $TaskbarPinnedPath -TimeoutSeconds 15
 	}
 
-	# Restart Explorer to apply taskbar changes
-	try
+	# Restart Explorer to apply taskbar changes.
+	# In GUI mode PostActions handles the Explorer restart after all tweaks finish,
+	# so skip the mid-execution restart that can leave the shell unstable for
+	# subsequent tweaks.
+	if (-not $Global:GUIMode)
 	{
-		Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
-		Start-Sleep -Milliseconds 500
-		Start-Process "explorer.exe" -ErrorAction SilentlyContinue
-	}
-	catch
-	{
-		LogWarning "Failed to restart Explorer after taskbar unpin: $($_.Exception.Message)"
+		try
+		{
+			Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
+			Start-Sleep -Seconds 3
+			Start-Process "explorer.exe" -ErrorAction SilentlyContinue
+			# Wait for Explorer to be ready
+			for ($w = 0; $w -lt 20; $w++)
+			{
+				if (Get-Process -Name explorer -ErrorAction SilentlyContinue) { break }
+				Start-Sleep -Milliseconds 500
+			}
+		}
+		catch
+		{
+			LogWarning "Failed to restart Explorer after taskbar unpin: $($_.Exception.Message)"
+		}
 	}
 
 	if ($UnpinFailures -gt 0)
@@ -880,10 +833,7 @@ function TaskbarEndTask
 			LogInfo "Disabling 'End task in taskbar by right click'"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings -Name TaskbarEndTask -ErrorAction SilentlyContinue)
-				{
-					Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings -Name TaskbarEndTask -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings' -Name 'TaskbarEndTask' | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -959,3 +909,5 @@ function MeetNow
 		}
 	}
 }
+
+Export-ModuleMember -Function '*'

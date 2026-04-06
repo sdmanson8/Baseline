@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-04-04T00:00:00-05:00",
+  "staleDays": 90,
+  "screenshots": [
+    {
+      "url": "https://github.com/user-attachments/assets/b44c5b14-8e95-46a9-aae3-50adfb3df7de",
+      "description": "Baseline GUI hero screenshot",
+      "lastVerified": "2026-04-04",
+      "associatedFiles": [
+        "Module/Regions/GUI.psm1",
+        "Module/GUI/StyleManagement.ps1"
+      ]
+    },
+    {
+      "url": "https://github.com/user-attachments/assets/0a17d0bb-d6e2-4a39-b1c7-d44edf4bc2ba",
+      "description": "Windows 10 GUI",
+      "lastVerified": "2026-04-04",
+      "associatedFiles": [
+        "Module/Regions/GUI.psm1",
+        "Module/GUI/StyleManagement.ps1",
+        "Module/GUI/ThemeManagement.ps1"
+      ]
+    },
+    {
+      "url": "https://github.com/user-attachments/assets/4b21309f-f131-4909-b4c8-3fbe55d41be5",
+      "description": "Windows 10 Non-Interactive",
+      "lastVerified": "2026-04-04",
+      "associatedFiles": [
+        "Baseline.ps1",
+        "Module/Baseline.psm1"
+      ]
+    },
+    {
+      "url": "https://github.com/user-attachments/assets/b44c5b14-8e95-46a9-aae3-50adfb3df7de",
+      "description": "Windows 11 GUI",
+      "lastVerified": "2026-04-04",
+      "associatedFiles": [
+        "Module/Regions/GUI.psm1",
+        "Module/GUI/StyleManagement.ps1",
+        "Module/GUI/ThemeManagement.ps1"
+      ]
+    },
+    {
+      "url": "https://github.com/user-attachments/assets/9fff35f8-a232-4044-b5ee-b831bda7430e",
+      "description": "Windows 11 Non-Interactive",
+      "lastVerified": "2026-04-04",
+      "associatedFiles": [
+        "Baseline.ps1",
+        "Module/Baseline.psm1"
+      ]
+    }
+  ]
+}

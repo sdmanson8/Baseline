@@ -6,6 +6,8 @@
       "Function": "NewsInterests",
       "SourceRegion": "Taskbar",
       "Type": "Toggle",
+      "OnParam": "Enable",
+      "OffParam": "Disable",
       "Default": false,
       "WinDefault": true,
       "Description": "News and weather content on the taskbar",
@@ -20,7 +22,10 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "News and weather content on the taskbar",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Taskbar Alignment",
@@ -44,13 +49,18 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Taskbar icon alignment",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Taskbar Widgets",
       "Function": "TaskbarWidgets",
       "SourceRegion": "Taskbar",
       "Type": "Toggle",
+      "OnParam": "Show",
+      "OffParam": "Hide",
       "Default": false,
       "WinDefault": true,
       "Description": "Widgets button on the taskbar",
@@ -64,7 +74,10 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Widgets button on the taskbar",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Taskbar Search",
@@ -90,13 +103,18 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Taskbar search presentation",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Search Highlights",
       "Function": "SearchHighlights",
       "SourceRegion": "Taskbar",
       "Type": "Toggle",
+      "OnParam": "Show",
+      "OffParam": "Hide",
       "Default": false,
       "WinDefault": true,
       "Description": "Search highlights in Windows Search",
@@ -111,13 +129,18 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Search highlights in Windows Search",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Task View Button",
       "Function": "TaskViewButton",
       "SourceRegion": "Taskbar",
       "Type": "Toggle",
+      "OnParam": "Show",
+      "OffParam": "Hide",
       "Default": false,
       "WinDefault": true,
       "Description": "Task View button on the taskbar",
@@ -131,7 +154,10 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Task View button on the taskbar",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Taskbar Button Combine",
@@ -156,7 +182,10 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "How taskbar buttons are grouped",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Unpin Taskbar Shortcuts",
@@ -175,7 +204,20 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Remove bundled taskbar shortcuts",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": false,
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low",
+      "ExtraArgs": {
+        "Shortcuts": [
+          "Edge",
+          "Store",
+          "Outlook",
+          "Mail",
+          "Copilot",
+          "Microsoft365"
+        ]
+      }
     },
     {
       "Name": "End Task in Taskbar Right-Click",
@@ -197,13 +239,18 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Add End Task to the taskbar context menu",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Meet Now Icon",
       "Function": "MeetNow",
       "SourceRegion": "Taskbar",
       "Type": "Toggle",
+      "OnParam": "Show",
+      "OffParam": "Hide",
       "Default": false,
       "WinDefault": true,
       "Description": "Meet Now icon in the notification area",
@@ -217,7 +264,10 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Meet Now icon in the notification area",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "Restorable": true,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

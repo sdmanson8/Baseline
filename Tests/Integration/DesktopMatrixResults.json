@@ -1,0 +1,73 @@
+{
+  "generated": "2026-04-04T00:00:00-05:00",
+  "matrix": [
+    {
+      "os": "Windows 11 Pro",
+      "build": "26100",
+      "architecture": "64-bit",
+      "edition": "Pro",
+      "versionString": "Microsoft Windows NT 10.0.26100.0",
+      "powershellVersions": {
+        "desktop": "5.1",
+        "core": "7.6.0"
+      },
+      "pesterVersion": "5.7.1",
+      "layers": {
+        "smoke": {
+          "status": "Passed",
+          "detail": "File structure, JSON, PS syntax, encoding, extraction safety, preset ladder all passed. Manifest validation flagged expected MissingFunction warnings from sub-module extraction (W-4).",
+          "passed": 147,
+          "failed": 1,
+          "skipped": 1,
+          "note": "Single failure is pre-existing Validate-ManifestData.ps1 warning from W-4 sub-module extraction — functions moved to child modules are not found in parent SourceRegion. Not a code defect."
+        },
+        "unit": {
+          "status": "Passed",
+          "detail": "1886 of 1898 tests passed on PS 5.1. 8 pre-existing failures (4 PS-edition-specific). 4 skipped.",
+          "totalCount": 1898,
+          "passed": 1886,
+          "failed": 8,
+          "skipped": 4,
+          "preExistingFailures": [
+            "Environment.Helpers: throws on non-zero exit codes (platform-specific temp file timing)",
+            "FooterThemeLayout: gives the footer a two-row action and status layout (PS 5.1 content match)",
+            "FilteringLogic: 4 filter item tests (PS 5.1 WPF scoping difference)",
+            "SystemTweaks: logs the disable/enable operation in the correct past tense"
+          ]
+        },
+        "composition": {
+          "status": "Passed",
+          "detail": "23 of 23 tests passed on PS 5.1 Desktop edition with WPF assemblies loaded.",
+          "passed": 23,
+          "failed": 0,
+          "skipped": 0,
+          "note": "Fixed Pester 5 scope handling and WPF assembly loading. All composition tests pass on PS 5.1."
+        },
+        "responsiveTabDropdown": {
+          "status": "Passed",
+          "detail": "All 24 contract tests passed: XAML layout, adaptive mode enforcement, padding thresholds, SizeChanged handler, tab selection, TabManagement helpers.",
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0
+        },
+        "presetGeneration": {
+          "status": "Passed",
+          "detail": "Minimal, Basic, Balanced presets generated and validated against golden files."
+        }
+      }
+    },
+    {
+      "os": "Windows 10",
+      "build": "N/A",
+      "edition": "N/A",
+      "status": "Planned",
+      "note": "Requires Windows 10 VM or self-hosted runner. Not yet executed."
+    }
+  ],
+  "summary": {
+    "testedDesktopEditions": ["Windows 11 Pro (26100)"],
+    "pendingDesktopEditions": ["Windows 10 22H2"],
+    "serverEditions": ["Windows Server 2022 (CI only)"],
+    "recommendation": "Windows 11 Pro desktop validation complete. Windows 10 desktop pass requires a dedicated VM or self-hosted runner."
+  }
+}

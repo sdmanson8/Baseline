@@ -10,24 +10,23 @@ cd /d "%~dp0"
 set "LOGFILE=%TEMP%\install_log.txt"
 echo Installation started at %DATE% %TIME% > "%LOGFILE%"
 
-if /i "%~1"=="-Preset" (
-    set "BASELINE_PRESET=%~2"
+set "LAUNCHER_SCRIPT=%~dp0Bootstrap\Start-BaselineElevated.ps1"
+
+if exist "%temp%\Baseline - Utility for Windows 10.txt" (
+    del /f /q "%temp%\Baseline - Utility for Windows 10.txt" >nul 2>&1
+)
+if exist "%temp%\Baseline - Utility for Windows 11.txt" (
+    del /f /q "%temp%\Baseline - Utility for Windows 11.txt" >nul 2>&1
 )
 
-if exist "%temp%\Baseline - Windows Utility for Windows 10.txt" (
-    del /f /q "%temp%\Baseline - Windows Utility for Windows 10.txt" >nul 2>&1
-)
-if exist "%temp%\Baseline - Windows Utility for Windows 11.txt" (
-    del /f /q "%temp%\Baseline - Windows Utility for Windows 11.txt" >nul 2>&1
+if not exist "%LAUNCHER_SCRIPT%" (
+    echo %DATE% %TIME% - Launcher helper missing: %LAUNCHER_SCRIPT% >> "%LOGFILE%"
+    exit /b 1
 )
 
-set "LAUNCHER_VBS=%temp%\baseline-launch.vbs"
-> "%LAUNCHER_VBS%" echo Set shell = CreateObject^("Shell.Application"^)
->>"%LAUNCHER_VBS%" echo shell.ShellExecute "powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -File """"%~dp0Baseline.ps1""""", "", "runas", 0
-
-wscript.exe //nologo "%LAUNCHER_VBS%"
+:: -ExecutionPolicy Bypass is required here because run.cmd is the File Explorer launch path where users may not have configured their execution policy. The bypass is scoped to this single process.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%LAUNCHER_SCRIPT%" %*
 set "LAUNCH_EXIT=%ERRORLEVEL%"
-del /f /q "%LAUNCHER_VBS%" >nul 2>&1
 
 if not "%LAUNCH_EXIT%"=="0" (
     echo %DATE% %TIME% - Launcher failed with exit code %LAUNCH_EXIT%. >> "%LOGFILE%"

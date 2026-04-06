@@ -30,7 +30,7 @@ function InitialActions
 	$osName = $osInfo.OSName
 	$displayVersion = Get-BaselineDisplayVersion
 
-	$startupLabel = "Baseline | Windows Utility for $osName"
+	$startupLabel = "Baseline | Utility for $osName"
 	if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
 	{
 		$startupLabel = "$startupLabel $displayVersion"
@@ -249,6 +249,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 			Method           = "Head"
 			DisableKeepAlive = $true
 			UseBasicParsing  = $true
+			TimeoutSec       = 15
 		}
 		(Invoke-WebRequest @Parameters).StatusDescription | Out-Null
 
@@ -258,41 +259,69 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$extra = (Invoke-WebRequest @Parameters).Content
 
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra_v6.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$extra_v6 = (Invoke-WebRequest @Parameters).Content
 
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$spy = (Invoke-WebRequest @Parameters).Content
 
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy_v6.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$spy_v6 = (Invoke-WebRequest @Parameters).Content
 
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$update = (Invoke-WebRequest @Parameters).Content
 
 		$Parameters = @{
 			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update_v6.txt"
 			UseBasicParsing = $true
+			TimeoutSec      = 15
 		}
 		$update_v6 = (Invoke-WebRequest @Parameters).Content
 
 		$IPArray = @($extra, $extra_v6, $spy, $spy_v6, $update, $update_v6) -split "`r?`n" |
 			Where-Object { $_ -and ($_ -notmatch "^\s*#") }
+
+		# Validate downloaded hosts entries for integrity
+		$HostsEntryPattern = '^\s*[\d.:a-fA-F]+\s+\S+'
+		$TotalLines = @($IPArray).Count
+		$InvalidLines = @($IPArray | Where-Object { $_ -notmatch $HostsEntryPattern })
+		$ValidLines = @($IPArray | Where-Object { $_ -match $HostsEntryPattern })
+
+		if ($InvalidLines.Count -gt 0)
+		{
+			foreach ($BadLine in $InvalidLines)
+			{
+				LogWarning "Invalid hosts entry skipped: $BadLine"
+			}
+		}
+
+		if ($TotalLines -gt 0 -and ($InvalidLines.Count / $TotalLines) -gt 0.5)
+		{
+			LogWarning "More than 50% of downloaded hosts entries failed validation ($($InvalidLines.Count)/$TotalLines). Downloaded data may be corrupted or tampered. Skipping WindowsSpyBlocker hosts cleanup."
+			return
+		}
+
+		$IPArray = $ValidLines
 
 		$HostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 		$HostsContent = Get-Content -Path $HostsPath -Encoding Default -Force
@@ -619,6 +648,11 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	Get-ChildItem -Path "$env:TEMP\Computer.txt", "$env:TEMP\User.txt" -Force -ErrorAction Ignore |
 		Remove-Item -Force -ErrorAction Ignore | Out-Null
 
+	$Global:BaselinePostActionRequirements = @{
+		EnsurePrintManagementConsole = $false
+		EnsureSmbGuestAuth = $false
+	}
+
 	# Save all opened folders in order to restore them after File Explorer restart
 	try
 	{
@@ -650,7 +684,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	# Extract the localized "Skip" string from shell32.dll
 	$Script:Skip = Get-LocalizedShellString -ResourceId 16956 -Fallback 'Skip'
 
-	Write-Information -MessageData "┏┓   •     ┏      ┓ ┏•   ┓ 		" -InformationAction Continue
+	Write-Information -MessageData "┏┓   *     ┏      ┓ ┏*   ┓ 		" -InformationAction Continue
 	Write-Information -MessageData "┗┓┏┏┓┓┏┓╋  ╋┏┓┏┓  ┃┃┃┓┏┓┏┫┏┓┓┏┏┏" -InformationAction Continue
 	Write-Information -MessageData "┗┛┗┛ ┗┣┛┗  ┛┗┛┛   ┗┻┛┗┛┗┗┻┗┛┗┻┛┛" -InformationAction Continue
 	Write-Information -MessageData "      ┛                   		" -InformationAction Continue
@@ -695,7 +729,7 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 					$statusText = $Global:LoadingSplash.Window.FindName('StatusText')
 					if ($statusText)
 					{
-						$statusText.Text = 'Please wait — opening GUI...'
+						$statusText.Text = 'Please wait - opening GUI...'
 					}
 				}
 				catch { $null = $_ }
@@ -710,3 +744,5 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	Clear-Host
 }
 #endregion InitialActions
+
+Export-ModuleMember -Function '*'

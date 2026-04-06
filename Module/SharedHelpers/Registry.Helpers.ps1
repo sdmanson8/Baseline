@@ -1,7 +1,11 @@
-# Shared helper slice for Baseline.
+# Shared helper slice for Baseline -- registry operations, policy setting, and hive management.
 
 function Set-Policy
 {
+	<#
+	.SYNOPSIS
+	Sets a registry policy value at Computer or User scope with type normalization.
+	#>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -60,7 +64,9 @@ function Set-Policy
 
 		if ($MappedType -eq "CLEAR")
 		{
-			return Remove-RegistryValueSafe -Path $FullPath -Name $Name
+			$removed = Remove-RegistryValueSafe -Path $FullPath -Name $Name
+			if ($removed) { LogInfo "Set-Policy CLEAR: removed '$Name' from '$FullPath'" }
+			return $removed
 		}
 
 		return Set-RegistryValueSafe -Path $FullPath -Name $Name -Value $Value -Type $MappedType
@@ -71,33 +77,58 @@ function Set-Policy
 	}
 }
 
+function Get-CurrentWindowsUserSid
+{
+	<# .SYNOPSIS Resolves the current Windows user's SID from WindowsIdentity. #>
+	try
+	{
+		return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+	}
+	catch
+	{
+		throw 'Current Windows user SID could not be resolved. Supply -CurrentUserSid when calling ConvertTo-NativeRegistryPath outside a Windows user context.'
+	}
+}
+
 function ConvertTo-NativeRegistryPath
 {
+	<# .SYNOPSIS Converts PowerShell registry paths (HKCU:\, HKLM:\) to native reg.exe format. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
 		[string]
-		$Path
+		$Path,
+
+		[string]
+		$CurrentUserSid
 	)
 
 	$NativePath = $Path -replace '^Registry::', ''
+	$ResolvedCurrentUserSid = if ([string]::IsNullOrWhiteSpace($CurrentUserSid))
+	{
+		$null
+	}
+	else
+	{
+		$CurrentUserSid.Trim()
+	}
 
 	switch -Regex ($NativePath)
 	{
 		'^HKCU:\\'
 		{
-			$UserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-			return "HKU\$UserSid\$($NativePath.Substring(6))"
+			$UserSid = if ([string]::IsNullOrWhiteSpace($ResolvedCurrentUserSid)) { Get-CurrentWindowsUserSid } else { $ResolvedCurrentUserSid }
+			return "HKU\$UserSid\$($NativePath -replace '^HKCU:\\', '')"
 		}
-		'^HKLM:\\'               { return "HKLM\$($NativePath.Substring(6))" }
-		'^HKU:\\'                { return "HKU\$($NativePath.Substring(5))" }
+		'^HKLM:\\'               { return "HKLM\$($NativePath -replace '^HKLM:\\', '')" }
+		'^HKU:\\'                { return "HKU\$($NativePath -replace '^HKU:\\', '')" }
 		'^HKEY_CURRENT_USER\\'
 		{
-			$UserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-			return "HKU\$UserSid\$($NativePath.Substring(18))"
+			$UserSid = if ([string]::IsNullOrWhiteSpace($ResolvedCurrentUserSid)) { Get-CurrentWindowsUserSid } else { $ResolvedCurrentUserSid }
+			return "HKU\$UserSid\$($NativePath -replace '^HKEY_CURRENT_USER\\', '')"
 		}
-		'^HKEY_LOCAL_MACHINE\\'  { return "HKLM\$($NativePath.Substring(19))" }
-		'^HKEY_USERS\\'          { return "HKU\$($NativePath.Substring(11))" }
+		'^HKEY_LOCAL_MACHINE\\'  { return "HKLM\$($NativePath -replace '^HKEY_LOCAL_MACHINE\\', '')" }
+		'^HKEY_USERS\\'          { return "HKU\$($NativePath -replace '^HKEY_USERS\\', '')" }
 		'^HKLM\\'                { return $NativePath }
 		'^HKU\\'                 { return $NativePath }
 		default                  { throw "Unsupported registry path: $Path" }
@@ -106,23 +137,29 @@ function ConvertTo-NativeRegistryPath
 
 function ConvertTo-RegExeValueType
 {
+	<# .SYNOPSIS Converts PowerShell registry type names to reg.exe format (REG_DWORD, REG_SZ, etc.). #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
-		[ValidateSet('DWord', 'String')]
+		[ValidateSet('DWord', 'String', 'QWord', 'Binary', 'ExpandString', 'MultiString')]
 		[string]
 		$Type
 	)
 
 	switch ($Type)
 	{
-		'DWord' { return 'REG_DWORD' }
-		'String' { return 'REG_SZ' }
+		'DWord'        { return 'REG_DWORD' }
+		'String'       { return 'REG_SZ' }
+		'QWord'        { return 'REG_QWORD' }
+		'Binary'       { return 'REG_BINARY' }
+		'ExpandString' { return 'REG_EXPAND_SZ' }
+		'MultiString'  { return 'REG_MULTI_SZ' }
 	}
 }
 
 function Dismount-RegistryHive
 {
+	<# .SYNOPSIS Unmounts a registry hive with retry logic. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -161,6 +198,7 @@ function Dismount-RegistryHive
 
 function Mount-RegistryHive
 {
+	<# .SYNOPSIS Mounts a registry hive file with retry logic. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -182,6 +220,12 @@ function Mount-RegistryHive
 		$DelayMilliseconds = 500
 	)
 
+	if (-not (Test-Path -LiteralPath $HiveFile -PathType Leaf))
+	{
+		LogWarning "Registry hive file not found: $HiveFile"
+		return $false
+	}
+
 	Dismount-RegistryHive -MountPath $MountPath -PsPath $PsPath | Out-Null
 
 	for ($Attempt = 1; $Attempt -le $MaxAttempts; $Attempt++)
@@ -200,6 +244,7 @@ function Mount-RegistryHive
 
 function Test-RegistryValueEquivalent
 {
+	<# .SYNOPSIS Compares current and desired registry values accounting for type differences. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -279,6 +324,7 @@ function Test-RegistryValueEquivalent
 
 function Set-RegistryValueSafe
 {
+	<# .SYNOPSIS Sets a registry value with access-denied fallback via reg.exe. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -298,6 +344,8 @@ function Set-RegistryValueSafe
 		[string]
 		$Type,
 
+		# Scriptblock invoked on UnauthorizedAccessException. Receives positional
+		# parameters: $Path, $Name, $Value, $Type. Must return $true on success.
 		[scriptblock]
 		$AccessDeniedFallback,
 
@@ -319,13 +367,9 @@ function Set-RegistryValueSafe
 		try
 		{
 			$registryKey = Get-Item -Path $Path -ErrorAction Stop
-			try
+			if ($registryKey.GetValueNames() -contains $Name)
 			{
 				$currentValueKind = $registryKey.GetValueKind($Name).ToString()
-			}
-			catch
-			{
-				$currentValueKind = $null
 			}
 		}
 		catch
@@ -371,7 +415,7 @@ function Set-RegistryValueSafe
 		if ($FallbackSucceeded)
 		{
 			Remove-HandledErrorRecord -ErrorRecord $HandledError
-			return
+			return $true
 		}
 
 		if ($SkipOnAccessDenied)
@@ -399,6 +443,7 @@ function Set-RegistryValueSafe
 
 function Remove-RegistryValueSafe
 {
+	<# .SYNOPSIS Safely removes a registry value, returning $true if removed or $false if absent. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -434,6 +479,7 @@ function Remove-RegistryValueSafe
 
 function Set-SystemTweaksRegistryValue
 {
+	<# .SYNOPSIS Wrapper that sets a registry value via Set-RegistryValueSafe for system tweaks. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -455,6 +501,7 @@ function Set-SystemTweaksRegistryValue
 
 function Remove-SystemTweaksRegistryValue
 {
+	<# .SYNOPSIS Wrapper that removes a registry value via Remove-RegistryValueSafe for system tweaks. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]

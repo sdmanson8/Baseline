@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -31,7 +31,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The Start Menu search box can show Bing web results alongside local results. Disabling keeps Start Menu search local only.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Start Menu Account Notifications",
@@ -47,7 +49,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Microsoft can show account-related notifications and prompts in the Start Menu. Hiding removes these.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Start Menu Recommendations/Tips",
@@ -79,7 +83,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -95,7 +99,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "The Start Menu can show tips about Windows features and recommendations for new apps. Hiding removes these suggestions.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Web Search in System Search",
@@ -111,7 +117,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -127,7 +133,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Integrates Bing web results into the Windows search bar. Disabling makes system search show only local files and settings.",
-      "PresetTier": "Minimal"
+      "PresetTier": "Minimal",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Start Layout",
@@ -151,7 +159,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -167,7 +175,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Controls the layout ratio of the Windows 11 Start Menu between pinned apps and recommended content.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Start Menu Recommended Section",
@@ -183,7 +193,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Show",
       "OffParam": "Hide",
       "ExtraArgs": null,
@@ -199,7 +209,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Shows or hides the Recommended section at the bottom of the Start Menu. On Enterprise and Education editions this can be hidden via policy.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

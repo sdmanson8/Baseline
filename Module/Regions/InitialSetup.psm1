@@ -1,4 +1,4 @@
-using module ..\Logging.psm1
+﻿using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
 #region Initial Setup
@@ -21,18 +21,54 @@ using module ..\SharedHelpers.psm1
 function CreateRestorePoint
 {
 	LogInfo "Creating Restore Point"
+	# Write-Host: intentional — user-visible progress indicator
 	Write-Host "Creating System Restore Point - " -NoNewline
+	$restoreSystemProtection = $false
+	$createdSuccessfully = $false
 	try
 	{
+		# Ensure the Volume Shadow Copy service is running — both Checkpoint-Computer
+		# and the WMI fallback depend on it. On VMs or hardened systems it may be
+		# set to Manual/Disabled and not started.
+		try
+		{
+			$vssSvc = Get-Service -Name VSS -ErrorAction Stop
+			if ($vssSvc.Status -ne 'Running')
+			{
+				LogInfo "Starting Volume Shadow Copy (VSS) service (was $($vssSvc.Status))."
+				if ($vssSvc.StartType -eq 'Disabled')
+				{
+					Set-Service -Name VSS -StartupType Manual -ErrorAction Stop
+				}
+				Start-Service -Name VSS -ErrorAction Stop
+			}
+		}
+		catch
+		{
+			LogWarning "Could not ensure VSS service is running: $($_.Exception.Message)"
+		}
+
 		$SystemDriveUniqueID = (Get-Volume | Where-Object -FilterScript {$_.DriveLetter -eq "$($env:SystemDrive[0])"}).UniqueID
 		$SystemProtection = ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SPP\Clients" -ErrorAction Ignore)."{09F7EDC5-294E-4180-AF6A-FB0E6A0E9513}") | Where-Object -FilterScript {$_ -match [regex]::Escape($SystemDriveUniqueID)}
 
-		$Script:ComputerRestorePoint = $false
-
 		if ($null -eq $SystemProtection)
 		{
-			$ComputerRestorePoint = $true
-			Enable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop
+			# Verify whether System Protection is actually disabled before attempting to enable it,
+			# because the SPP\Clients registry check can return null on newer Windows 11 builds
+			# even when System Protection is already on.
+			$srpEnabled = $false
+			try
+			{
+				$srpStatus = Get-CimInstance -ClassName SystemRestoreConfig -Namespace 'root\default' -ErrorAction Stop
+				if ($srpStatus -and $srpStatus.RPSessionInterval -eq 1) { $srpEnabled = $true }
+			}
+			catch { $srpEnabled = $false }
+
+			if (-not $srpEnabled)
+			{
+				$restoreSystemProtection = $true
+				Enable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop
+			}
 		}
 
 		# Never skip creating a restore point
@@ -41,30 +77,77 @@ function CreateRestorePoint
 		$osName = (Get-OSInfo).OSName
 		$displayVersion = Get-BaselineDisplayVersion
 
-		$restorePointDescription = "Baseline | Windows Utility for $osName"
+		$restorePointDescription = "Baseline | Utility for $osName"
 		if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
 		{
 			$restorePointDescription = "$restorePointDescription $displayVersion"
 		}
 
-		Checkpoint-Computer -Description $restorePointDescription -RestorePointType MODIFY_SETTINGS -ErrorAction Stop | Out-Null
+		# Try Checkpoint-Computer in a background job with a timeout to prevent hanging
+		$checkpointSucceeded = $false
+		$restorePointTimeoutSeconds = 120
+		try
+		{
+			$job = Start-Job -ScriptBlock {
+				param ($Desc)
+				Checkpoint-Computer -Description $Desc -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
+			} -ArgumentList $restorePointDescription
+			$finished = $job | Wait-Job -Timeout $restorePointTimeoutSeconds
+			if ($finished)
+			{
+				$job | Receive-Job -ErrorAction Stop | Out-Null
+				$checkpointSucceeded = $true
+			}
+			else
+			{
+				$job | Stop-Job -ErrorAction SilentlyContinue
+				LogWarning "Checkpoint-Computer timed out after $restorePointTimeoutSeconds seconds. Trying WMI fallback."
+			}
+			$job | Remove-Job -Force -ErrorAction SilentlyContinue
+		}
+		catch
+		{
+			LogWarning "Checkpoint-Computer failed: $($_.Exception.Message). Trying WMI fallback."
+			if ($job) { $job | Remove-Job -Force -ErrorAction SilentlyContinue }
+		}
+
+		if (-not $checkpointSucceeded)
+		{
+			try
+			{
+				$sr = [wmiclass]'\\.\root\default:SystemRestore'
+				$result = $sr.CreateRestorePoint($restorePointDescription, 12, 100)
+				if ($result.ReturnValue -ne 0)
+				{
+					throw "WMI SystemRestore.CreateRestorePoint failed with return code $($result.ReturnValue)"
+				}
+				$checkpointSucceeded = $true
+			}
+			catch
+			{
+				throw "Restore point creation failed: $($_.Exception.Message)"
+			}
+		}
 
 		# Revert the System Restore checkpoint creation frequency to 1440 minutes
 		New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name SystemRestorePointCreationFrequency -PropertyType DWord -Value 1440 -Force -ErrorAction Stop | Out-Null
 
 		# Turn off System Protection for the system drive if it was turned off before without deleting the existing restore points
-		if ($Script:ComputerRestorePoint)
+		if ($restoreSystemProtection)
 		{
 			LogInfo "Disabling System Restore again"
 			Disable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop | Out-Null
 		}
 		Write-ConsoleStatus -Status success
+		$createdSuccessfully = $true
 	}
 	catch
 	{
 		Write-ConsoleStatus -Status failed
 		LogError "Failed to create a restore point: $($_.Exception.Message)"
 	}
+
+	return $createdSuccessfully
 }
 <#
 	.SYNOPSIS
@@ -125,8 +208,13 @@ function Get-WinGetVersion
     # Check if winget is already installed and working
     $wingetVersion = Get-WinGetVersion
     if ($wingetVersion) {
+        $resolvedWingetPath = Resolve-WinGetExecutable
         Write-ConsoleStatus -Action "Checking WinGet"
         LogInfo "Checking WinGet"
+        if (-not [string]::IsNullOrWhiteSpace([string]$resolvedWingetPath))
+        {
+            LogInfo "Resolved winget executable: $resolvedWingetPath"
+        }
         LogInfo "Winget is already installed and working. Version: $wingetVersion"
         Write-ConsoleStatus -Status success
         return
@@ -139,20 +227,29 @@ function Get-WinGetVersion
     LogInfo "Installing WinGet:"
     
     try {
-        # Download the asheroto installer script from direct GitHub URL
-        $installerUrl = "https://raw.githubusercontent.com/asheroto/winget-install/master/winget-install.ps1"
-        $installerPath = Join-Path $env:TEMP "winget-install.ps1"
-        
-        LogInfo "Downloading winget installer from $installerUrl"
-        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
-        LogInfo "Download completed"
-        
-        LogInfo "Executing installer script..."
-        
-        # Create temporary log files to capture output
+        $installerVersion = '5.3.1'
+        $installerSha256 = '029094EFD9D26A83AEA184B16D15C772D35D64E1288010741F50FD33A1E1F40F'
+        $installerUrl = "https://github.com/asheroto/winget-install/releases/download/$installerVersion/winget-install.ps1"
+        $installerPath = Join-Path $env:TEMP ("winget-install-{0}.ps1" -f $installerVersion)
         $stdoutLog = Join-Path $env:TEMP "winget-install-stdout.log"
         $stderrLog = Join-Path $env:TEMP "winget-install-stderr.log"
-        
+
+        LogInfo "Downloading winget installer from $installerUrl"
+        Invoke-DownloadFile -Uri $installerUrl -OutFile $installerPath
+
+        if (-not (Test-Path $installerPath) -or (Get-Item $installerPath).Length -eq 0)
+        {
+            throw "winget installer download failed or produced an empty file at $installerPath"
+        }
+
+        $null = Assert-FileHash `
+            -Path $installerPath `
+            -ExpectedSha256 $installerSha256 `
+            -Label ("winget-install.ps1 v{0}" -f $installerVersion)
+        LogInfo ("Download and SHA-256 verification completed for winget-install.ps1 v{0}" -f $installerVersion)
+
+        LogInfo "Executing installer script..."
+
         # Execute the installer and capture all output
         $process = Start-Process powershell.exe -ArgumentList @(
             "-NoProfile",
@@ -184,9 +281,6 @@ function Get-WinGetVersion
             LogWarning "Installer script reported exit code: $($process.ExitCode)"
         }
         
-        # Clean up installer script
-        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-        
         # Final validation
         Start-Sleep -Seconds 5
         $wingetVersion = Get-WinGetVersion
@@ -210,6 +304,19 @@ function Get-WinGetVersion
         LogError "Error during winget installation: $_"
         Write-ConsoleStatus -Status failed
         return
+    } finally {
+        if ($installerPath -and (Test-Path -LiteralPath $installerPath))
+        {
+            Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
+        }
+        if ($stdoutLog -and (Test-Path -LiteralPath $stdoutLog))
+        {
+            Remove-Item -LiteralPath $stdoutLog -Force -ErrorAction SilentlyContinue
+        }
+        if ($stderrLog -and (Test-Path -LiteralPath $stderrLog))
+        {
+            Remove-Item -LiteralPath $stderrLog -Force -ErrorAction SilentlyContinue
+        }
     }
 
 <#
@@ -256,20 +363,51 @@ function Update-Powershell
 	try
 	{
 		$WingetPath = Resolve-WinGetExecutable
+		if (-not [string]::IsNullOrWhiteSpace([string]$WingetPath))
+		{
+			LogInfo "Using winget executable: $WingetPath"
+		}
 		if ($WingetPath)
 		{
+			$wingetSucceeded = $false
 			$process = Start-Process -FilePath $WingetPath `
-				-ArgumentList "install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements" `
+				-ArgumentList "install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements --silent" `
 				-WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
-			if ($process.ExitCode -notin 0, -1978335189)
+			if ($process.ExitCode -in 0, -1978335189)
 			{
-				throw "winget returned exit code $($process.ExitCode)"
+				$wingetSucceeded = $true
+			}
+			else
+			{
+				LogWarning "winget install returned exit code $($process.ExitCode), falling back to MSI installer"
 			}
 		}
-		else
+		if (-not $WingetPath -or -not $wingetSucceeded)
 		{
-			LogWarning "WinGet not available, using the official install script"
-			Invoke-Expression "& { $(Invoke-RestMethod -Uri 'https://aka.ms/install-powershell.ps1' -UseBasicParsing) } -UseMSI -Quiet" -ErrorAction SilentlyContinue
+			$installerPath = $null
+			try
+			{
+				LogInfo "Downloading the official PowerShell MSI package from GitHub"
+				$installerUri = Resolve-PowerShellInstallerUri
+				$installerFileName = Split-Path -Path $installerUri -Leaf
+				$installerPath = Join-Path $env:TEMP $installerFileName
+				Invoke-DownloadFile -Uri $installerUri -OutFile $installerPath
+				$null = Assert-AuthenticodeSignature -Path $installerPath -AllowedSubjects @('CN=Microsoft Corporation')
+				$process = Start-Process -FilePath 'msiexec.exe' `
+					-ArgumentList "/i `"$installerPath`" /qn /norestart" `
+					-WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
+				if ($process.ExitCode -notin 0, 3010)
+				{
+					throw "msiexec returned exit code $($process.ExitCode)"
+				}
+			}
+			finally
+			{
+				if ($installerPath -and (Test-Path -LiteralPath $installerPath))
+				{
+					Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
+				}
+			}
 		}
 		Write-ConsoleStatus -Status success
 	}
@@ -296,6 +434,7 @@ function Update-Powershell
 #>
 function Update-DesktopRegistry
 {
+	# Write-Host: intentional — user-visible progress indicator
 	Write-Host 'Removing "About this Picture" from Desktop - ' -NoNewline
 	LogInfo 'Removing "About this Picture" from Desktop'
     # Define registry paths and key/value
@@ -358,7 +497,10 @@ function Update-ProcessPathFromRegistry
 #>
 function Stop-Foreground
 {
-    Stop-Process -Name "explorer" -Force | Out-Null
+	LogInfo "Stopping explorer.exe to apply shell changes"
+	Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue | Out-Null
 }
 
 #endregion Initial Setup
+
+Export-ModuleMember -Function '*'

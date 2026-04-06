@@ -2,36 +2,38 @@
   "Tab": "System Tweaks",
   "Entries": [
     {
-      "Name": "Lanman Workstation Guest Auth Policy",
+      "Name": "SMB Guest Authentication",
       "Function": "LanmanWorkstationGuestAuthPolicy",
-      "Type": "Action",
+      "Type": "Toggle",
       "Options": null,
       "DisplayOptions": null,
-      "Default": true,
+      "Default": false,
       "WinDefault": false,
-      "Description": "Enable the LanmanWorkstation guest-auth Group Policy setting",
-      "Detail": "Enables a Group Policy setting that allows the LanmanWorkstation service to accept guest-authenticated SMB connections. Required for certain share access scenarios.",
-      "Caution": false,
-      "CautionReason": null,
+      "Description": "Control insecure SMB guest authentication",
+      "Detail": "Controls the AllowInsecureGuestAuth policy for SMB client connections. Guest auth was disabled by default since Windows 10 1709 because it is a known lateral-movement vector (used by NotPetya). Enable only for legacy NAS/SMB shares that require guest access.",
+      "Caution": true,
+      "CautionReason": "May break legacy NAS/printer access. Enabling allows unauthenticated SMB access, a known lateral-movement vector (NotPetya). Only enable for legacy NAS devices or network shares that require guest authentication.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": false,
-      "OnParam": null,
-      "OffParam": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "SystemTweaks",
-      "Risk": "Medium",
+      "Risk": "High",
       "Tags": [
-        "setup",
+        "security",
         "networking",
         "policy"
       ],
-      "Impact": "Medium",
+      "Impact": "High",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Enables a Group Policy setting that allows the LanmanWorkstation service to accept guest-authenticated SMB connections. Required for certain share access scenarios. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "WhyThisMatters": "Guest authentication for SMB is a known lateral-movement vector disabled by default since Windows 10 1709. Enabling it exposes the system to unauthenticated SMB access. Only enable for legacy device compatibility.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Performance Tuning",
@@ -47,7 +49,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -63,7 +65,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Runs a set of legacy system optimizations and boot configuration adjustments to improve general system responsiveness. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Repair Windows 11 SMB Issue",
@@ -79,7 +83,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -94,7 +98,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Fixes a known issue in some Windows 11 builds where SMB share access fails after an update due to a missing registry value.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "SMB Guest Compatibility",
@@ -110,7 +116,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -125,7 +131,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Allows SMB connections to network shares without requiring authentication. Needed for accessing older NAS devices, printers, or routers. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "SMB Sharing Compatibility",
@@ -141,7 +149,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -157,7 +165,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Preserves your existing SMB share configuration and saved network credentials when other network tweaks are applied. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Repair Shared Printer Connection Errors",
@@ -173,7 +183,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": true,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -190,7 +200,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Fixes common host and client-side printer connection failures by aligning RPC, SMB, Point and Print, spooler, TCP, and network discovery settings. This change carries moderate risk and requires a restart.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Adobe Network Block",
@@ -203,10 +215,10 @@
       "Description": "Block Adobe network access",
       "Detail": "Adds firewall rules to block Adobe applications from accessing the internet. This affects license validation, cloud sync, and Creative Cloud features.",
       "Caution": true,
-      "CautionReason": "Blocking Adobe network access may prevent license validation, disable Creative Cloud syncing, break cloud-based features, trigger subscription errors, and may violate Adobe license terms.",
+      "CautionReason": "May affect licensing or cloud sync. Blocking Adobe network access prevents license validation, disables Creative Cloud syncing, breaks cloud-based features, and triggers subscription errors. May also violate Adobe license terms.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -223,7 +235,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Adds firewall rules to block Adobe applications from accessing the internet. This affects license validation, cloud sync, and Creative Cloud features. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Brave Debloat",
@@ -236,10 +250,10 @@
       "Description": "Disable Brave rewards, wallet, VPN, AI chat",
       "Detail": "Disables Brave browser's optional extras: rewards, crypto wallet, VPN, and AI chat. Only affects these Brave-specific features, not your browsing.",
       "Caution": true,
-      "CautionReason": "Disables Brave rewards, wallet, VPN, and AI chat features permanently. Only use if you want to remove those features completely.",
+      "CautionReason": "May require Store or winget to recover. Disables Brave rewards, wallet, VPN, and AI chat features via policy. Reverting requires clearing Group Policy entries or reinstalling Brave to restore defaults.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -255,7 +269,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Disables Brave browser's optional extras: rewards, crypto wallet, VPN, and AI chat. Only affects these Brave-specific features, not your browsing. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Cross-Device Resume",
@@ -271,7 +287,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -287,7 +303,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Lets you resume tasks from other Windows devices on this PC via a notification pop-up. Disable if you do not use this cross-device feature.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Disk Cleanup",
@@ -319,7 +337,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Runs the built-in Windows Disk Cleanup tool to remove temporary files, system cache, and other unneeded data to free up disk space. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Explorer Automatic Folder Discovery",
@@ -335,7 +355,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -351,7 +371,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "File Explorer detects the content type of each folder and applies a matching view template. Disabling locks all folders to a consistent generic view.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Modern Standby Fix",
@@ -367,7 +389,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -383,7 +405,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Modern Standby (S0) can cause high CPU and power usage while the PC appears to be sleeping. This fix switches to S3-style deep sleep behavior.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Razer Software Block",
@@ -396,10 +420,10 @@
       "Description": "Block Razer software installation",
       "Detail": "Blocks Razer Synapse installer scripts from running automatically. Prevents unwanted Razer software from being installed in the background.",
       "Caution": true,
-      "CautionReason": "May prevent Razer Synapse from installing/updating, disable RGB/macro/device profile functionality, stop firmware updates, and cause limited peripheral features.",
+      "CautionReason": "May affect gaming overlays or input latency. Prevents Razer Synapse from installing or updating, disabling RGB lighting, macro profiles, device-specific settings, and firmware updates for Razer peripherals.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -416,7 +440,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Blocks Razer Synapse installer scripts from running automatically. Prevents unwanted Razer software from being installed in the background. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "S3 Sleep",
@@ -432,7 +458,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -448,7 +474,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "S3 is traditional deep sleep where the PC fully powers down components. Some systems default to Modern Standby which can drain power while idle.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Services Manual Startup",
@@ -464,7 +492,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -480,7 +508,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "Sets a selection of non-essential Windows services from Automatic to Manual startup. Services will still start on demand when needed. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Balanced"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Teredo",
@@ -493,10 +523,10 @@
       "Description": "Teredo IPv6 tunneling protocol",
       "Detail": "Teredo is a tunneling protocol that provides IPv6 connectivity over IPv4 networks. Required for Xbox Live connectivity and some peer-to-peer applications.",
       "Caution": true,
-      "CautionReason": "Teredo is an IPv6 tunneling protocol needed for NAT traversal. Disabling it may break Xbox Live and certain peer-to-peer applications.",
+      "CautionReason": "May break VPN or enterprise connectivity. Teredo provides IPv6-over-IPv4 NAT traversal. Disabling breaks Xbox Live party chat, some peer-to-peer applications, and IPv6-only services accessed through NAT.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -512,7 +542,9 @@
       "Safe": false,
       "RequiresRestart": false,
       "WhyThisMatters": "Teredo is a tunneling protocol that provides IPv6 connectivity over IPv4 networks. Required for Xbox Live connectivity and some peer-to-peer applications. This is a high-risk change that may be difficult or impossible to reverse.",
-      "PresetTier": "Advanced"
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Windows Platform Binary Table (WPBT)",
@@ -528,7 +560,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": null,
+      "Restorable": true,
       "OnParam": "Enable",
       "OffParam": "Disable",
       "ExtraArgs": null,
@@ -544,7 +576,9 @@
       "Safe": false,
       "RequiresRestart": true,
       "WhyThisMatters": "WPBT is a firmware table that lets manufacturers run software during Windows startup. Disabling prevents manufacturer-injected executables from running automatically. This change carries moderate risk and may affect some workflows.",
-      "PresetTier": "Safe"
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Medium"
     }
   ]
 }

@@ -15,7 +15,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": false,
-      "Restorable": null,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -30,7 +30,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Creates a Windows System Restore point so you can roll back system changes if something goes wrong. Recommended before running any tweaks.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Check and Install WinGet",
@@ -46,7 +48,7 @@
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": false,
-      "Restorable": null,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -61,7 +63,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "WinGet is Windows' built-in package manager used to install and update apps from the command line. This ensures it is installed and up to date.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Install/Update PowerShell 7",
@@ -77,7 +81,7 @@
       "CautionReason": null,
       "LinkedWith": "Powershell7Telemetry",
       "Scannable": false,
-      "Restorable": null,
+      "Restorable": false,
       "OnParam": null,
       "OffParam": null,
       "ExtraArgs": null,
@@ -92,7 +96,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "PowerShell 7 is a modern cross-platform shell with improved performance and features over the built-in Windows PowerShell 5.1. Linked to the PS7 Telemetry toggle.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Hide About this Picture on Desktop",
@@ -123,7 +129,9 @@
       "Safe": true,
       "RequiresRestart": false,
       "WhyThisMatters": "Removes the small info icon that appears on the desktop when Windows Spotlight wallpapers are active.",
-      "PresetTier": "Safe"
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Manual",
+      "CompatibilitySensitivity": "Low"
     }
   ]
 }

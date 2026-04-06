@@ -1,20 +1,24 @@
-<#
+﻿<#
 .SYNOPSIS
-    Adds missing metadata fields (Impact, Safe, RequiresRestart, WhyThisMatters, PresetTier)
-    to all Module/Data/*.json tweak entries.
+    Adds missing metadata fields (Impact, Safe, RequiresRestart, WhyThisMatters, PresetTier,
+    CompatibilitySensitivity) to all Module/Data/*.json tweak entries.
 
 .DESCRIPTION
     Derives values from existing metadata:
-    - Impact: derived from Risk (Low→Low, Medium→Medium, High→High)
-    - Safe: derived from Risk (Low→true, Medium/High→false)
+    - Impact: derived from Risk (Low->Low, Medium->Medium, High->High)
+    - Safe: derived from Risk (Low->true, Medium/High->false)
     - RequiresRestart: heuristic from tags, description, function name
     - WhyThisMatters: generated from Description + Detail + Risk context
     - PresetTier: assigned based on Risk + function name + exclusion rules
+    - CompatibilitySensitivity: defaults to 'Low' if missing (valid: Low, Medium, High)
 #>
 
 param(
     [switch]$DryRun
 )
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
 $moduleRoot = Join-Path $repoRoot 'Module'
@@ -36,7 +40,7 @@ $minimalFunctions = @(
     'DiagnosticDataLevel', 'FeedbackFrequency', 'TaskbarSearch'
 )
 
-# Functions that are in the curated Safe preset (superset of Minimal)
+# Functions that are in the curated Basic preset (superset of Minimal)
 $safeFunctions = @(
     $minimalFunctions + @(
         'CheckWinGet', 'CreateRestorePoint', 'ExplorerAutoDiscovery',
@@ -48,7 +52,7 @@ $safeFunctions = @(
     )
 ) | Select-Object -Unique
 
-# Functions that are in the curated Balanced preset (superset of Safe)
+# Functions that are in the curated Balanced preset (superset of Basic)
 $balancedFunctions = @(
     $safeFunctions + @(
         'Camera', 'ClipboardHistory', 'DiagTrackService', 'FastStartup',
@@ -81,6 +85,47 @@ $restartFunctions = @(
     'Disable-IPv6', 'NTFSLastAccess', 'LanmanWorkstationGuestAuthPolicy'
 )
 
+# Conservative backfill for reviewed gaming-safe functions only.
+# Keep this explicit so the helper does not guess scenario metadata for unrelated tweaks.
+$conservativeGamingMetadataMap = @{
+    'GPUScheduling' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'competitive', 'streaming')
+        GamingPreviewGroup = 'Core Performance'
+        TroubleshootingOnly = $false
+    }
+    'XboxGameBar' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'casual', 'streaming')
+        GamingPreviewGroup = 'Xbox & Overlay'
+        TroubleshootingOnly = $false
+    }
+    'XboxGameTips' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'casual', 'competitive', 'streaming')
+        GamingPreviewGroup = 'Background & Notifications'
+        TroubleshootingOnly = $false
+    }
+    'FullscreenOptimizations' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'troubleshooting')
+        GamingPreviewGroup = 'Compatibility & Troubleshooting'
+        TroubleshootingOnly = $true
+    }
+    'MultiplaneOverlay' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'competitive', 'troubleshooting')
+        GamingPreviewGroup = 'Compatibility & Troubleshooting'
+        TroubleshootingOnly = $false
+    }
+    'NetworkAdaptersSavePower' = @{
+        RecoveryLevel = 'Direct'
+        ScenarioTags = @('gaming', 'troubleshooting', 'networking', 'performance')
+        GamingPreviewGroup = 'Compatibility & Troubleshooting'
+        TroubleshootingOnly = $true
+    }
+}
+
 function Get-RequiresRestart {
     param([hashtable]$Entry)
 
@@ -110,7 +155,7 @@ function Get-PresetTier {
     # Explicit exclusions from Balanced
     if ($func -in $balancedExclusions) {
         if ($risk -eq 'High') { return 'Advanced' }
-        return $null  # Omitted — not in any preset
+        return $null  # Omitted - not in any preset
     }
 
     if ($func -in $minimalFunctions) { return 'Minimal' }
@@ -176,6 +221,32 @@ function Get-WhyThisMatters {
     return $result
 }
 
+function Test-HasConservativeGamingMetadataValue {
+    param(
+        [hashtable]$Entry,
+        [string]$FieldName
+    )
+
+    $func = [string]$Entry.Function
+    if ([string]::IsNullOrWhiteSpace($func)) { return $false }
+    if (-not $conservativeGamingMetadataMap.ContainsKey($func)) { return $false }
+    return $conservativeGamingMetadataMap[$func].ContainsKey($FieldName)
+}
+
+function Get-ConservativeGamingMetadataValue {
+    param(
+        [hashtable]$Entry,
+        [string]$FieldName
+    )
+
+    if (-not (Test-HasConservativeGamingMetadataValue -Entry $Entry -FieldName $FieldName))
+    {
+        return $null
+    }
+
+    return $conservativeGamingMetadataMap[[string]$Entry.Function][$FieldName]
+}
+
 $totalEntries = 0
 $totalModified = 0
 
@@ -184,7 +255,8 @@ foreach ($file in $jsonFiles) {
     $data = $jsonText | ConvertFrom-Json
 
     if (-not $data.Entries) {
-        Write-Host "  Skipping $($file.Name) — no Entries array" -ForegroundColor Yellow
+        # Write-Host: intentional — test/tooling console output
+        Write-Host "  Skipping $($file.Name) - no Entries array" -ForegroundColor Yellow
         continue
     }
 
@@ -209,7 +281,9 @@ foreach ($file in $jsonFiles) {
             $changed = $true
         }
 
-        # Add Safe
+        # Add Safe - defaults to (Risk -eq 'Low') but respects explicit overrides.
+        # To mark a non-Low-risk entry as safe (e.g., a well-understood Medium toggle),
+        # set "Safe": true directly in the manifest JSON before running this tool.
         if (-not $entry.PSObject.Properties['Safe']) {
             $safeValue = ([string]$entry.Risk -eq 'Low')
             $entry | Add-Member -MemberType NoteProperty -Name 'Safe' -Value $safeValue
@@ -234,6 +308,40 @@ foreach ($file in $jsonFiles) {
         if (-not $entry.PSObject.Properties['PresetTier']) {
             $tierValue = Get-PresetTier -Entry $entryHash
             $entry | Add-Member -MemberType NoteProperty -Name 'PresetTier' -Value $tierValue
+            $changed = $true
+        }
+
+        # Add RecoveryLevel only for explicitly reviewed gaming-safe entries.
+        $needsRecoveryLevel = (-not $entry.PSObject.Properties['RecoveryLevel']) -or [string]::IsNullOrWhiteSpace([string]$entry.RecoveryLevel)
+        if ($needsRecoveryLevel -and (Test-HasConservativeGamingMetadataValue -Entry $entryHash -FieldName 'RecoveryLevel')) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'RecoveryLevel' -Value (Get-ConservativeGamingMetadataValue -Entry $entryHash -FieldName 'RecoveryLevel') -Force
+            $changed = $true
+        }
+
+        # Add ScenarioTags only for reviewed gaming-safe entries to avoid broad guesses.
+        $needsScenarioTags = (-not $entry.PSObject.Properties['ScenarioTags']) -or $null -eq $entry.ScenarioTags -or @($entry.ScenarioTags).Count -eq 0
+        if ($needsScenarioTags -and (Test-HasConservativeGamingMetadataValue -Entry $entryHash -FieldName 'ScenarioTags')) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'ScenarioTags' -Value @(Get-ConservativeGamingMetadataValue -Entry $entryHash -FieldName 'ScenarioTags') -Force
+            $changed = $true
+        }
+
+        # Add GamingPreviewGroup only for the explicit Game Mode allowlist set.
+        $needsGamingPreviewGroup = (-not $entry.PSObject.Properties['GamingPreviewGroup']) -or [string]::IsNullOrWhiteSpace([string]$entry.GamingPreviewGroup)
+        if ($needsGamingPreviewGroup -and (Test-HasConservativeGamingMetadataValue -Entry $entryHash -FieldName 'GamingPreviewGroup')) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'GamingPreviewGroup' -Value (Get-ConservativeGamingMetadataValue -Entry $entryHash -FieldName 'GamingPreviewGroup') -Force
+            $changed = $true
+        }
+
+        # Add TroubleshootingOnly only when the reviewed map explicitly says so.
+        $needsTroubleshootingOnly = (-not $entry.PSObject.Properties['TroubleshootingOnly']) -or $null -eq $entry.TroubleshootingOnly
+        if ($needsTroubleshootingOnly -and (Test-HasConservativeGamingMetadataValue -Entry $entryHash -FieldName 'TroubleshootingOnly')) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'TroubleshootingOnly' -Value ([bool](Get-ConservativeGamingMetadataValue -Entry $entryHash -FieldName 'TroubleshootingOnly')) -Force
+            $changed = $true
+        }
+
+        # Add CompatibilitySensitivity - defaults to 'Low' if missing
+        if (-not $entry.PSObject.Properties['CompatibilitySensitivity']) {
+            $entry | Add-Member -MemberType NoteProperty -Name 'CompatibilitySensitivity' -Value 'Low'
             $changed = $true
         }
 
@@ -263,5 +371,5 @@ Write-Host ""
 Write-Host "Total entries processed: $totalEntries" -ForegroundColor White
 Write-Host "Total entries modified:  $totalModified" -ForegroundColor White
 if ($DryRun) {
-    Write-Host "(DRY RUN — no files were written)" -ForegroundColor Yellow
+    Write-Host "(DRY RUN - no files were written)" -ForegroundColor Yellow
 }

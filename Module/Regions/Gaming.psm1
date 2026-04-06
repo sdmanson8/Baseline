@@ -1,4 +1,4 @@
-using module ..\Logging.psm1
+﻿using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
 #region Gaming
@@ -232,7 +232,7 @@ function XboxGameTips
 
 	if (-not (Get-AppxPackage -Name Microsoft.GamingApp -WarningAction SilentlyContinue))
 	{
-		LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
@@ -309,15 +309,31 @@ function FullscreenOptimizations
 		{
 			Write-ConsoleStatus -Action "Enabling Fullscreen Optimizations"
 			LogInfo "Enabling Fullscreen Optimizations"
-			Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Fullscreen Optimizations: $($_.Exception.Message)"
+			}
 		}
 		"Disable"
 		{
 			Write-ConsoleStatus -Action "Disabling Fullscreen Optimizations"
 			LogInfo "Disabling Fullscreen Optimizations"
-			Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Write-ConsoleStatus -Status success
+			try
+			{
+				Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Fullscreen Optimizations: $($_.Exception.Message)"
+			}
 		}
 	}
 }
@@ -368,10 +384,7 @@ function MultiplaneOverlay
 			LogInfo "Enabling Multiplane Overlay"
 			try
 			{
-				if ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -ErrorAction SilentlyContinue))
-				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" -Force -ErrorAction Stop | Out-Null
-				}
+				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "OverlayTestMode" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -394,6 +407,347 @@ function MultiplaneOverlay
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to disable Multiplane Overlay: $($_.Exception.Message)"
 			}
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Game DVR / Background Recording
+
+.PARAMETER Enable
+Enable Game DVR background recording (default value)
+
+.PARAMETER Disable
+Disable Game DVR background recording
+
+.EXAMPLE
+GameDVR -Enable
+
+.EXAMPLE
+GameDVR -Disable
+
+.NOTES
+Current user — composite toggle for background capture behavior.
+Separate from Xbox Game Bar (overlay UI). This controls the recording engine.
+#>
+function GameDVR
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$GameConfigStorePath = "HKCU:\System\GameConfigStore"
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Game DVR background recording"
+			LogInfo "Enabling Game DVR background recording"
+			try
+			{
+				if (-not (Test-Path -Path $GameConfigStorePath))
+				{
+					New-Item -Path $GameConfigStorePath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $GameConfigStorePath -Name "GameDVR_Enabled" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Remove-RegistryValueSafe -Path $GameConfigStorePath -Name "GameDVR_FSEBehaviorMode" | Out-Null
+				Remove-RegistryValueSafe -Path $GameConfigStorePath -Name "GameDVR_EFSEFeatureFlags" | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Game DVR background recording: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Game DVR background recording"
+			LogInfo "Disabling Game DVR background recording"
+			try
+			{
+				if (-not (Test-Path -Path $GameConfigStorePath))
+				{
+					New-Item -Path $GameConfigStorePath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $GameConfigStorePath -Name "GameDVR_Enabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $GameConfigStorePath -Name "GameDVR_FSEBehaviorMode" -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $GameConfigStorePath -Name "GameDVR_EFSEFeatureFlags" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Game DVR background recording: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Windows Game Mode
+
+.PARAMETER Enable
+Enable Windows Game Mode (default value)
+
+.PARAMETER Disable
+Disable Windows Game Mode
+
+.EXAMPLE
+WindowsGameMode -Enable
+
+.EXAMPLE
+WindowsGameMode -Disable
+
+.NOTES
+Current user
+#>
+function WindowsGameMode
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$GameBarPath = "HKCU:\Software\Microsoft\GameBar"
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Windows Game Mode"
+			LogInfo "Enabling Windows Game Mode"
+			try
+			{
+				if (-not (Test-Path -Path $GameBarPath))
+				{
+					New-Item -Path $GameBarPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $GameBarPath -Name "AutoGameModeEnabled" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $GameBarPath -Name "AllowAutoGameMode" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Windows Game Mode: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Windows Game Mode"
+			LogInfo "Disabling Windows Game Mode"
+			try
+			{
+				if (-not (Test-Path -Path $GameBarPath))
+				{
+					New-Item -Path $GameBarPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $GameBarPath -Name "AutoGameModeEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $GameBarPath -Name "AllowAutoGameMode" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Windows Game Mode: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable mouse acceleration (Enhance Pointer Precision)
+
+.PARAMETER Enable
+Enable mouse acceleration (default value)
+
+.PARAMETER Disable
+Disable mouse acceleration
+
+.EXAMPLE
+MouseAcceleration -Enable
+
+.EXAMPLE
+MouseAcceleration -Disable
+
+.NOTES
+Current user
+#>
+function MouseAcceleration
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$MousePath = "HKCU:\Control Panel\Mouse"
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling mouse acceleration (Enhance Pointer Precision)"
+			LogInfo "Enabling mouse acceleration"
+			try
+			{
+				Set-ItemProperty -Path $MousePath -Name "MouseSpeed" -Value "1" -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -Path $MousePath -Name "MouseThreshold1" -Value "6" -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -Path $MousePath -Name "MouseThreshold2" -Value "10" -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable mouse acceleration: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling mouse acceleration (Enhance Pointer Precision)"
+			LogInfo "Disabling mouse acceleration"
+			try
+			{
+				Set-ItemProperty -Path $MousePath -Name "MouseSpeed" -Value "0" -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -Path $MousePath -Name "MouseThreshold1" -Value "0" -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -Path $MousePath -Name "MouseThreshold2" -Value "0" -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable mouse acceleration: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+.SYNOPSIS
+Enable or disable Nagle's Algorithm for active network adapters
+
+.PARAMETER Enable
+Enable Nagle's Algorithm (default value, lower throughput overhead)
+
+.PARAMETER Disable
+Disable Nagle's Algorithm (lower latency for multiplayer gaming)
+
+.EXAMPLE
+NaglesAlgorithm -Enable
+
+.EXAMPLE
+NaglesAlgorithm -Disable
+
+.NOTES
+Machine-level, applies to all active TCP/IP interfaces
+#>
+function NaglesAlgorithm
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = "Enable")]
+		[switch]$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = "Disable")]
+		[switch]$Disable
+	)
+
+	$InterfacesPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"
+
+	# Get active adapter GUIDs from connected IP-enabled interfaces
+	$activeGuids = @()
+	try
+	{
+		$activeGuids = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+			Where-Object { $_.Status -eq 'Up' } |
+			ForEach-Object {
+				$adapter = $_
+				Get-NetIPInterface -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+					ForEach-Object { $adapter.InterfaceGuid }
+			} | Select-Object -Unique)
+	}
+	catch
+	{
+		LogWarning "Could not enumerate active network adapters: $($_.Exception.Message)"
+	}
+
+	if ($activeGuids.Count -eq 0)
+	{
+		LogWarning "No active physical network adapters found. Skipping Nagle's Algorithm tweak."
+		Write-ConsoleStatus -Action "Skipping Nagle's Algorithm (no active adapters)" -Status success
+		return
+	}
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Nagle's Algorithm (restoring defaults)"
+			LogInfo "Enabling Nagle's Algorithm on $($activeGuids.Count) active adapter(s)"
+			$failed = $false
+			foreach ($guid in $activeGuids)
+			{
+				$adapterPath = Join-Path $InterfacesPath $guid
+				if (Test-Path -Path $adapterPath)
+				{
+					try
+					{
+						Remove-RegistryValueSafe -Path $adapterPath -Name "TcpAckFrequency" | Out-Null
+						Remove-RegistryValueSafe -Path $adapterPath -Name "TCPNoDelay" | Out-Null
+					}
+					catch
+					{
+						$failed = $true
+						LogError "Failed to restore Nagle's Algorithm on adapter $guid`: $($_.Exception.Message)"
+					}
+				}
+			}
+			if ($failed) { Write-ConsoleStatus -Status failed } else { Write-ConsoleStatus -Status success }
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Nagle's Algorithm for lower latency"
+			LogInfo "Disabling Nagle's Algorithm on $($activeGuids.Count) active adapter(s)"
+			$failed = $false
+			foreach ($guid in $activeGuids)
+			{
+				$adapterPath = Join-Path $InterfacesPath $guid
+				if (Test-Path -Path $adapterPath)
+				{
+					try
+					{
+						New-ItemProperty -Path $adapterPath -Name "TcpAckFrequency" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+						New-ItemProperty -Path $adapterPath -Name "TCPNoDelay" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+					}
+					catch
+					{
+						$failed = $true
+						LogError "Failed to disable Nagle's Algorithm on adapter $guid`: $($_.Exception.Message)"
+					}
+				}
+			}
+			if ($failed) { Write-ConsoleStatus -Status failed } else { Write-ConsoleStatus -Status success }
 		}
 	}
 }
@@ -446,7 +800,7 @@ function Set-AppGraphicsPerformance
 				}
 				$Skip
 				{
-					LogWarning ($Localization.Skipped -f $MyInvocation.Line.Trim())
+					LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 				}
 				$KeyboardArrows {}
 			}
@@ -455,3 +809,5 @@ function Set-AppGraphicsPerformance
 		Write-ConsoleStatus -Status success
 	}
 }
+
+Export-ModuleMember -Function '*'

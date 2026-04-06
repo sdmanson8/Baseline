@@ -1,13 +1,14 @@
-﻿<#
+<#
     .SYNOPSIS
     Loader module for Baseline.
  
     .VERSION
-	2.0.0
+	3.0.0 (beta)
 
 	.DATE
-	17.03.2026 - initial version
+	17.03.2026 - initial beta version
 	21.03.2026 - Added GUI
+	06.04.2026 - Major changes to the GUI, and added more features
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -21,12 +22,14 @@
 # Import shared modules used by all region modules
 Import-Module -Name "$PSScriptRoot\Logging.psm1" -Force -Global
 Import-Module -Name "$PSScriptRoot\SharedHelpers.psm1" -Force -Global
+Import-Module -Name "$PSScriptRoot\GUIExecution.psm1" -Force -Global
 
 # Detect the OS version once through the shared helper so every module uses the same logic.
 $osName = (Get-OSInfo).OSName
 # Initialize logging and write to an OS-specific log file in %TEMP%
-$global:LogFilePath = Join-Path $env:TEMP "Baseline - Windows Utility for $osName.txt"
+$global:LogFilePath = Join-Path $env:TEMP "Baseline - Utility for $osName.txt"
 Set-LogFile -Path $global:LogFilePath
+Initialize-SessionStatistics
 
 <#
     .SYNOPSIS
@@ -40,6 +43,7 @@ $RegionDir = Join-Path $PSScriptRoot 'Regions'
 
 $coreFiles = @('Errors.psm1', 'InitialActions.psm1')
 $excludedRegionFiles = @(
+    'GUI.psm1'
 )
 
 foreach ($core in $coreFiles) {
@@ -68,4 +72,7 @@ Get-ChildItem -Path $RegionDir -Filter '*.psm1' -File |
         }
     }
 
-Export-ModuleMember -Function *
+# Region modules are imported with -Global so their functions are available
+# directly. Do not export with wildcard to avoid leaking internal helpers.
+Export-ModuleMember -Function @()
+

@@ -1,7 +1,8 @@
-# Shared helper slice for Baseline.
+# Shared helper slice for Baseline -- Advanced Startup shortcut and recovery environment helpers.
 
 function Get-AdvancedStartupDesktopDirectory
 {
+	<# .SYNOPSIS Returns the current user's Desktop folder path. #>
 	try
 	{
 		return [Environment]::GetFolderPath('Desktop')
@@ -14,6 +15,7 @@ function Get-AdvancedStartupDesktopDirectory
 
 function Get-AdvancedStartupDownloadsDirectory
 {
+	<# .SYNOPSIS Returns the Downloads folder path via Shell API or fallback. #>
 	try
 	{
 		$downloadsFolder = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads')
@@ -32,6 +34,7 @@ function Get-AdvancedStartupDownloadsDirectory
 
 function Get-AdvancedStartupAssetPath
 {
+	<# .SYNOPSIS Searches for an asset file in files/, Assets/, or repo root directories. #>
 	param(
 		[Parameter(Mandatory = $true)]
 		[string]$FileName
@@ -57,6 +60,7 @@ function Get-AdvancedStartupAssetPath
 
 function Get-AdvancedStartupIconLocation
 {
+	<# .SYNOPSIS Locates or downloads troubleshoot.ico with fallback to a system icon. #>
 	param(
 		[Parameter(Mandatory = $true)]
 		[string]$DownloadsPath
@@ -69,7 +73,7 @@ function Get-AdvancedStartupIconLocation
 	}
 
 	$bundledIconPath = Get-AdvancedStartupAssetPath -FileName 'troubleshoot.ico'
-	if (Test-Path -LiteralPath $bundledIconPath)
+	if ($bundledIconPath -and (Test-Path -LiteralPath $bundledIconPath))
 	{
 		try
 		{
@@ -87,7 +91,12 @@ function Get-AdvancedStartupIconLocation
 	{
 		$downloadedIconPath = Join-Path $DownloadsPath 'troubleshoot.ico'
 		Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/sdmanson8/Baseline/main/files/troubleshoot.ico' `
-			-OutFile $downloadedIconPath -UseBasicParsing -ErrorAction Stop
+			-OutFile $downloadedIconPath -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+		if ((Get-Item -LiteralPath $downloadedIconPath).Length -gt 1MB)
+		{
+			Remove-Item -LiteralPath $downloadedIconPath -Force -ErrorAction SilentlyContinue
+			throw "Downloaded icon file exceeds 1 MB safety limit"
+		}
 		Move-Item -Path $downloadedIconPath -Destination $localIconPath -Force -ErrorAction Stop
 		LogInfo 'Downloaded Advanced Startup shortcut icon'
 		return "$localIconPath, 0"
@@ -101,6 +110,7 @@ function Get-AdvancedStartupIconLocation
 
 function Enable-AdvancedStartupWindowsRecoveryEnvironment
 {
+	<# .SYNOPSIS Enables Windows Recovery Environment via reagentc.exe. #>
 	try
 	{
 		& reagentc.exe /enable *> $null
@@ -122,10 +132,28 @@ function Enable-AdvancedStartupWindowsRecoveryEnvironment
 
 function Get-AdvancedStartupCommandPath
 {
+	<# .SYNOPSIS Returns the ACL-restricted path for AdvancedStartup.cmd. #>
 	$commandDirectory = Join-Path $env:ProgramData 'Baseline'
 	if (-not (Test-Path -LiteralPath $commandDirectory))
 	{
-		New-Item -Path $commandDirectory -ItemType Directory -Force | Out-Null
+		$dir = New-Item -Path $commandDirectory -ItemType Directory -Force
+		# Restrict ACLs so non-admin users cannot modify the .cmd that runs elevated.
+		try
+		{
+			$acl = $dir.GetAccessControl()
+			$acl.SetAccessRuleProtection($true, $false)
+			$adminRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+				'BUILTIN\Administrators', 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+			$systemRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+				'NT AUTHORITY\SYSTEM', 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+			$acl.AddAccessRule($adminRule)
+			$acl.AddAccessRule($systemRule)
+			$dir.SetAccessControl($acl)
+		}
+		catch
+		{
+			LogWarning "Could not restrict ACLs on $commandDirectory`: $($_.Exception.Message)"
+		}
 	}
 
 	return (Join-Path $commandDirectory 'AdvancedStartup.cmd')
@@ -133,6 +161,7 @@ function Get-AdvancedStartupCommandPath
 
 function Set-AdvancedStartupCommandFile
 {
+	<# .SYNOPSIS Creates the AdvancedStartup.cmd file with recovery boot commands. #>
 	$commandPath = Get-AdvancedStartupCommandPath
 	$commandContent = @"
 @echo off
@@ -147,14 +176,16 @@ function Set-AdvancedStartupCommandFile
 
 function Get-AdvancedStartupShortcutArguments
 {
+	<# .SYNOPSIS Generates Base64-encoded PowerShell arguments for an elevated recovery shortcut. #>
 	param(
 		[Parameter(Mandatory = $true)]
 		[string]$CommandPath
 	)
 
+	$safeCommandPath = $CommandPath.Replace("'", "''")
 	$launcherScript = @"
 `$shell = New-Object -ComObject Shell.Application
-`$shell.ShellExecute('$CommandPath', '', '', 'runas', 0)
+`$shell.ShellExecute('$safeCommandPath', '', '', 'runas', 0)
 "@
 
 	$encodedLauncherScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($launcherScript))

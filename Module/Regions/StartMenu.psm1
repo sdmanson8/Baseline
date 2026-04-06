@@ -70,11 +70,12 @@ function BingSearch
 			LogInfo "Enabling Bing search in Start Menu"
 			try
 			{
-				if (Test-Path -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer)
-				{
-					Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name DisableSearchBoxSuggestions -Force -ErrorAction Stop | Out-Null
-				}
+				$removedPolicy = Remove-RegistryValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'DisableSearchBoxSuggestions'
 				Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name DisableSearchBoxSuggestions -Type CLEAR | Out-Null
+				if (-not $removedPolicy)
+				{
+					LogInfo "Bing search policy was already at the default state."
+				}
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -147,9 +148,9 @@ function StartAccountNotifications
 			LogInfo "Enabling Microsoft account-related notifications on Start Menu in Start menu"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name Start_AccountNotifications -ErrorAction SilentlyContinue)
+				if (-not (Remove-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'Start_AccountNotifications'))
 				{
-					Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name Start_AccountNotifications -Force -ErrorAction Stop | Out-Null
+					LogInfo "Start account notifications were already using the default state."
 				}
 				Write-ConsoleStatus -Status success
 			}
@@ -223,9 +224,9 @@ function StartRecommendationsTips
 			LogInfo "Enabling Recommendations for tips, shortcuts, new apps, and more in Start menu"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name Start_IrisRecommendations -ErrorAction SilentlyContinue)
+				if (-not (Remove-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'Start_IrisRecommendations'))
 				{
-					Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name Start_IrisRecommendations -Force -ErrorAction Stop | Out-Null
+					LogInfo "Start recommendations tips were already using the default state."
 				}
 				Write-ConsoleStatus -Status success
 			}
@@ -286,12 +287,18 @@ function WebSearch
 			{
 				if (Test-Path -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")
 				{
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -ErrorAction Stop | Out-Null
+					if (-not (Remove-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search' -Name 'BingSearchEnabled'))
+					{
+						LogInfo "Web Search restore found no BingSearchEnabled override to remove."
+					}
 					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				}
 				if (Test-Path -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search")
 				{
-					Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "DisableWebSearch" -ErrorAction Stop | Out-Null
+					if (-not (Remove-RegistryValueSafe -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'DisableWebSearch'))
+					{
+						LogInfo "Web Search restore found no DisableWebSearch policy override to remove."
+					}
 				}
 				Write-ConsoleStatus -Status success
 			}
@@ -465,9 +472,10 @@ function StartRecommendedSection
 
 	# We cannot call [WinAPI.Winbrand]::BrandingFormatString("%WINDOWS_LONG%") here per this approach does not show a localized Windows edition name
 	# Windows 11 Home not supported
-	if ((Get-ComputerInfo).WindowsProductName -match "Home")
+	$versionData = Get-WindowsVersionData
+	if ($versionData.ProductName -match 'Home')
 	{
-		LogInfo ($Localization.Skipped -f $MyInvocation.Line.Trim())
+		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 	}
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
@@ -508,17 +516,17 @@ function StartRecommendedSection
 			LogInfo "Enabling the Recommended section in the Start Menu"
 			try
 			{
-				if (Get-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name HideRecommendedSection -ErrorAction SilentlyContinue)
+				if (-not (Remove-RegistryValueSafe -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'HideRecommendedSection'))
 				{
-					Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name HideRecommendedSection -Force -ErrorAction Stop | Out-Null
+					LogInfo "Recommended section user policy was already cleared."
 				}
-				if (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education -Name IsEducationEnvironment -ErrorAction SilentlyContinue)
+				if (-not (Remove-RegistryValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education' -Name 'IsEducationEnvironment'))
 				{
-					Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education -Name IsEducationEnvironment -Force -ErrorAction Stop | Out-Null
+					LogInfo "Recommended section education environment marker was already cleared."
 				}
-				if (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start -Name HideRecommendedSection -ErrorAction SilentlyContinue)
+				if (-not (Remove-RegistryValueSafe -Path 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start' -Name 'HideRecommendedSection'))
 				{
-					Remove-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start -Name HideRecommendedSection -Force -ErrorAction Stop | Out-Null
+					LogInfo "Recommended section device policy was already cleared."
 				}
 				Set-Policy -Scope User -Path SOFTWARE\Policies\Microsoft\Windows\Explorer -Name HideRecommendedSection -Type CLEAR | Out-Null
 				Write-ConsoleStatus -Status success
@@ -531,3 +539,5 @@ function StartRecommendedSection
 		}
 	}
 }
+
+Export-ModuleMember -Function '*'
