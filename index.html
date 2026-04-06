@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Baseline - Windows Configuration & Hardening Toolkit</title>
+<title>Baseline | Windows Configuration, Hardening & Automation Toolkit</title>
 
-<meta name="description" content="Baseline is a modular PowerShell toolkit for configuring, auditing, and hardening Windows 10 and 11 with a GUI, presets, and compliance tracking.">
-<meta name="keywords" content="windows baseline, powershell toolkit, windows hardening, system configuration, windows automation, security hardening">
+<meta name="description" content="Baseline is a modular PowerShell toolkit for configuring, auditing, and hardening Windows 10 and 11 with a GUI, presets, compliance tracking, and automation.">
+<meta name="keywords" content="windows hardening, powershell automation, windows optimization, baseline toolkit, system configuration">
 
 <style>
 body {
@@ -18,22 +18,21 @@ body {
 }
 
 header {
-    padding: 60px 20px;
     text-align: center;
+    padding: 70px 20px;
     background: linear-gradient(135deg, #020617, #0f172a);
 }
 
 h1 {
     font-size: 3em;
     color: #38bdf8;
-    margin-bottom: 10px;
 }
 
 .subtitle {
-    font-size: 1.2em;
-    color: #94a3b8;
     max-width: 800px;
     margin: auto;
+    color: #94a3b8;
+    font-size: 1.2em;
 }
 
 .container {
@@ -59,7 +58,7 @@ ul {
 
 .button {
     display: inline-block;
-    padding: 12px 20px;
+    padding: 12px 18px;
     margin-top: 15px;
     background: #38bdf8;
     color: #020617;
@@ -72,10 +71,10 @@ ul {
     background: #0ea5e9;
 }
 
-.hero-img {
-    width: 100%;
-    border-radius: 10px;
-    margin-top: 30px;
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
 }
 </style>
 </head>
@@ -85,65 +84,106 @@ ul {
 <header>
     <h1>Baseline</h1>
     <p class="subtitle">
-        A modular PowerShell toolkit for configuring, auditing, and hardening Windows 10 and Windows 11.
+        A modular PowerShell toolkit for configuring, auditing, hardening, and automating Windows 10 & 11 environments.
     </p>
-
     <a class="button" href="https://github.com/sdmanson8/Baseline">View on GitHub</a>
 </header>
 
 <div class="container">
 
 <div class="card">
-    <h2>🚀 What is Baseline?</h2>
+    <h2>🚀 Overview</h2>
     <p>
-        Baseline is a manifest-driven Windows configuration utility with a full WPF GUI, compliance tracking,
-        audit trails, presets, and headless automation support.
+        Baseline is a manifest-driven Windows configuration toolkit featuring a full WPF GUI,
+        compliance tracking, audit trails, preset-based execution, and enterprise deployment support.
     </p>
 </div>
 
 <div class="card">
-    <h2>🔥 Key Features</h2>
-    <ul>
-        <li>GUI with search, filters, and risk labels</li>
-        <li>Preview-first execution with visual diff</li>
-        <li>Compliance tracking and drift detection</li>
-        <li>Headless automation and scheduled runs</li>
-        <li>Preset-driven configuration (Minimal → Advanced)</li>
-        <li>Audit logs and configuration snapshots</li>
-    </ul>
+    <h2>🔥 Core Capabilities</h2>
+    <div class="grid">
+        <div>
+            <strong>GUI + Preview Engine</strong>
+            <p>Visual diff, risk labels, filters, and pre-flight validation before execution.</p>
+        </div>
+        <div>
+            <strong>Compliance Tracking</strong>
+            <p>Drift detection, system snapshots, and audit trails for configuration control.</p>
+        </div>
+        <div>
+            <strong>Preset System</strong>
+            <p>Minimal → Advanced tiers with structured risk and behavior guarantees.</p>
+        </div>
+        <div>
+            <strong>Automation</strong>
+            <p>Headless execution, scheduled tasks, and multi-machine targeting.</p>
+        </div>
+    </div>
 </div>
 
 <div class="card">
     <h2>⚙️ Presets</h2>
     <ul>
-        <li><strong>Minimal</strong> – Safe starting point</li>
-        <li><strong>Basic</strong> – Recommended for most users</li>
-        <li><strong>Balanced</strong> – More advanced tuning</li>
-        <li><strong>Advanced</strong> – Expert-level changes</li>
+        <li><strong>Minimal</strong> – Safe Mode starting point</li>
+        <li><strong>Basic</strong> – Recommended default</li>
+        <li><strong>Balanced</strong> – Broader tuning</li>
+        <li><strong>Advanced</strong> – Expert-only hardening</li>
     </ul>
 </div>
 
 <div class="card">
     <h2>▶️ Quick Start</h2>
-    <pre>
+<pre>
 .\run.cmd
-    </pre>
-
-    <pre>
+</pre>
+<pre>
 .\Baseline.ps1 -Preset Basic
-    </pre>
+</pre>
 </div>
 
 <div class="card">
-    <h2>📸 Interface Preview</h2>
-    <img class="hero-img" src="https://github.com/user-attachments/assets/ef431953-c31f-4347-b62a-c51e381c5e69">
+    <h2>🧩 Project Structure</h2>
+    <ul>
+        <li><strong>Module/</strong> – Core engine, GUI, and tweak modules</li>
+        <li><strong>Module/Data</strong> – Manifest-driven configuration</li>
+        <li><strong>Module/GUI</strong> – WPF UI architecture</li>
+        <li><strong>Module/Regions</strong> – Feature/tweak implementations</li>
+        <li><strong>Tools/</strong> – Validation and build tooling</li>
+        <li><strong>Tests/</strong> – Unit, integration, and fixtures</li>
+    </ul>
 </div>
 
 <div class="card">
-    <h2>📦 Repository</h2>
+    <h2>📚 Documentation</h2>
+    <p>Detailed documentation is available in the repository:</p>
+    <ul>
+        <li><a href="https://github.com/sdmanson8/Baseline#readme">Overview & Features</a></li>
+        <li><a href="https://github.com/sdmanson8/Baseline/tree/main/docs">FAQ</a></li>
+        <li><a href="https://github.com/sdmanson8/Baseline">Full Documentation</a></li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>📦 Deployment</h2>
     <p>
-        Full documentation, scripts, and tooling are available on GitHub.
+        Supports standalone execution, PowerShell Remoting, Group Policy, Microsoft Intune,
+        and SCCM/MECM deployments.
     </p>
+</div>
+
+<div class="card">
+    <h2>🔐 Security & Trust</h2>
+    <ul>
+        <li>No telemetry or external data collection</li>
+        <li>Fully open-source and auditable</li>
+        <li>Preview-first execution model</li>
+        <li>Recovery paths and rollback support</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>📂 Repository</h2>
+    <p>Explore source code, documentation, and releases on GitHub.</p>
     <a class="button" href="https://github.com/sdmanson8/Baseline">Open Repository</a>
 </div>
 
