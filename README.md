@@ -1,6 +1,12 @@
 # Baseline v3.0.0 (beta)
 
 <p align="center">
+  <kbd>
+    <a href="https://github.com/sdmanson8/Baseline/releases/latest"><img src="https://img.shields.io/badge/Download_Beta-green?labelColor=151B23&color=151B23&style=for-the-badge"></a>
+  </kbd>
+</p>
+
+<p align="center">
   <strong>A modular Windows configuration, compliance, and hardening utility for Windows 10 and Windows 11.</strong>
 </p>
 

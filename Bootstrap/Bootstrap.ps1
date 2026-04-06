@@ -8,9 +8,11 @@
 
         iwr https://raw.githubusercontent.com/sdmanson8/Baseline/main/Bootstrap/Bootstrap.ps1 -UseBasicParsing | iex
 
-    It downloads the latest branch archive, extracts it to a temp folder, and
-    launches the repo's root run.cmd entrypoint. When BASELINE_PRESET is set or
-    -Preset is supplied, the preset is forwarded into the noninteractive runner.
+    It queries the GitHub Releases API for the latest release (including
+    pre-releases), downloads the release asset zip, extracts it to a temp
+    folder, and launches the repo's root run.cmd entrypoint. When
+    BASELINE_PRESET is set or -Preset is supplied, the preset is forwarded
+    into the noninteractive runner.
 
     .NOTES
     SECURITY: This bootstrap uses pipe-to-IEX with no integrity verification
@@ -24,7 +26,6 @@
 param(
     [string]$Owner = 'sdmanson8',
     [string]$Repository = 'Baseline',
-    [string]$Branch = 'main',
     [string]$Preset,
     [string]$CacheRoot = (Join-Path $env:TEMP 'Baseline-Bootstrap')
 )
@@ -120,10 +121,35 @@ try
 
     $archivePath = Join-Path $CacheRoot "$Repository.zip"
     $extractRoot = Join-Path $CacheRoot 'extract'
-    $downloadUrl = "https://github.com/$Owner/$Repository/archive/refs/heads/$Branch.zip"
+
+    # Resolve the latest release (including pre-releases) via the GitHub API.
+    $apiUrl = "https://api.github.com/repos/$Owner/$Repository/releases"
+    Write-Host "Querying GitHub releases..."
+    $releasesJson = (New-Object System.Net.WebClient).DownloadString($apiUrl)
+    $releases = $releasesJson | ConvertFrom-Json
+    if (-not $releases -or $releases.Count -eq 0)
+    {
+        throw "No releases found at $apiUrl"
+    }
+    $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+    if (-not $latest)
+    {
+        throw "No non-draft releases found at $apiUrl"
+    }
+
+    # Prefer the uploaded .zip asset; fall back to the GitHub-generated zipball.
+    $asset = $latest.assets | Where-Object { $_.name -like '*.zip' } | Select-Object -First 1
+    if ($asset)
+    {
+        $downloadUrl = $asset.browser_download_url
+    }
+    else
+    {
+        $downloadUrl = $latest.zipball_url
+    }
 
     # Write-Host: intentional — bootstrap progress output
-    Write-Host "Downloading $Repository from $downloadUrl"
+    Write-Host "Downloading $Repository $($latest.tag_name) from $downloadUrl"
     Invoke-DownloadFile -Uri $downloadUrl -OutFile $archivePath
 
     New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
