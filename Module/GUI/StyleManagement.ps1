@@ -9,7 +9,7 @@
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param (
-			[System.Windows.Controls.Button]$Button,
+			[System.Windows.Controls.Primitives.ButtonBase]$Button,
 			[ValidateSet('Primary', 'Preview', 'Danger', 'DangerSubtle', 'Secondary', 'Subtle', 'Selection')]
 			[string]$Variant = 'Secondary',
 			[switch]$Compact,
@@ -126,7 +126,8 @@
 		$Button.Cursor = [System.Windows.Input.Cursors]::Hand
 		$Button.Template = $null
 
-		$tmpl = New-Object System.Windows.Controls.ControlTemplate([System.Windows.Controls.Button])
+		$buttonType = $Button.GetType()
+		$tmpl = New-Object System.Windows.Controls.ControlTemplate($buttonType)
 		$bd = New-Object System.Windows.FrameworkElementFactory([System.Windows.Controls.Border])
 		$bd.Name = 'Bd'
 		$bd.SetValue([System.Windows.Controls.Border]::CornerRadiusProperty, [System.Windows.CornerRadius]::new($cornerRadius))
@@ -163,6 +164,15 @@
 		$disabledTrigger.Value = $false
 		[void]($disabledTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::OpacityProperty) -Value 0.55 -TargetName 'Bd')))
 		[void]($tmpl.Triggers.Add($disabledTrigger))
+		if ($Button -is [System.Windows.Controls.Primitives.ToggleButton])
+		{
+			$checkedTrigger = New-Object System.Windows.Trigger
+			$checkedTrigger.Property = [System.Windows.Controls.Primitives.ToggleButton]::IsCheckedProperty
+			$checkedTrigger.Value = $true
+			[void]($checkedTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BackgroundProperty) -Value $pressBgBrush -TargetName 'Bd')))
+			[void]($checkedTrigger.Setters.Add((New-WpfSetter -Property ([System.Windows.Controls.Border]::BorderBrushProperty) -Value $focusBorderBrush -TargetName 'Bd')))
+			[void]($tmpl.Triggers.Add($checkedTrigger))
+		}
 		$Button.Template = $tmpl
 	}
 
@@ -505,9 +515,15 @@
 			if (-not ($topRow -is [System.Windows.Controls.Grid])) { return }
 			$topRow.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
 			$neededWidth = $topRow.DesiredSize.Width + 56  # header padding (32) + safety margin (24)
-			if ($neededWidth -gt $Form.MinWidth)
+			$workArea = [System.Windows.SystemParameters]::WorkArea
+			$clampedMinWidth = [Math]::Min([Math]::Ceiling($neededWidth), $workArea.Width)
+			if ($clampedMinWidth -gt $Form.MinWidth)
 			{
-				$Form.MinWidth = [Math]::Ceiling($neededWidth)
+				$Form.MinWidth = $clampedMinWidth
+			}
+			if ($Form.Width -gt $workArea.Width)
+			{
+				$Form.Width = $workArea.Width
 			}
 		}
 		catch { <# non-fatal #> }
@@ -552,14 +568,25 @@
 		param ()
 
 		# Buttons
-		if ($BtnStartHere)   { $BtnStartHere.Content = (Get-UxLocalizedString -Key 'GuiBtnStartHere' -Fallback 'Start Guide') }
-		if ($BtnHelp)        { $BtnHelp.Content = (Get-UxLocalizedString -Key 'GuiBtnHelp' -Fallback 'Help') }
-		if ($BtnLog)         { $BtnLog.Content = (Get-UxLocalizedString -Key 'GuiBtnLog' -Fallback 'Open Log') }
-		if ($BtnClearSearch) { $BtnClearSearch.Content = (Get-UxLocalizedString -Key 'GuiBtnClearSearch' -Fallback 'Clear') }
+		if ($BtnStartHere)
+		{
+			Set-GuiButtonIconContent -Button $BtnStartHere -IconName 'QuickStart' -Text (Get-UxLocalizedString -Key 'GuiBtnStartHere' -Fallback 'Start Guide') -ToolTip 'Open the getting started guide.'
+		}
+		if ($BtnHelp)
+		{
+			Set-GuiButtonIconContent -Button $BtnHelp -IconName 'Help' -Text (Get-UxLocalizedString -Key 'GuiBtnHelp' -Fallback 'Help') -ToolTip 'Open help and usage guidance.'
+		}
+		if ($BtnLog)
+		{
+			Set-GuiButtonIconContent -Button $BtnLog -IconName 'OpenLog' -Text (Get-UxLocalizedString -Key 'GuiBtnLog' -Fallback 'Open Log') -ToolTip 'Open the detailed execution log.'
+		}
+		if ($BtnClearSearch)
+		{
+			Set-GuiButtonIconContent -Button $BtnClearSearch -IconName 'Clear' -Text (Get-UxLocalizedString -Key 'GuiBtnClearSearch' -Fallback 'Clear') -ToolTip 'Clear search text and active filters.' -IconSize 14 -Gap 6 -TextFontSize 11
+		}
 		if ($BtnLanguage)
 		{
-			$BtnLanguage.Content = (Get-UxLocalizedString -Key 'GuiBtnLanguage' -Fallback 'Language')
-			$BtnLanguage.ToolTip = (Get-UxLocalizedString -Key 'GuiBtnLanguageTooltip' -Fallback 'Change language')
+			Set-GuiButtonIconContent -Button $BtnLanguage -IconName 'Language' -Text (Get-UxLocalizedString -Key 'GuiBtnLanguage' -Fallback 'Language') -ToolTip (Get-UxLocalizedString -Key 'GuiBtnLanguageTooltip' -Fallback 'Change language') -IconSize 14 -Gap 6 -TextFontSize 11
 		}
 
 		# Search area
@@ -616,7 +643,7 @@
 		# Bottom bar - skip Run/Preview (handled by Sync-UxActionButtonText with execution guards)
 		if ($BtnDefaults -and -not (& $Script:TestGuiRunInProgressScript))
 		{
-			$BtnDefaults.Content = (Get-UxLocalizedString -Key 'GuiBtnDefaults' -Fallback 'Restore to Windows Defaults')
+			Set-GuiButtonIconContent -Button $BtnDefaults -IconName 'RestoreDefaults' -Text (Get-UxLocalizedString -Key 'GuiBtnDefaults' -Fallback 'Restore to Windows Defaults') -ToolTip 'Restore supported settings to Windows defaults.'
 		}
 
 		# Expert mode banner

@@ -350,12 +350,20 @@
         if ($BtnPreviewRun) { $BtnPreviewRun.Visibility = [System.Windows.Visibility]::Visible; $BtnPreviewRun.IsEnabled = $true }
         if ($StatusText) { $StatusText.Visibility = [System.Windows.Visibility]::Visible }
         # Re-enable controls
-        if ($BtnRun) { $BtnRun.Content = Get-UxRunActionLabel; $BtnRun.IsEnabled = $true }
+        if ($BtnRun) { $BtnRun.IsEnabled = $true }
         if ($BtnDefaults) { $BtnDefaults.IsEnabled = $true }
         Set-GuiActionButtonsEnabled -Enabled $true
         if ($ChkScan) { $ChkScan.IsEnabled = $true }
         if ($ChkTheme) { $ChkTheme.IsEnabled = $true }
         Set-SearchControlsEnabled -Enabled $true
+        if (Get-Command -Name 'Sync-UxActionButtonText' -CommandType Function -ErrorAction SilentlyContinue)
+        {
+            Sync-UxActionButtonText
+        }
+        elseif ($BtnRun)
+        {
+            $BtnRun.Content = Get-UxRunActionLabel
+        }
 
         if ($Script:CurrentPrimaryTab)
         {
@@ -1622,7 +1630,6 @@
 				if ($Script:GuiState) { & $Script:GuiState.Set 'RunInProgress' $false } else { $Script:RunInProgress = $false }
 				$Script:CurrentTweakDisplayName = $null
 				$PrimaryTabs.IsEnabled = $true
-				$BtnRun.Content = Get-UxRunActionLabel
 				$BtnRun.IsEnabled = $true
 				if ($BtnPreviewRun) { $BtnPreviewRun.IsEnabled = $true }
 				$BtnDefaults.IsEnabled = $true
@@ -1630,6 +1637,14 @@
 				$ChkScan.IsEnabled = $true
 				$ChkTheme.IsEnabled = $true
 				Set-SearchControlsEnabled -Enabled $true
+				if (Get-Command -Name 'Sync-UxActionButtonText' -CommandType Function -ErrorAction SilentlyContinue)
+				{
+					Sync-UxActionButtonText
+				}
+				else
+				{
+					$BtnRun.Content = Get-UxRunActionLabel
+				}
 
 				$completedCount = [int]$Script:RunState['CompletedCount']
 				$abortedRun = $Script:RunState['AbortedRun']
@@ -1794,4 +1809,3 @@
 
 		return @($mergedRunList)
 	}
-

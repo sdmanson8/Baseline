@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Application Catalog & Installer**
+  - `Module/Data/Applications.json`: 535-app catalog merged from Winhance and WinUtil, deduplicated by WinGet ID across 14 categories (Browsers, Communication, Compression, Development, Documents, FileManagement, Gaming, Imaging, Media, RemoteAccess, Runtimes, Security, Utilities)
+  - `Module/Regions/Applications.psm1`: `AppInstall` function with WinGet primary install/uninstall and Chocolatey fallback chain
+  - Each entry uses `Type: Choice` with Install/Uninstall options and `ExtraArgs` for WinGet/Choco package IDs
+
 - **State Tracking & Compliance**
   - System state snapshots: pre-run and post-run capture, export, import, and comparison
   - Configuration profiles: portable JSON profiles built from presets or manual selection

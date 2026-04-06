@@ -681,7 +681,7 @@ function Show-TweakGUI
 		Title="Baseline | Utility for Windows"
 	MinWidth="$guiWindowMinWidth" MinHeight="$guiWindowMinHeight"
 	WindowStartupLocation="CenterScreen"
-	FontFamily="Segoe UI" FontSize="13"
+	FontFamily="Segoe UI Variable Text" FontSize="13"
 	ShowInTaskbar="True"
 	WindowStyle="None"
 	AllowsTransparency="True"
@@ -722,8 +722,8 @@ function Show-TweakGUI
 				</Grid.RowDefinitions>
 				<Grid Grid.Row="0">
 					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="*" MinWidth="120"/>
 						<ColumnDefinition Width="Auto"/>
-						<ColumnDefinition Width="*"/>
 						<ColumnDefinition Width="Auto"/>
 						<ColumnDefinition Width="Auto"/>
 						<ColumnDefinition Width="Auto"/>
@@ -739,31 +739,31 @@ function Show-TweakGUI
 					<Button Name="BtnStartHere" Grid.Column="2" Content="Start Guide"
 						FontSize="11" Margin="0,0,8,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
 					<Button Name="BtnHelp" Grid.Column="3" Content="Help"
-						FontSize="11" Margin="0,0,12,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
+						FontSize="11" Margin="0,0,8,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
 					<Button Name="BtnLog" Grid.Column="4" Content="Open Log"
-						FontSize="11" Margin="0,0,12,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
-					<StackPanel Grid.Column="5" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed">
+						FontSize="11" Margin="0,0,8,0" Padding="10,4" Cursor="Hand" VerticalAlignment="Center"/>
+					<StackPanel Grid.Column="5" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed">
 						<TextBlock Text="System Scan" VerticalAlignment="Center" Margin="0,0,6,0"
 							Name="ScanLabel" FontSize="11"/>
 						<CheckBox Name="ChkScan" VerticalAlignment="Center"/>
 					</StackPanel>
 					<!-- Separator between actions and state toggles -->
 					<Border Name="HeaderSeparator" Grid.Column="6" Width="1" Height="28"
-						Margin="4,0,14,0" VerticalAlignment="Center" Opacity="0.4"/>
-					<StackPanel Grid.Column="7" Orientation="Vertical" Margin="0,0,18,0" VerticalAlignment="Center">
+						Margin="4,0,10,0" VerticalAlignment="Center" Opacity="0.4"/>
+					<StackPanel Grid.Column="7" Orientation="Vertical" Margin="0,0,12,0" VerticalAlignment="Center">
 						<StackPanel Orientation="Horizontal">
-							<CheckBox Name="ChkSafeMode" VerticalAlignment="Center" Content="Safe Mode" Margin="0,0,14,0"/>
+							<CheckBox Name="ChkSafeMode" VerticalAlignment="Center" Content="Safe Mode" Margin="0,0,10,0"/>
 							<CheckBox Name="ChkGameMode" Visibility="Collapsed"/>
 						</StackPanel>
 						<TextBlock Name="TxtAdvancedModeState" Margin="2,4,0,0" FontSize="10" Text="" ToolTip="Saved with your GUI session and restored on next launch."/>
 					</StackPanel>
-					<StackPanel Grid.Column="8" Orientation="Vertical" VerticalAlignment="Center" Margin="0,0,18,0">
+					<StackPanel Grid.Column="8" Orientation="Vertical" VerticalAlignment="Center" Margin="0,0,12,0">
 						<CheckBox Name="ChkTheme" VerticalAlignment="Center" Content="Light Mode"/>
 						<TextBlock Name="TxtThemeState" Margin="2,4,0,0" FontSize="10" Text="Theme: Dark" ToolTip="Saved with your GUI session and restored on next launch."/>
 					</StackPanel>
 					<StackPanel Grid.Column="9" Orientation="Vertical" VerticalAlignment="Center" Margin="0,0,4,0">
-						<Button Name="BtnLanguage" Padding="8,4" Cursor="Hand" VerticalAlignment="Center" ToolTip="Change language" Content="Language"/>
-						<Popup Name="LanguagePopup" StaysOpen="False" Placement="Bottom" PlacementTarget="{Binding ElementName=BtnLanguage}" AllowsTransparency="True">
+						<ToggleButton Name="BtnLanguage" Padding="8,4" Cursor="Hand" VerticalAlignment="Center" ToolTip="Change language" Content="Language"/>
+						<Popup Name="LanguagePopup" StaysOpen="False" Placement="Bottom" PlacementTarget="{Binding ElementName=BtnLanguage}" AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=BtnLanguage, Mode=TwoWay}">
 							<Border Name="LanguagePopupBorder" BorderThickness="1" CornerRadius="6" Padding="6">
 								<StackPanel Width="208">
 									<Grid Margin="0,0,0,6">
@@ -889,9 +889,9 @@ function Show-TweakGUI
 					<WrapPanel Name="BottomActionBar" Grid.Column="1"
 						Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
 						<Button Name="BtnPreviewRun" Content="Preview Run"
-							FontSize="13" Margin="4" Padding="18,10" Cursor="Hand" FontWeight="SemiBold" MinWidth="160"/>
+							FontFamily="Segoe UI Variable Text" FontSize="13" Margin="4" Padding="18,10" Cursor="Hand" FontWeight="SemiBold" MinWidth="160"/>
 						<Button Name="BtnRun" Content="Run Tweaks"
-							FontSize="15" Margin="4" Padding="28,12" Cursor="Hand" FontWeight="Bold" MinWidth="170"/>
+							FontFamily="Segoe UI Variable Text" FontSize="15" Margin="4" Padding="28,12" Cursor="Hand" FontWeight="Bold" MinWidth="170"/>
 					</WrapPanel>
 				</Grid>
 				<Grid Grid.Row="1" Margin="0,10,0,0">
@@ -2339,6 +2339,56 @@ catch { Write-GuiRuntimeWarning -Context 'TabPreBuild:$safe' -Message `$_.Except
 
 			$setLanguageSearchInputStyle = ${function:Set-LanguageSearchInputStyle}
 			$setFilterControlStyleCapture = ${function:Set-FilterControlStyle}
+
+			# Language change logic stays in Show-TweakGUI scope so the live WPF
+			# controls remain available, but the click handlers invoke a concrete
+			# command handle instead of a raw local variable.
+			function Set-SelectedGuiLanguage
+			{
+				param([string]$langCode)
+				$Script:SelectedLanguage = $langCode
+
+				# 1. Load new localization strings
+				$locDir = $Script:GuiLocalizationDirectoryPath
+				if (-not [string]::IsNullOrWhiteSpace([string]$locDir))
+				{
+					$Global:Localization = Import-BaselineLocalization -BaseDirectory $locDir -UICulture $langCode
+				}
+
+				# 2. Clear the inline language search and update indicator
+				if ($TxtLanguageSearch) { $TxtLanguageSearch.Text = '' }
+				if ($TxtLanguageState) { $TxtLanguageState.Text = $langCode.ToUpperInvariant() }
+				Set-LanguageSearchInputStyle
+				$LanguagePopup.IsOpen = $false
+				if ($BtnLanguage) { $BtnLanguage.IsChecked = $false }
+
+				# 3. Refresh all header/toolbar localized strings
+				Update-GuiLocalizationStrings
+
+				# 4. Refresh tab headers with localized names
+				Update-PrimaryTabHeaders
+
+				# 5. Rebuild tab content (mirrors theme change pattern)
+				$Script:FilterGeneration++
+				Clear-TabContentCache
+				if ($null -ne $Script:CurrentPrimaryTab)
+				{
+					Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab -SkipIdlePrebuild
+				}
+
+				# 6. Sync action buttons (respects execution-mode guard)
+				Sync-UxActionButtonText
+
+				# 7. Update run-path context label if available
+				if (Get-Command -Name 'Update-RunPathContextLabel' -CommandType Function -ErrorAction SilentlyContinue)
+				{
+					Update-RunPathContextLabel
+				}
+
+				LogInfo "Language changed to: $langCode"
+			}
+
+			$setSelectedGuiLanguageCommand = ${function:Set-SelectedGuiLanguage}
 			$renderLanguageList = {
 				param ([string]$FilterText = '')
 
@@ -2379,58 +2429,23 @@ catch { Write-GuiRuntimeWarning -Context 'TabPreBuild:$safe' -Message `$_.Except
 					$langBtn.Margin = [System.Windows.Thickness]::new(0, 1, 0, 1)
 					$langBtn.FontSize = 12
 					$langBtn.Width = 200
+					# Fire selection on press so Popup StaysOpen=False does not swallow
+					# release-based clicks before the language change handler runs.
+					$langBtn.ClickMode = [System.Windows.Controls.ClickMode]::Press
 					$langBtn.BorderThickness = [System.Windows.Thickness]::new(0)
 					$langBtn.Background = [System.Windows.Media.Brushes]::Transparent
 					$langBtn.FontWeight = if ([string]$entry.Code -eq $currentCode) { [System.Windows.FontWeights]::Bold } else { [System.Windows.FontWeights]::Normal }
 
 					$langBtn.Add_Click({
-						param($sender, $e)
-						$langCode = [string]$sender.Tag
-						$Script:SelectedLanguage = $langCode
-
-						# 1. Load new localization strings
-						$locDir = $Script:GuiLocalizationDirectoryPath
-						if (-not [string]::IsNullOrWhiteSpace([string]$locDir))
-						{
-							$Global:Localization = Import-BaselineLocalization -BaseDirectory $locDir -UICulture $langCode
-						}
-
-						# 2. Clear the inline language search and update indicator
-						if ($TxtLanguageSearch) { $TxtLanguageSearch.Text = '' }
-						if ($TxtLanguageState) { $TxtLanguageState.Text = $langCode.ToUpperInvariant() }
-						if ($setLanguageSearchInputStyle) { & $setLanguageSearchInputStyle }
-						$LanguagePopup.IsOpen = $false
-
-						# 3. Refresh all header/toolbar localized strings
-						Update-GuiLocalizationStrings
-
-						# 4. Refresh tab headers with localized names
-						Update-PrimaryTabHeaders
-
-						# 5. Rebuild tab content (mirrors theme change pattern)
-						$Script:FilterGeneration++
-						Clear-TabContentCache
-						if ($null -ne $Script:CurrentPrimaryTab)
-						{
-							Build-TabContent -PrimaryTab $Script:CurrentPrimaryTab -SkipIdlePrebuild
-						}
-
-						# 6. Sync action buttons (respects execution-mode guard)
-						Sync-UxActionButtonText
-
-						# 7. Update run-path context label if available
-						if (Get-Command -Name 'Update-RunPathContextLabel' -CommandType Function -ErrorAction SilentlyContinue)
-						{
-							Update-RunPathContextLabel
-						}
-
-						LogInfo "Language changed to: $($sender.Content) ($langCode)"
-					}.GetNewClosure())
+						param($buttonSender, $buttonEventArgs)
+						$null = $buttonEventArgs
+						& $setSelectedGuiLanguageCommand ([string]$buttonSender.Tag)
+					})
 
 					[void]$LanguageListPanel.Children.Add($langBtn)
 				}
 
-				Set-FilterControlStyle
+				if ($setFilterControlStyleCapture) { & $setFilterControlStyleCapture }
 			}.GetNewClosure()
 
 			if ($TxtLanguageSearch)
@@ -2455,10 +2470,8 @@ catch { Write-GuiRuntimeWarning -Context 'TabPreBuild:$safe' -Message `$_.Except
 				$TxtLanguageState.Text = $currentLanguageCode.ToUpperInvariant()
 			}
 
-			# Open popup when the language button is clicked.
-			$null = Register-GuiEventHandler -Source $BtnLanguage -EventName 'Click' -Handler ({
-				$LanguagePopup.IsOpen = -not $LanguagePopup.IsOpen
-				if ($LanguagePopup.IsOpen -and $TxtLanguageSearch)
+			$null = Register-GuiEventHandler -Source $LanguagePopup -EventName 'Opened' -Handler ({
+				if ($TxtLanguageSearch)
 				{
 					if (-not [string]::IsNullOrWhiteSpace([string]$TxtLanguageSearch.Text))
 					{
@@ -2470,6 +2483,10 @@ catch { Write-GuiRuntimeWarning -Context 'TabPreBuild:$safe' -Message `$_.Except
 					}
 					if ($setLanguageSearchInputStyle) { & $setLanguageSearchInputStyle }
 					$null = $TxtLanguageSearch.Focus()
+				}
+				else
+				{
+					& $renderLanguageList -FilterText ''
 				}
 			}.GetNewClosure())
 		}
@@ -2864,22 +2881,10 @@ catch { Write-GuiRuntimeWarning -Context 'TabPreBuild:$safe' -Message `$_.Except
 			$null = $_
 		}
 
-		# Adjust MinWidth based on the header's actual measured width so the
-		# Light Mode toggle is never clipped regardless of DPI or resolution.
-		try
+		if (Get-Command -Name 'Update-WindowMinWidthFromHeader' -CommandType Function -ErrorAction SilentlyContinue)
 		{
-			if ($HeaderBorder -and $HeaderBorder.ActualWidth -gt 0 -and $HeaderBorder.Child -is [System.Windows.Controls.Grid])
-			{
-				$topRow = $HeaderBorder.Child.Children[0]
-				if ($topRow -is [System.Windows.Controls.Grid])
-				{
-					$topRow.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
-					$neededWidth = $topRow.DesiredSize.Width + 56
-					if ($neededWidth -gt $Form.MinWidth) { $Form.MinWidth = [Math]::Ceiling($neededWidth) }
-				}
-			}
+			Update-WindowMinWidthFromHeader
 		}
-		catch { <# non-fatal #> }
 
 		if (-not $shouldShowFirstRunWelcome)
 		{

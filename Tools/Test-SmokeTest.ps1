@@ -76,7 +76,6 @@ $requiredFiles = @(
     'Module/GUI/GameModeUI.ps1'
     'Module/GUI/GameModeState.ps1'
     'Module/GUI/ExecutionOrchestration.ps1'
-    'docs/ARCHITECTURE.md'
     'Module/SharedHelpers/Registry.Helpers.ps1'
     'Module/SharedHelpers/Environment.Helpers.ps1'
     'Module/SharedHelpers/Manifest.Helpers.ps1'

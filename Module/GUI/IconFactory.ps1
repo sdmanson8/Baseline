@@ -194,7 +194,7 @@ function Set-GuiButtonIconContent
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [System.Windows.Controls.Button]$Button,
+        [System.Windows.Controls.Primitives.ButtonBase]$Button,
 
         [Parameter(Mandatory = $true)]
         [string]$IconName,
@@ -204,13 +204,27 @@ function Set-GuiButtonIconContent
 
         [double]$IconSize = 16,
         [double]$Gap = 8,
-        [double]$TextFontSize = 12,
+        [double]$TextFontSize = 0,
         [object]$Foreground = $null,
         [string]$ToolTip = $null
     )
 
-    $content = New-GuiLabeledIconContent -IconName $IconName -Text $Text -IconSize $IconSize -Gap $Gap -TextFontSize $TextFontSize -Foreground $Foreground -AllowTextOnlyFallback -ToolTip $ToolTip
+    $resolvedTextFontSize = if ($TextFontSize -gt 0)
+    {
+        $TextFontSize
+    }
+    elseif ($Button.FontSize -gt 0)
+    {
+        [double]$Button.FontSize
+    }
+    else
+    {
+        12
+    }
+
+    $content = New-GuiLabeledIconContent -IconName $IconName -Text $Text -IconSize $IconSize -Gap $Gap -TextFontSize $resolvedTextFontSize -Foreground $Foreground -AllowTextOnlyFallback -ToolTip $ToolTip
     $Button.Content = if ($content) { $content } else { $Text }
+    $Button.ToolTip = if ([string]::IsNullOrWhiteSpace([string]$ToolTip)) { $null } else { $ToolTip }
 }
 
 function New-GuiStatusIconLabel

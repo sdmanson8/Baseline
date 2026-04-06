@@ -1188,7 +1188,7 @@ function LockWidgets {
                     Add-AppxPackage -Register "$($_.InstallLocation)\AppXManifest.xml" -DisableDevelopmentMode
                 } | Out-Null
             }
-            # Write-Host: intentional — user-visible progress indicator
+            # Write-Host: intentional - user-visible progress indicator
             Write-Host " success!" -ForegroundColor Green
         }
 
@@ -1198,7 +1198,7 @@ function LockWidgets {
             Invoke-SilencedProgress {
                 Get-AppxPackage *WebExperience* -WarningAction SilentlyContinue | Remove-AppxPackage | Out-Null
             }
-            # Write-Host: intentional — user-visible progress indicator
+            # Write-Host: intentional - user-visible progress indicator
             Write-Host " success!" -ForegroundColor Green
         }
     }

@@ -9,6 +9,18 @@ BeforeAll {
 }
 
 Describe 'Footer and theme toggle layout' {
+    It 'uses the Fluent text font for the primary footer action buttons without changing the whole window font' {
+        $script:GuiContent | Should -Match '<Button Name="BtnPreviewRun"[^>]*FontFamily="Segoe UI Variable Text"'
+        $script:GuiContent | Should -Match '<Button Name="BtnRun"[^>]*FontFamily="Segoe UI Variable Text"'
+        $script:GuiContent | Should -Match 'FontFamily="Segoe UI Variable Text" FontSize="13"'
+    }
+
+    It 'clamps header-driven window width updates to the available work area' {
+        $script:StyleContent | Should -Match '\$workArea = \[System\.Windows\.SystemParameters\]::WorkArea'
+        $script:StyleContent | Should -Match '\$clampedMinWidth = \[Math\]::Min\(\[Math\]::Ceiling\(\$neededWidth\), \$workArea\.Width\)'
+        $script:GuiContent | Should -Match 'Update-WindowMinWidthFromHeader'
+    }
+
     It 'uses a dedicated theme palette for the Light Mode toggle' {
         $script:StyleContent | Should -Match "ValidateSet\('Default', 'Mode', 'Theme'\)"
         $script:StyleContent | Should -Match 'Set-HeaderToggleStyle -CheckBox \$ChkTheme -Palette Theme'

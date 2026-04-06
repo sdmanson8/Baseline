@@ -562,7 +562,7 @@ function Protect-WinRM
         }
         Set-ItemProperty -Path $clientPath -Name "AllowDigest" -Value 0 -ErrorAction Stop | Out-Null
 
-        # Restart WinRM only if it was running before — the service may be disabled or unavailable
+        # Restart WinRM only if it was running before - the service may be disabled or unavailable
         try { Start-Service -Name WinRM -ErrorAction Stop | Out-Null }
         catch { LogInfo "WinRM service not restarted (may be disabled or unavailable on this system)." }
         Write-ConsoleStatus -Status success

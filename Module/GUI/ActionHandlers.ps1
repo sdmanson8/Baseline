@@ -261,8 +261,7 @@
 			$btnRunContent = [string]$BtnRun.Content
 			if ($btnRunContent -notin @('Pause', 'Resume', 'Stopping...', 'Exiting...'))
 			{
-				$BtnRun.Content = Get-UxRunActionLabel
-				$BtnRun.ToolTip = Get-UxRunActionToolTip
+				Set-GuiButtonIconContent -Button $BtnRun -IconName 'RunTweaks' -Text (Get-UxRunActionLabel) -ToolTip (Get-UxRunActionToolTip)
 			}
 		}
 
@@ -279,18 +278,17 @@
 
 		if ($BtnPreviewRun)
 		{
-			$BtnPreviewRun.Content = Get-UxPreviewButtonLabel
-			$BtnPreviewRun.ToolTip = Get-UxPreviewButtonToolTip
+			Set-GuiButtonIconContent -Button $BtnPreviewRun -IconName 'PreviewRun' -Text (Get-UxPreviewButtonLabel) -ToolTip (Get-UxPreviewButtonToolTip)
 		}
 
 		if ($BtnStartHere)
 		{
-			$BtnStartHere.Content = Get-UxStartGuideButtonLabel
+			Set-GuiButtonIconContent -Button $BtnStartHere -IconName 'QuickStart' -Text (Get-UxStartGuideButtonLabel) -ToolTip 'Open the getting started guide.'
 		}
 
 		if ($BtnHelp)
 		{
-			$BtnHelp.Content = Get-UxHelpButtonLabel
+			Set-GuiButtonIconContent -Button $BtnHelp -IconName 'Help' -Text (Get-UxHelpButtonLabel) -ToolTip 'Open help and usage guidance.'
 		}
 
 		Update-RunPathContextLabel
@@ -597,4 +595,3 @@
 	Register-GuiEventHandler -Source $BtnAuditLog -EventName 'Click' -Handler ({
 		& $showAuditLogDialogCommand
 	}) | Out-Null
-
