@@ -3,12 +3,13 @@
 	WPF GUI for Windows 10 & Windows 11 fine-tuning and automating the routine tasks
 
     .VERSION
-	3.0.0 (beta)
+    4.0.0 (beta)
 
-	.DATE
-	17.03.2026 - initial beta version
-	21.03.2026 - Added GUI
-	06.04.2026 - Major changes to the GUI, and added more features
+    .DATE
+    17.03.2026 - initial beta version
+    21.03.2026 - Added GUI
+    06.04.2026 - Major changes to the GUI, and added more features
+    undetermined - undetermined
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
@@ -245,7 +246,8 @@ catch [System.InvalidOperationException]
 }
 
 # Validate mutual exclusion using original bound parameters before any expansion.
-$headlessModes = @($Preset, $GameModeProfile, $ScenarioProfile, $(if ($Functions) { 'Functions' })) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+# Keep this as a string array so Count remains reliable even for a single mode.
+[string[]]$headlessModes = @($Preset, $GameModeProfile, $ScenarioProfile, $(if ($Functions) { 'Functions' })) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 if ($ComplianceCheck -and $headlessModes.Count -gt 0)
 {
 	throw '-ComplianceCheck cannot be combined with -Preset, -GameModeProfile, -ScenarioProfile, or -Functions.'
@@ -294,6 +296,63 @@ if ($TargetComputer -and [string]::IsNullOrWhiteSpace($ProfilePath) -and -not $P
 if ($TargetComputer -and $Functions -and -not $Preset)
 {
 	throw '-TargetComputer cannot be combined with -Functions directly. Use -ProfilePath or -Preset instead.'
+}
+
+function Get-HeadlessCommandInvocation
+{
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[System.Management.Automation.Language.CommandAst]
+		$CommandAst
+	)
+
+	$namedArguments = @{}
+	$positionalArguments = [System.Collections.Generic.List[object]]::new()
+	$displayArguments = [System.Collections.Generic.List[string]]::new()
+
+	for ($i = 1; $i -lt $CommandAst.CommandElements.Count; $i++)
+	{
+		$element = $CommandAst.CommandElements[$i]
+
+		if ($element -is [System.Management.Automation.Language.CommandParameterAst])
+		{
+			$parameterName = $element.ParameterName
+			$valueAst = $null
+
+			if ($element.Argument)
+			{
+				$valueAst = $element.Argument
+			}
+			elseif (($i + 1) -lt $CommandAst.CommandElements.Count -and $CommandAst.CommandElements[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst])
+			{
+				$i++
+				$valueAst = $CommandAst.CommandElements[$i]
+			}
+
+			if ($null -ne $valueAst)
+			{
+				$namedArguments[$parameterName] = $valueAst.SafeGetValue()
+				$displayArguments.Add("-$parameterName $($valueAst.Extent.Text)")
+			}
+			else
+			{
+				$namedArguments[$parameterName] = $true
+				$displayArguments.Add("-$parameterName")
+			}
+
+			continue
+		}
+
+		$positionalArguments.Add($element.SafeGetValue())
+		$displayArguments.Add($element.Extent.Text)
+	}
+
+	[pscustomobject]@{
+		NamedArguments = $namedArguments
+		PositionalArguments = $positionalArguments.ToArray()
+		DisplayArguments = $displayArguments.ToArray()
+	}
 }
 
 if ($GameModeProfile)
@@ -617,70 +676,81 @@ if ($Functions)
 			continue
 		}
 
-		$commandElement = $statements[0].PipelineElements[0]
-		$functionName = $commandElement.GetCommandName()
-		$resolvedCommand = Get-Command -Name $functionName -CommandType Function -ErrorAction SilentlyContinue
-		if (-not $resolvedCommand)
-		{
-			LogError "Unknown function '$functionName' - skipping. Only functions loaded by the Baseline module are allowed."
-			Add-SessionStatistic -Name 'SkippedCount'
-			continue
-		}
-
-		if ($DryRun)
-		{
-			$dryRunOrder++
-			$commandArgs = @($commandElement.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.SafeGetValue() })
-			$argsDisplay = if ($commandArgs.Count -gt 0) { " $($commandArgs -join ' ')" } else { '' }
-
-			# Look up manifest metadata when available for richer output.
-			$manifestEntry = $null
-			if ($dryRunManifest)
+			$commandElement = $statements[0].PipelineElements[0]
+			$functionName = $commandElement.GetCommandName()
+			$resolvedCommand = Get-Command -Name $functionName -CommandType Function -ErrorAction SilentlyContinue
+			if (-not $resolvedCommand)
 			{
-				$lookupCmd = Get-Command -Name 'Get-ManifestEntryByFunction' -CommandType Function -ErrorAction SilentlyContinue
-				if ($lookupCmd)
+				LogError "Unknown function '$functionName' - skipping. Only functions loaded by the Baseline module are allowed."
+				Add-SessionStatistic -Name 'SkippedCount'
+				continue
+			}
+
+			$commandInvocation = Get-HeadlessCommandInvocation -CommandAst $commandElement
+
+			if ($DryRun)
+			{
+				$dryRunOrder++
+				$commandArgs = @($commandInvocation.DisplayArguments)
+				$argsDisplay = if ($commandArgs.Count -gt 0) { " $($commandArgs -join ' ')" } else { '' }
+
+				# Look up manifest metadata when available for richer output.
+				$manifestEntry = $null
+				if ($dryRunManifest)
 				{
-					$manifestEntry = & $lookupCmd -Manifest $dryRunManifest -Function $functionName -ErrorAction SilentlyContinue
+					$lookupCmd = Get-Command -Name 'Get-ManifestEntryByFunction' -CommandType Function -ErrorAction SilentlyContinue
+					if ($lookupCmd)
+					{
+						$manifestEntry = & $lookupCmd -Manifest $dryRunManifest -Function $functionName -ErrorAction SilentlyContinue
+					}
+				}
+
+				$risk = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Risk']) { [string]$manifestEntry.Risk } else { '?' }
+				$category = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Category']) { [string]$manifestEntry.Category } else { '?' }
+				$restart = if ($manifestEntry -and $manifestEntry.PSObject.Properties['RequiresRestart'] -and [bool]$manifestEntry.RequiresRestart) { 'Yes' } else { 'No' }
+				$restorable = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Restorable']) { if ([bool]$manifestEntry.Restorable) { 'Yes' } else { 'No' } } else { '?' }
+
+				$riskColor = switch ($risk) { 'High' { 'Red' }; 'Medium' { 'Yellow' }; default { 'Green' } }
+
+				Write-Host ("  {0,3}. {1}{2}" -f $dryRunOrder, $functionName, $argsDisplay)
+				Write-Host ("        Category: {0}  |  Risk: " -f $category) -NoNewline
+				Write-Host $risk -ForegroundColor $riskColor -NoNewline
+				Write-Host ("  |  Restart: {0}  |  Restorable: {1}" -f $restart, $restorable)
+			}
+			else
+			{
+				# Safe to invoke: AST confirms single simple command, function is a known loaded function.
+				# Bind named parameters through a dictionary so parameter sets resolve correctly.
+				$namedArguments = $commandInvocation.NamedArguments
+				$positionalArguments = $commandInvocation.PositionalArguments
+				$headlessTweakErrorBaseline = if ($Global:Error) { $Global:Error.Count } else { 0 }
+				if ($namedArguments.Count -gt 0 -and $positionalArguments.Count -gt 0)
+				{
+					& $resolvedCommand @namedArguments @positionalArguments
+				}
+				elseif ($namedArguments.Count -gt 0)
+				{
+					& $resolvedCommand @namedArguments
+				}
+				elseif ($positionalArguments.Count -gt 0)
+				{
+					& $resolvedCommand @positionalArguments
+				}
+				else
+				{
+					& $resolvedCommand
+				}
+
+				# Track success/failure by checking whether new errors appeared
+				if ($Global:Error -and $Global:Error.Count -gt $headlessTweakErrorBaseline)
+				{
+					Add-SessionStatistic -Name 'FailedCount'
+				}
+				else
+				{
+					Add-SessionStatistic -Name 'SucceededCount'
 				}
 			}
-
-			$risk = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Risk']) { [string]$manifestEntry.Risk } else { '?' }
-			$category = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Category']) { [string]$manifestEntry.Category } else { '?' }
-			$restart = if ($manifestEntry -and $manifestEntry.PSObject.Properties['RequiresRestart'] -and [bool]$manifestEntry.RequiresRestart) { 'Yes' } else { 'No' }
-			$restorable = if ($manifestEntry -and $manifestEntry.PSObject.Properties['Restorable']) { if ([bool]$manifestEntry.Restorable) { 'Yes' } else { 'No' } } else { '?' }
-
-			$riskColor = switch ($risk) { 'High' { 'Red' }; 'Medium' { 'Yellow' }; default { 'Green' } }
-
-			Write-Host ("  {0,3}. {1}{2}" -f $dryRunOrder, $functionName, $argsDisplay)
-			Write-Host ("        Category: {0}  |  Risk: " -f $category) -NoNewline
-			Write-Host $risk -ForegroundColor $riskColor -NoNewline
-			Write-Host ("  |  Restart: {0}  |  Restorable: {1}" -f $restart, $restorable)
-		}
-		else
-		{
-			# Safe to invoke: AST confirms single simple command, function is a known loaded function.
-			# Use direct & invocation with AST-parsed arguments instead of Invoke-Expression.
-			$commandArgs = @($commandElement.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.SafeGetValue() })
-			$headlessTweakErrorBaseline = if ($Global:Error) { $Global:Error.Count } else { 0 }
-			if ($commandArgs.Count -gt 0)
-			{
-				& $resolvedCommand @commandArgs
-			}
-			else
-			{
-				& $resolvedCommand
-			}
-
-			# Track success/failure by checking whether new errors appeared
-			if ($Global:Error -and $Global:Error.Count -gt $headlessTweakErrorBaseline)
-			{
-				Add-SessionStatistic -Name 'FailedCount'
-			}
-			else
-			{
-				Add-SessionStatistic -Name 'SucceededCount'
-			}
-		}
 	}
 
 	if ($DryRun)
