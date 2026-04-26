@@ -245,7 +245,7 @@ function XboxGameTips
 			{
 				Write-ConsoleStatus -Action "Disabling Xbox Game Bar tips"
 				LogInfo "Disabling Xbox Game Bar tips"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\GameBar -Name ShowStartupPanel -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'ShowStartupPanel' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -260,7 +260,7 @@ function XboxGameTips
 			{
 				Write-ConsoleStatus -Action "Enabling Xbox Game Bar tips"
 				LogInfo "Enabling Xbox Game Bar tips"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\GameBar -Name ShowStartupPanel -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'ShowStartupPanel' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch

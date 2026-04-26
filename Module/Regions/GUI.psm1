@@ -1,4 +1,4 @@
-﻿using module ..\Logging.psm1
+using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 using module ..\GUICommon.psm1
 using module ..\GUIExecution.psm1

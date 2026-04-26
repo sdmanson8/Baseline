@@ -366,7 +366,7 @@ function SnapAssist
 			LogInfo "Disabling 'show what I can snap next' When snapping windows"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name SnapAssist -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -381,7 +381,7 @@ function SnapAssist
 			LogInfo "Enabling 'show what I can snap next' When snapping windows"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name SnapAssist -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -817,7 +817,7 @@ function WindowsColorMode
 			LogInfo "Setting Windows to use Dark Mode"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize -Name SystemUsesLightTheme -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -832,7 +832,7 @@ function WindowsColorMode
 			LogInfo "Setting Windows to use Light Mode"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize -Name SystemUsesLightTheme -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -898,7 +898,7 @@ function MeetNow
 				$Script:MeetNow = $false
 				$Settings = Get-ItemPropertyValue -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -ErrorAction Stop
 				$Settings[9] = 128
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -PropertyType Binary -Value $Settings -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3' -Name 'Settings' -Value $Settings -Type Binary | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -916,7 +916,7 @@ function MeetNow
 				$Script:MeetNow = $true
 				$Settings = Get-ItemPropertyValue -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -ErrorAction Stop
 				$Settings[9] = 0
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -PropertyType Binary -Value $Settings -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3' -Name 'Settings' -Value $Settings -Type Binary | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch

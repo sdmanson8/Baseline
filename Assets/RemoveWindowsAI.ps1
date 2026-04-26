@@ -3,12 +3,13 @@
     Disables and removes Windows AI features such as Copilot, Recall, and related packages.
 
     .VERSION
-	3.0.0 (beta)
+	3.1.0 (beta)
 
 	.DATE
 	17.03.2026 - initial beta version
 	21.03.2026 - Added GUI
 	06.04.2026 - Major changes to the GUI, and added more features
+	26.04.2026 - Minor Fixes
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026

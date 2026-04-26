@@ -19,6 +19,8 @@ function Get-GuiObjectField
 	return $Object.$FieldName
 }
 
+Add-Type -AssemblyName PresentationCore, PresentationFramework, WindowsBase -ErrorAction SilentlyContinue
+
 $Script:SharedBrushConverter = [System.Windows.Media.BrushConverter]::new()
 $Script:GuiCommonWarnings = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 

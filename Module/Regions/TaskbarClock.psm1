@@ -49,7 +49,7 @@ function ClockInNotificationCenter
 			{
 				Write-ConsoleStatus -Action "Showing time in Notification Center"
 				LogInfo "Showing time in Notification Center"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name ShowClockInNotificationCenter -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowClockInNotificationCenter' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -64,7 +64,7 @@ function ClockInNotificationCenter
 			{
 				Write-ConsoleStatus -Action "Hiding time in Notification Center"
 				LogInfo "Hiding time in Notification Center"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name ShowClockInNotificationCenter -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowClockInNotificationCenter' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -122,7 +122,7 @@ function SecondsInSystemClock
 			{
 				Write-ConsoleStatus -Action "Showing seconds on the taskbar clock"
 				LogInfo "Showing seconds on the taskbar clock"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name ShowSecondsInSystemClock -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSecondsInSystemClock' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -137,7 +137,7 @@ function SecondsInSystemClock
 			{
 				Write-ConsoleStatus -Action "Hiding seconds on the taskbar clock"
 				LogInfo "Hiding seconds on the taskbar clock"
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name ShowSecondsInSystemClock -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSecondsInSystemClock' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch

@@ -365,7 +365,7 @@ function AeroShaking
 			LogInfo "Enabling Title bar window shake"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name DisallowShaking -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'DisallowShaking' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -380,7 +380,7 @@ function AeroShaking
 			LogInfo "Disabling Title bar window shake"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name DisallowShaking -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'DisallowShaking' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -438,7 +438,7 @@ function AppColorMode
 			LogInfo "Setting Apps to use Dark Mode"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize -Name AppsUseLightTheme -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 0 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -453,7 +453,7 @@ function AppColorMode
 			LogInfo "Setting Apps to use Light Mode"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize -Name AppsUseLightTheme -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch

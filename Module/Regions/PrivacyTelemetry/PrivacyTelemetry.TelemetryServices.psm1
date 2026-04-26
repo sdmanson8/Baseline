@@ -142,7 +142,7 @@ function DiagnosticDataLevel
 				}
 
 				New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack -Name ShowedToastAtLevel -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack' -Name 'ShowedToastAtLevel' -Value 1 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -158,7 +158,7 @@ function DiagnosticDataLevel
 			try
 			{
 				New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -PropertyType DWord -Value 3 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack -Name ShowedToastAtLevel -PropertyType DWord -Value 3 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack' -Name 'ShowedToastAtLevel' -Value 3 -Type DWord | Out-Null
 				if ((Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -ErrorAction SilentlyContinue))
 				{
 					Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" | Out-Null
@@ -628,6 +628,14 @@ function ScheduledTasks
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
 
+	try {
+		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
+			$useDark = $false
+			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
+			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
+		}
+	} catch { $null = $_ }
+
 	#region Sendkey function
 	# Emulate the Backspace key sending to prevent the console window to freeze
 	Start-Sleep -Milliseconds 500
@@ -807,7 +815,7 @@ function ErrorReporting
 				try
 				{
 					Get-ScheduledTask -TaskName QueueReporting -ErrorAction Ignore | Disable-ScheduledTask | Out-Null
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Windows Error Reporting" -Name Disabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+					Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\Windows Error Reporting' -Name 'Disabled' -Value 1 -Type DWord | Out-Null
 					try
 					{
 						Get-Service -Name WerSvc -ErrorAction Stop | Stop-Service -Force -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null

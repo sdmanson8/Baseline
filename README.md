@@ -1,4 +1,4 @@
-# Baseline v3.0.0 (beta)
+# Baseline v3.1.0 (beta)
 
 <p align="center">
   <kbd>

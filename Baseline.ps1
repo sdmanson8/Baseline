@@ -3,13 +3,13 @@
 	WPF GUI for Windows 10 & Windows 11 fine-tuning and automating the routine tasks
 
     .VERSION
-    4.0.0 (beta)
+    3.1.0 (beta)
 
     .DATE
     17.03.2026 - initial beta version
     21.03.2026 - Added GUI
     06.04.2026 - Major changes to the GUI, and added more features
-    undetermined - undetermined
+    26.04.2026 - Minor Fixes
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026

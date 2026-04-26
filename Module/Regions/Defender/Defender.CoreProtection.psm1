@@ -416,7 +416,7 @@ function DismissMSAccount
 	LogInfo "Dismissing Microsoft Defender offer in the Windows Security about signing in Microsoft account"
 	try
 	{
-		New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AccountProtection_MicrosoftAccount_Disconnected -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+		Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows Security Health\State' -Name 'AccountProtection_MicrosoftAccount_Disconnected' -Value 1 -Type DWord | Out-Null
 		Write-ConsoleStatus -Status success
 	}
 	catch
@@ -453,7 +453,7 @@ function DismissSmartScreenFilter
 	LogInfo "Disabling the SmartScreen filter for Microsoft Edge"
 	try
 	{
-		New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AppAndBrowser_EdgeSmartScreenOff -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+		Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows Security Health\State' -Name 'AppAndBrowser_EdgeSmartScreenOff' -Value 0 -Type DWord | Out-Null
 		Write-ConsoleStatus -Status success
 	}
 	catch

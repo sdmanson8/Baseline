@@ -1053,6 +1053,14 @@ function UWPApps
                 Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
             }
 
+            try {
+                if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
+                    $useDark = $false
+                    if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
+                    [void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
+                }
+            } catch { $null = $_ }
+
 			$PanelContainer = $Form.FindName("PanelContainer")
 			if ($null -eq $PanelContainer)
             {
@@ -1784,6 +1792,14 @@ function UWPApps
 			$XAML.SelectNodes("//*[@*[contains(translate(name(.),'n','N'),'Name')]]") | ForEach-Object -Process {
 				Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 			}
+
+			try {
+				if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
+					$useDark = $false
+					if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
+					[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
+				}
+			} catch { $null = $_ }
 
 			$Window.Title               = "Uninstall UWP Apps"
 			$ButtonUninstall.Content    = "Uninstall"

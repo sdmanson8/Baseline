@@ -554,7 +554,7 @@ function MultipleInvokeContext
 			LogInfo "Enabling 'Open', 'Print', and 'Edit' items if more than 15 files selected"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer -Name MultipleInvokePromptMinimum -PropertyType DWord -Value 300 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'MultipleInvokePromptMinimum' -Value 300 -Type DWord | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch

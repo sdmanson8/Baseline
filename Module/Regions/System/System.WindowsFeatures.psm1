@@ -217,6 +217,14 @@ function WindowsCapabilities
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
 
+	try {
+		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
+			$useDark = $false
+			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
+			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
+		}
+	} catch { $null = $_ }
+
 	#region Functions
 	function Test-CapabilityPatternMatch
 	{
@@ -905,6 +913,14 @@ function WindowsFeatures
 	$XAML.SelectNodes("//*[@*[contains(translate(name(.),'n','N'),'Name')]]") | ForEach-Object -Process {
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
+
+	try {
+		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
+			$useDark = $false
+			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
+			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
+		}
+	} catch { $null = $_ }
 
 	#region Functions
 

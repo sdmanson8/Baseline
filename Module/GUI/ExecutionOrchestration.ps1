@@ -1724,9 +1724,10 @@
 
 		$runTimer = New-Object System.Windows.Threading.DispatcherTimer
 		$runTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+		$executionPumpTickFn = $Script:ExecutionPumpTickFn
 		$runTimer.Add_Tick({
-			& $Script:ExecutionPumpTickFn
-		})
+			& $executionPumpTickFn
+		}.GetNewClosure())
 		$Script:ExecutionRunTimer = $runTimer
 		$runTimer.Start()
 		& $Script:ExecutionPumpTickFn
