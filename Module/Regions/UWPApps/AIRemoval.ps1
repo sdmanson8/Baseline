@@ -7,8 +7,7 @@
 
     .DATE
     21.03.2026 - Initial Release
-    06.04.2026 - Major changes to the GUI, and added more features
-    25.05.2026
+    25.05.2026 - Major upgrades to GUI
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
