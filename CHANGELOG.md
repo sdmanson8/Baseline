@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Post‑run summary with outcome classification, remediation hints, retry guidance, and next‑step actions.
   - Per‑monitor DPI awareness (V2 + shcore fallback) for crisp rendering on high‑DPI displays.
   - Runtime language switching with session persistence and auto‑detection from system locale.
-  - Localization framework with per‑language JSON files (79 languages, full apps coverage).
+  - Localization framework with per‑language JSON files
   - Icon UX system based on FluentSystemIcons with semantic colour rules and text fallback.
   - Redesigned navigation around workflow modes: Optimize, Gaming, Updates, Apps, Setup Builder.
   - Compact language‑popup search box with live filtering.
@@ -80,19 +80,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Project identity** – Renamed the utility from Win10_11Util to Baseline across all scripts, modules, and documentation.
 - **GUI navigation** – Redesigned around workflow modes (Optimize, Gaming, Updates, Apps, Setup Builder).
 - **Preset system** – Renamed “Expert” preset to “Advanced” with Advanced.json. Tightened Basic to better match its low‑risk promise. Added preset policy linting – Minimal, Basic, Balanced reject uninstall/remove/delete actions. Added advanced warning modal with impact categories, restore‑point guidance, and recommended buttons.
-- **Onboarding** – Preset onboarding moved into Initial Setup. Shared filter behaviour unified across workflow modes.
 - **Apps catalog** – Restructured into category‑based manifests.
 - **Logging** – Simplified lifecycle; recreated on startup.
 - **Deployment Media Builder** – Progress reporting redesigned.
-- **Localisation** – Visible copy polished across multiple languages; 79 new languages added with full apps coverage.
+- **Localisation** –  new languages added
 - **Window sizing** – Now clamps MinWidth, MinHeight, and dimensions to the available work area so the GUI fits on low‑resolution screens (e.g. 1024×768).
-- **Module organisation** –
-  - GUI.psm1 modularised into 35 scripts under Module/GUI/ (up from 14).
-  - Region modules split: System.psm1 (5 sub‑modules), UIPersonalization.psm1 (3), PrivacyTelemetry.psm1 (2), SystemTweaks.psm1 (2), Defender.psm1 (2).
-  - Manifest.Helpers reduced from 1 760 to 641 lines.
-  - Baseline.ps1 reduced from 548 to 443 lines – now purely a launcher/dispatcher.
-  - GUI.psm1 reduced from 14 172 to 9 892 lines by extracting five function groups into Module/GUI/.
-  - Game Mode logic moved to GameMode.Helpers, Scenario Mode to ScenarioMode.Helpers, preset resolution to Preset.Helpers, recovery/undo logic to Recovery.Helpers.
 - **Tab content architecture** – TabControl used as header‑only strip with manual content management via a single ScrollViewer.
 - **Button styling** – Rebuilt with programmatic ControlTemplate via FrameworkElementFactory (7 variants).
 - **CheckBox** – Implemented as custom XAML ControlTemplate with animated thumb (toggle‑switch).
@@ -101,7 +93,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Filter cache** – Invalidation consolidated to a single FilterGeneration integer.
 - **Session state** – Schema upgraded to version 9.
 - **Execution background runspace** – Uses fresh module import with ConcurrentQueue‑only communication.
-- **Localisation strings** – Corrected “Windows 11 23H2” to “Windows 10 (1903 and later) and Windows 11” across 46 language files.
 - **Launch strategy** – Local launch promoted to primary path in README; remote bootstrap demoted to advanced section.
 - **Preview Run and execution summary** – Dialog chrome now sources labels from the active localisation set.
 - **Safe Mode** – Now the conservative default; clears hidden advanced selections when Expert Mode is turned off.
@@ -118,13 +109,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **GUI layout & rendering**
   - Window no longer overflows screen on high‑DPI displays (missing DPI awareness added).
   - GUI now fits 1024×768 and other low‑resolution screens.
-  - Header toolbar no longer clips the language button – dynamic MinWidth adjustment measures actual header width at render time.
   - Light theme no longer makes custom minimise/maximise/close buttons disappear; caption buttons now restyle with the active title‑bar theme.
   - Theme synchronisation issues in popup windows resolved.
-- **Localisation**
-  - Language selector now resolves bundled localisation files reliably across module roots; restores saved language from the same resolved path; keeps header globe icon on the shared Fluent System Icons pipeline.
-  - GUI localisation no longer falls back to English when a non‑English language is selected; hashtable‑backed lookups resolve correctly across the live interface.
-  - Restored sessions and startup initialisation now reapply the selected language to active controls instead of leaving existing GUI content in English.
 - **Execution & stability**
   - Zero remaining dynamic expression execution in production code (AST‑based parsing throughout).
   - Eliminated false failed! outcomes on edge cases where registry values were never created.
@@ -143,7 +129,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Popup pickers for UWP Apps, Windows Features, and Scheduled Tasks now call Set-GuiWindowChromeTheme after loading XAML, fixing the OS‑drawn title bar staying on default light chrome in dark mode.
   - Manifest options array double‑nesting resolved.
   - Preset/scenario button active state now syncs correctly across tabs.
-  - Preview Run status summaries, action labels, and expand/collapse hints no longer remain hard‑coded in English when another language is active.
 - **Code quality & documentation**
   - Resolved public positioning contradiction between README and release strategy.
   - Cleaned launch trust surface – local launch primary, downloaded‑file bootstrap documented as advanced.
