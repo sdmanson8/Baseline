@@ -2,9 +2,14 @@
 using module ..\..\SharedHelpers.psm1
 
 <#
-.SYNOPSIS
-Run Disk Cleanup on Drive C: and remove old Windows Updates
+	.SYNOPSIS
+	Configures disk cleanup and Windows update cleanup.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's disk cleanup and Windows update cleanup in GUI and headless runs.
 .EXAMPLE
 DiskCleanup
 
@@ -18,127 +23,26 @@ function DiskCleanup
 	# Pass log file path to child process
 	[Environment]::SetEnvironmentVariable("diskcleanup", $global:LogFilePath, "Process")
 
-	$ScriptPath = Join-Path $PSScriptRoot "..\..\Assets\diskcleanup.ps1"
+	$ScriptPath = Join-Path $PSScriptRoot "diskcleanup.ps1"
 	$ScriptPath = [System.IO.Path]::GetFullPath($ScriptPath)
 
-	Start-Process powershell.exe `
-		-ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`"" `
-		-WindowStyle Hidden | Out-Null
-}
-
-<#
-.SYNOPSIS
-Apply additional service-related optimizations from the legacy performance preset.
-
-.EXAMPLE
-Invoke-AdditionalServiceOptimizations
-
-.NOTES
-Current user
-#>
-function Invoke-AdditionalServiceOptimizations
-{
-	Write-ConsoleStatus -Action "Applying additional service optimizations"
-	LogInfo "Applying additional service optimizations"
-
-	$hadIssue = $false
-	$memoryCompressionState = $null
-
-	try
-	{
-		$memoryCompressionState = Get-MMAgent -ErrorAction Stop
-	}
-	catch
-	{
-		$memoryCompressionState = $null
-	}
-
-	if ($memoryCompressionState -and -not $memoryCompressionState.MemoryCompression)
-	{
-		LogInfo "Memory Compression already disabled"
-	}
-	else
-	{
-		try
-		{
-			Disable-MMAgent -mc -ErrorAction Stop | Out-Null
-
-			$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
-			if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
-			{
-				LogInfo "Disabled Memory Compression"
-			}
-			else
-			{
-				LogInfo "Requested Memory Compression disable"
-			}
-		}
-		catch
-		{
-			$updatedMemoryCompressionState = Get-MMAgent -ErrorAction SilentlyContinue
-			if ($updatedMemoryCompressionState -and -not $updatedMemoryCompressionState.MemoryCompression)
-			{
-				LogInfo "Memory Compression already disabled"
-			}
-			else
-			{
-				$hadIssue = $true
-				LogWarning "Failed to disable Memory Compression: $($_.Exception.Message)"
-			}
-		}
-	}
-
-	$extraServices = @(
-		"PeerDistSvc",
-		"diagnosticshub.standardcollector.service",
-		"RemoteRegistry"
-	)
-
-	foreach ($serviceName in $extraServices)
-	{
-		try
-		{
-			$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-
-			if ($service)
-			{
-				Set-Service -Name $serviceName -StartupType Disabled -ErrorAction Stop
-				Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-			}
-			else
-			{
-				$registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
-				if (Test-Path -Path $registryPath)
-				{
-					Set-ItemProperty -Path $registryPath -Name "Start" -Type DWord -Value 4 -Force -ErrorAction Stop | Out-Null
-				}
-				else
-				{
-					LogWarning "Service $serviceName not found"
-				}
-			}
-		}
-		catch
-		{
-			$hadIssue = $true
-			LogWarning "Failed to disable $serviceName : $($_.Exception.Message)"
-		}
-	}
-
-	if ($hadIssue)
-	{
-		Write-ConsoleStatus -Status warning
-	}
-	else
-	{
-		Write-ConsoleStatus -Status success
-	}
+	$null = Invoke-BaselineProcess `
+		-FilePath 'powershell.exe' `
+		-ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) `
+		-TimeoutSeconds 3000
+	LogInfo "Disk cleanup child script completed"
+	Write-ConsoleStatus -Status success
 }
 
 <#
 .SYNOPSIS
 Clean temporary files from the system.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for clean temporary files from the system..
 .PARAMETER All
 Clean all temporary directories and caches.
 
@@ -157,6 +61,7 @@ Invoke-CleanupOperation -All
 .NOTES
 Current user
 #>
+
 function Invoke-CleanupOperation
 {
 	param
@@ -186,6 +91,8 @@ function Invoke-CleanupOperation
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'SystemTweaks.Cleanup.Invoke-CleanupOperation:catch92' -Severity Debug }
+
 				$downloads = Join-Path $HOME "Downloads"
 			}
 
@@ -346,6 +253,11 @@ function Invoke-CleanupOperation
 .SYNOPSIS
 Generate and display cleanup statistics.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for generate and display cleanup statistics..
 .EXAMPLE
 Get-CleanupStats
 
@@ -377,6 +289,7 @@ function Get-CleanupStats
 			if (Test-Path $item.Path)
 			{
 				$size = (Get-ChildItem -Path $item.Path -Recurse -Force -ErrorAction SilentlyContinue |
+					Where-Object { -not $_.PSIsContainer } |
 					Measure-Object -Property Length -Sum).Sum
 
 				$count = (Get-ChildItem -Path $item.Path -Recurse -Force -ErrorAction SilentlyContinue |
@@ -410,5 +323,9 @@ function Get-CleanupStats
 	}
 	Write-Host "`n"
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'DiskCleanup',
+    'Get-CleanupStats',
+    'Invoke-CleanupOperation'
+)
+Export-ModuleMember -Function $ExportedFunctions

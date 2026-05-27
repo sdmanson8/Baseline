@@ -1,3 +1,7 @@
+﻿<#
+    .SYNOPSIS
+#>
+
 function Get-GuiIconFontPath
 {
     <# .SYNOPSIS Resolves the FluentSystemIcons font path for the current GUI session. #>
@@ -47,6 +51,10 @@ function Get-GuiIconFontPath
     return $null
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GuiIconFontFamilyName
 {
     <# .SYNOPSIS Returns the expected display name of the Fluent icon font family. #>
@@ -56,9 +64,35 @@ function Get-GuiIconFontFamilyName
     return 'Fluent System Icons'
 }
 
+function ConvertTo-GuiIconGlyph
+{
+    <# .SYNOPSIS Converts a Unicode scalar value into a glyph string for WPF text rendering. #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$CodePoint
+    )
+
+    if ($CodePoint -lt 0 -or $CodePoint -gt 0x10FFFF)
+    {
+        return $null
+    }
+
+    if ($CodePoint -le 0xFFFF)
+    {
+        return [string][char]$CodePoint
+    }
+
+    return [System.Char]::ConvertFromUtf32($CodePoint)
+}
+
+<#
+    .SYNOPSIS
+#>
+
 function Get-GuiIconGlyph
 {
-    <# .SYNOPSIS Returns the icon glyph character for a logical icon name. #>
+    <# .SYNOPSIS Returns the icon glyph string for a logical icon name. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -76,6 +110,9 @@ function Get-GuiIconGlyph
         'Help'                { return [char]0xE946 }
         'OpenLog'             { return [char]0xE9D9 }
         'QuickStart'          { return [char]0xE734 }
+        'ArrowDownload'       { return ConvertTo-GuiIconGlyph -CodePoint 0xF025B }
+        'ArrowSync'           { return ConvertTo-GuiIconGlyph -CodePoint 0xF03F8 }
+        'Delete'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF11B5 }
 
         # Navigation
         'InitialSetupTab'     { return [char]0xE80F }
@@ -101,6 +138,33 @@ function Get-GuiIconGlyph
         'Search'              { return [char]0xE721 }
         'Filter'              { return [char]0xE71C }
         'Clear'               { return [char]0xE894 }
+        'Archive'             { return ConvertTo-GuiIconGlyph -CodePoint 0xF0165 }
+        'AppGeneric'          { return ConvertTo-GuiIconGlyph -CodePoint 0xF0129 }
+        'Apps'                { return ConvertTo-GuiIconGlyph -CodePoint 0xF0143 }
+        'Box'                 { return ConvertTo-GuiIconGlyph -CodePoint 0xF0743 }
+        'Camera'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF0A5B }
+        'Chat'                { return ConvertTo-GuiIconGlyph -CodePoint 0xF0B4F }
+        'Clock'               { return ConvertTo-GuiIconGlyph -CodePoint 0xF0DCB }
+        'Cloud'               { return ConvertTo-GuiIconGlyph -CodePoint 0xF0E0F }
+        'Desktop'             { return ConvertTo-GuiIconGlyph -CodePoint 0xF11E7 }
+        'Document'            { return ConvertTo-GuiIconGlyph -CodePoint 0xF12DB }
+        'Folder'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF18B3 }
+        'Games'               { return [char]0xE7FC }
+        'Globe'               { return ConvertTo-GuiIconGlyph -CodePoint 0xF1A63 }
+        'Image'               { return ConvertTo-GuiIconGlyph -CodePoint 0xF1C67 }
+        'Mail'                { return ConvertTo-GuiIconGlyph -CodePoint 0xF20A3 }
+        'Person'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF262B }
+        'PhoneDesktop'        { return ConvertTo-GuiIconGlyph -CodePoint 0xF27A7 }
+        'Shield'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF2D5F }
+        'StoreMicrosoft'      { return ConvertTo-GuiIconGlyph -CodePoint 0xF30D7 }
+        'Toolbox'             { return ConvertTo-GuiIconGlyph -CodePoint 0xF383D }
+        'Video'               { return ConvertTo-GuiIconGlyph -CodePoint 0xF3951 }
+        'Window'              { return ConvertTo-GuiIconGlyph -CodePoint 0xF3B5B }
+        'WindowConsole'       { return ConvertTo-GuiIconGlyph -CodePoint 0xF3BA5 }
+        'WindowDevTools'      { return ConvertTo-GuiIconGlyph -CodePoint 0xF3BB7 }
+        'WindowSettings'      { return ConvertTo-GuiIconGlyph -CodePoint 0xF3C05 }
+        'MusicNote1'          { return ConvertTo-GuiIconGlyph -CodePoint 0xF22E5 }
+        'MusicNote2'          { return ConvertTo-GuiIconGlyph -CodePoint 0xF22EB }
 
         # Summary / preview
         'Selected'            { return [char]0xEA86 }
@@ -138,4 +202,76 @@ function Get-GuiIconGlyph
 
         default               { return $null }
     }
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Get-GuiApplicationIconName
+{
+    <# .SYNOPSIS Maps an application catalog row to a Fluent icon name. #>
+    [CmdletBinding()]
+    param(
+        [string]$Name,
+        [string]$SubCategory,
+        [object[]]$Tags,
+        [string]$SourceRegion
+    )
+
+    $normalizedName = if ([string]::IsNullOrWhiteSpace([string]$Name)) { '' } else { [string]$Name.Trim() }
+
+    switch ($normalizedName)
+    {
+        'Microsoft Store' { return 'StoreMicrosoft' }
+        'OneDrive' { return 'Cloud' }
+        'Phone Link' { return 'PhoneDesktop' }
+        'Quick Assist' { return 'Desktop' }
+        'Dev Home' { return 'WindowDevTools' }
+        'Copilot' { return 'AppGeneric' }
+        'Clipchamp' { return 'Video' }
+        'Camera' { return 'Camera' }
+        'Photos' { return 'Image' }
+        'Mail and Calendar' { return 'Mail' }
+        'Feedback Hub' { return 'Chat' }
+        'Alarms & Clock' { return 'Clock' }
+        'Cortana' { return 'Person' }
+        'Microsoft Teams' { return 'Chat' }
+        'Skype' { return 'Chat' }
+        'Microsoft Edge' { return 'Globe' }
+        default { }
+    }
+
+    switch ([string]$SubCategory)
+    {
+        'Browsers'      { return 'Globe' }
+        'Communication' { return 'Chat' }
+        'Compression'   { return 'Archive' }
+        'Development'   { return 'WindowDevTools' }
+        'Documents'     { return 'Document' }
+        'FileManagement'{ return 'Folder' }
+        'Gaming'        { return 'Games' }
+        'Imaging'       { return 'Image' }
+        'Media'         { return 'Video' }
+        'RemoteAccess'  { return 'PhoneDesktop' }
+        'Runtimes'      { return 'Box' }
+        'Security'      { return 'Shield' }
+        'Utilities'     { return 'Toolbox' }
+    }
+
+    if ($Tags)
+    {
+        $tagText = ($Tags | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' '
+        if ($tagText -match '\bgame\b') { return 'Games' }
+        if ($tagText -match '\bbrowser\b') { return 'Globe' }
+        if ($tagText -match '\bcloud\b') { return 'Cloud' }
+        if ($tagText -match '\bsecurity\b') { return 'Shield' }
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$SourceRegion))
+    {
+        return 'AppGeneric'
+    }
+
+    return 'AppGeneric'
 }

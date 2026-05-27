@@ -1,10 +1,15 @@
-﻿using module ..\..\Logging.psm1
+using module ..\..\Logging.psm1
 using module ..\..\SharedHelpers.psm1
 
 <#
 	.SYNOPSIS
-	Windows Defender Application Guard configuration
+	Configures Windows Defender Application Guard configuration.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's Windows Defender Application Guard configuration in GUI and headless runs.
 	.PARAMETER Enable
 	Enable Windows Defender Application Guard optional feature
 
@@ -25,6 +30,7 @@ using module ..\..\SharedHelpers.psm1
 	Not applicable to Windows Server.
 	Not supported on VMs or VDI environments.
 #>
+
 function DefenderAppGuard
 {
 	param
@@ -59,10 +65,10 @@ function DefenderAppGuard
 			elseif ($feature.State -eq "Disabled") {
 				try {
 					$null = Enable-WindowsOptionalFeature -Online `
-	        			-FeatureName "Windows-Defender-ApplicationGuard" `
-	        			-NoRestart `
-	        			-ErrorAction Stop `
-	        			-WarningAction SilentlyContinue
+				-FeatureName "Windows-Defender-ApplicationGuard" `
+				-NoRestart `
+				-ErrorAction Stop `
+				-WarningAction SilentlyContinue
 					Write-ConsoleStatus -Status success
 				}
 				catch {
@@ -90,10 +96,10 @@ function DefenderAppGuard
 			elseif ($feature.State -ne "Disabled") {
 				try {
 					$null = Disable-WindowsOptionalFeature -Online `
-	        			-FeatureName "Windows-Defender-ApplicationGuard" `
-	        			-NoRestart `
-	        			-ErrorAction Stop `
-	        			-WarningAction SilentlyContinue
+				-FeatureName "Windows-Defender-ApplicationGuard" `
+				-NoRestart `
+				-ErrorAction Stop `
+				-WarningAction SilentlyContinue
 					Write-ConsoleStatus -Status success
 				}
 				catch {
@@ -110,27 +116,27 @@ function DefenderAppGuard
 	}
 }
 
-<#
-	.SYNOPSIS
-	Configure additional Defender Exploit Guard protections.
-
-	.DESCRIPTION
-	Updates Defender signatures, sets early launch related values, enables a set
-	of ASR rules, and applies system-wide exploit mitigations.
-
-	.EXAMPLE
-	Set-DefenderExploitGuardPolicy
-
-	.NOTES
-	Machine-wide
-
-	.CAUTION
-	Advanced. Can block legitimate applications, Office automation, admin
-	tooling, scripts, or line-of-business workflows depending on how they
-	interact with Defender ASR and system mitigations.
-#>
-function Set-DefenderExploitGuardPolicy
+function DefenderExploitGuardPolicy
 {
+	<#
+		.SYNOPSIS
+		Configure additional Defender Exploit Guard protections.
+
+		.DESCRIPTION
+		Updates Defender signatures, sets early launch related values, enables a set
+		of ASR rules, and applies system-wide exploit mitigations.
+
+		.EXAMPLE
+		DefenderExploitGuardPolicy
+
+		.NOTES
+		Machine-wide
+
+		Caution:
+		Advanced. Can block legitimate applications, Office automation, admin
+		tooling, scripts, or line-of-business workflows depending on how they
+		interact with Defender ASR and system mitigations.
+	#>
 	Write-ConsoleStatus -Action "Configuring Defender Exploit Guard policies"
 	LogInfo "Configuring Defender Exploit Guard policies"
 	try
@@ -145,13 +151,13 @@ function Set-DefenderExploitGuardPolicy
 		{
 			New-Item -Path "HKCU:\SOFTWARE\Microsoft\Windows Defender" -Force -ErrorAction Stop | Out-Null
 		}
-		Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows Defender" -Name "PassiveMode" -Value 2 -ErrorAction Stop | Out-Null
+		Set-RegistryValueSafe -Path "HKCU:\SOFTWARE\Microsoft\Windows Defender" -Name "PassiveMode" -Type DWord -Value 2 | Out-Null
 
 		if (!(Test-Path "HKLM:\SYSTEM\CurrentControlSet\Policies\EarlyLaunch"))
 		{
 			New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Policies\EarlyLaunch" -Force -ErrorAction Stop | Out-Null
 		}
-		Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Policies\EarlyLaunch" -Name "DriverLoadPolicy" -Value 3 -ErrorAction Stop | Out-Null
+		Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Policies\EarlyLaunch" -Name "DriverLoadPolicy" -Value 3 -ErrorAction Stop | Out-Null
 
 		$rules = @(
 			'D1E49AAC-8F56-4280-B9BA-993A6D77B4F2',
@@ -182,6 +188,11 @@ function Set-DefenderExploitGuardPolicy
 	.SYNOPSIS
 	Core Isolation Memory Integrity (Hypervisor-Enforced Code Integrity)
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for core Isolation Memory Integrity (Hypervisor-Enforced Code Integrity).
 	.PARAMETER Enable
 	Enable Memory Integrity (HVCI)
 
@@ -229,7 +240,7 @@ function CIMemoryIntegrity
 				If (!(Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity")) {
 					New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Name "Enabled" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity" -Name "Enabled" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -256,26 +267,26 @@ function CIMemoryIntegrity
 	}
 }
 
-<#
-	.SYNOPSIS
-	Import the Microsoft Defender Exploit Protection policy.
-
-	.DESCRIPTION
-	Downloads the Microsoft demo Exploit Protection policy XML, imports it with
-	Set-ProcessMitigation, and removes the temporary file.
-
-	.EXAMPLE
-	Import-ExploitProtectionPolicy
-
-	.NOTES
-	Machine-wide
-
-	.CAUTION
-	Advanced. Imports a downloaded mitigation policy that can change exploit
-	protection behavior for applications across the system.
-#>
-function Import-ExploitProtectionPolicy
+function ExploitProtectionPolicy
 {
+	<#
+		.SYNOPSIS
+		Import the Microsoft Defender Exploit Protection policy.
+
+		.DESCRIPTION
+		Downloads the Microsoft demo Exploit Protection policy XML, imports it with
+		Set-ProcessMitigation, and removes the temporary file.
+
+		.EXAMPLE
+		ExploitProtectionPolicy
+
+		.NOTES
+		Machine-wide
+
+		Caution:
+		Advanced. Imports a downloaded mitigation policy that can change exploit
+		protection behavior for applications across the system.
+	#>
 	Write-ConsoleStatus -Action "Importing Exploit Protection policy"
 	LogInfo "Importing Exploit Protection policy"
 	try
@@ -297,6 +308,11 @@ function Import-ExploitProtectionPolicy
 	.SYNOPSIS
 	Local Security Authority protection
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for local Security Authority protection.
 	.PARAMETER Enable
 	Enable Local Security Authority protection to prevent code injection without UEFI lock
 
@@ -315,6 +331,7 @@ function Import-ExploitProtectionPolicy
 	.NOTES
 	Machine-wide
 #>
+
 function LocalSecurityAuthority
 {
 	param
@@ -401,6 +418,11 @@ function LocalSecurityAuthority
 	.SYNOPSIS
 	Enables or disables Data Execution Prevention (DEP) policy
 
+
+
+.DESCRIPTION
+
+Enables or disables Data Execution Prevention (DEP) policy in GUI and headless runs.
 	.PARAMETER Enable
 	Sets DEP to OptIn (default for most apps) (default value)
 
@@ -478,6 +500,11 @@ function DEPOptOut
 	.SYNOPSIS
 	Enables or disables automatic recovery mode during boot
 
+
+
+.DESCRIPTION
+
+Enables or disables automatic recovery mode during boot in GUI and headless runs.
 	.PARAMETER Enable
 	Enable automatic recovery mode on startup errors (default value)
 
@@ -561,6 +588,11 @@ function BootRecovery
 	.SYNOPSIS
 	Enables or disables the F8 boot menu on startup
 
+
+
+.DESCRIPTION
+
+Enables or disables the F8 boot menu on startup in GUI and headless runs.
 	.PARAMETER Enable
 	Enable the legacy F8 boot menu
 
@@ -631,5 +663,14 @@ function F8BootMenu
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'BootRecovery',
+    'CIMemoryIntegrity',
+    'DefenderAppGuard',
+    'DefenderExploitGuardPolicy',
+    'DEPOptOut',
+    'ExploitProtectionPolicy',
+    'F8BootMenu',
+    'LocalSecurityAuthority'
+)
+Export-ModuleMember -Function $ExportedFunctions

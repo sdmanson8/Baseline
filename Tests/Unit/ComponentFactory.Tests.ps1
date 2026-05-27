@@ -1,6 +1,25 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
+    <#
+        .SYNOPSIS
+    #>
+
+    function Get-UxLocalizedString {
+        param(
+            [string]$Key,
+            [string]$Fallback,
+            [object[]]$FormatArgs = @()
+        )
+
+        if ($FormatArgs.Count -gt 0)
+        {
+            return ($Fallback -f $FormatArgs)
+        }
+
+        return $Fallback
+    }
+
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/ComponentFactory.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
     $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)

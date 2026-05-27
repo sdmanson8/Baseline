@@ -1,11 +1,10 @@
-# Game Mode helper slice for Baseline.
-# Extracted from Manifest.Helpers.ps1 - contains all Game Mode profile,
-# allowlist, decision prompt, selection, and plan-building logic.
-#
-# Dependencies (from Manifest.Helpers.ps1, loaded first):
-#   Get-TweakManifestEntryValue, Test-TweakManifestEntryField,
-#   Import-TweakManifestFromData, Get-TweakManifestDefaultCommand,
-#   Get-ManifestEntryByFunction
+# Game Mode helpers for Baseline.
+# Resolve profile options, selections, and plan construction for game mode
+# workflows.
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GameModeAllowlist
 {
@@ -23,8 +22,21 @@ function Get-GameModeAllowlist
 		'WindowsGameMode'
 		'MouseAcceleration'
 		'NaglesAlgorithm'
+		'Win32PrioritySeparation'
+		'SystemResponsiveness'
+		'GamingCpuPriority'
+		'GamingSchedulingCategory'
+		'GamingGpuPriority'
+		'DirectXFlipModel'
+		'DirectXVrrOptimizations'
+		'DirectXAutoHdr'
+		'NvidiaSharpening'
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Write-GameModeDataWarning
 {
@@ -45,6 +57,10 @@ function Write-GameModeDataWarning
 		Write-Warning $Message
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Read-GameModeJsonDataFile
 {
@@ -80,7 +96,7 @@ function Read-GameModeJsonDataFile
 
 	try
 	{
-		return ($jsonContent | ConvertFrom-Json -ErrorAction Stop)
+		return ($jsonContent | ConvertFrom-BaselineJson -Depth 16 -ErrorAction Stop)
 	}
 	catch
 	{
@@ -88,6 +104,10 @@ function Read-GameModeJsonDataFile
 		return $null
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GameModeReviewedCrossCategoryAllowlist
 {
@@ -142,6 +162,10 @@ function Import-GameModeAllowlistData
 	return $lookup
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Import-GameModeAdvancedData
 {
 	<# .SYNOPSIS Loads Game Mode advanced options data from JSON with caching. #>
@@ -172,6 +196,10 @@ function Import-GameModeAdvancedData
 	return @($data.Entries)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeAdvancedFunctions
 {
 	<# .SYNOPSIS Returns AdvancedOnly function names from Game Mode advanced data. #>
@@ -185,9 +213,66 @@ function Get-GameModeAdvancedFunctions
 		$entries |
 			Where-Object { $_.PSObject.Properties['AdvancedOnly'] -and [bool]$_.AdvancedOnly } |
 			ForEach-Object { [string]$_.Function } |
-			Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+		Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
+
+function Test-GameModeAdvancedProfileDefaultSelection
+{
+	<# .SYNOPSIS Tests whether an advanced Game Mode entry is selected by default for a profile. #>
+	param (
+		[object]$Entry,
+		[string]$ProfileName
+	)
+
+	if ($null -eq $Entry -or [string]::IsNullOrWhiteSpace($ProfileName))
+	{
+		return $false
+	}
+
+	$profileDefaults = $null
+	if ($Entry -is [System.Collections.IDictionary] -and $Entry.Contains('DefaultCheckedByProfile'))
+	{
+		$profileDefaults = $Entry['DefaultCheckedByProfile']
+	}
+	elseif ($Entry.PSObject -and $Entry.PSObject.Properties['DefaultCheckedByProfile'])
+	{
+		$profileDefaults = $Entry.DefaultCheckedByProfile
+	}
+
+	if ($null -ne $profileDefaults)
+	{
+		if ($profileDefaults -is [System.Collections.IDictionary] -and $profileDefaults.Contains($ProfileName))
+		{
+			return [bool]$profileDefaults[$ProfileName]
+		}
+
+		if ($profileDefaults.PSObject -and $profileDefaults.PSObject.Properties[$ProfileName])
+		{
+			return [bool]$profileDefaults.$ProfileName
+		}
+	}
+
+	if ($Entry -is [System.Collections.IDictionary] -and $Entry.Contains('DefaultChecked'))
+	{
+		return [bool]$Entry['DefaultChecked']
+	}
+
+	if ($Entry.PSObject -and $Entry.PSObject.Properties['DefaultChecked'])
+	{
+		return [bool]$Entry.DefaultChecked
+	}
+
+	return $false
+}
+
+<#
+    .SYNOPSIS
+#>
 
 function Resolve-GameModeAllowlistToggleParam
 {
@@ -240,6 +325,10 @@ function Resolve-GameModeAllowlistToggleParam
 	return [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'OffParam')
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeEntryScopeCategory
 {
 	<# .SYNOPSIS Returns the scope category from an entry's SourceRegion or Category. #>
@@ -267,6 +356,10 @@ function Get-GameModeEntryScopeCategory
 	return $null
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-GameModeAllowlistEntryReviewed
 {
 	<# .SYNOPSIS Tests whether an entry is in the reviewed allowlist. #>
@@ -293,6 +386,10 @@ function Test-GameModeAllowlistEntryReviewed
 
 	return (@(Get-GameModeReviewedCrossCategoryAllowlist) -contains $functionName)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-GameModeProfileDefaultEligible
 {
@@ -332,6 +429,10 @@ function Test-GameModeProfileDefaultEligible
 
 	return ($workflowSensitivityValue -eq 'Low')
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-GameModeManifestDefaultEnabled
 {
@@ -381,6 +482,10 @@ function Test-GameModeManifestDefaultEnabled
 	return $false
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Import-GameModeProfileData
 {
 	<# .SYNOPSIS Loads Game Mode profile definitions from JSON with caching. #>
@@ -411,6 +516,10 @@ function Import-GameModeProfileData
 	return @($data.Entries)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeProfileDefinitions
 {
 	<# .SYNOPSIS Returns cached Game Mode profile definitions. #>
@@ -433,6 +542,10 @@ function Get-GameModeDecisionPromptKeyCatalog
 		'NaglesAlgorithm'
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-GameModeProfileDefaultSelection
 {
@@ -473,6 +586,10 @@ function Test-GameModeProfileDefaultSelection
 
 	return $false
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Resolve-GameModeDecisionToggleParam
 {
@@ -526,6 +643,10 @@ function Resolve-GameModeDecisionToggleParam
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-GameModeDecisionPromptRequired
 {
 	<# .SYNOPSIS Tests whether a decision prompt is required for a profile. #>
@@ -551,6 +672,10 @@ function Test-GameModeDecisionPromptRequired
 		default { return $false }
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GameModeDecisionPromptDefinition
 {
@@ -625,6 +750,10 @@ function Get-GameModeDecisionPromptDefinition
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeDecisionPromptDefinitions
 {
 	<# .SYNOPSIS Returns all decision prompts for a Game Mode profile. #>
@@ -687,6 +816,10 @@ function Get-GameModeDecisionPromptDefinitions
 
 	return @($promptDefinitions)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Merge-GameModeSelectionState
 {
@@ -807,6 +940,10 @@ function Merge-GameModeSelectionState
 	return $selectionState
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeSelectionSet
 {
 	<# .SYNOPSIS Returns the sorted selection set for a profile. #>
@@ -828,6 +965,10 @@ function Get-GameModeSelectionSet
 			Sort-Object @{ Expression = { [int]$_.AllowlistOrder } }, @{ Expression = { [string]$_.Function } }
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GameModeDecisionOverridesText
 {
@@ -854,6 +995,10 @@ function Get-GameModeDecisionOverridesText
 
 	return (@($pairs) -join '; ')
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GameModeProfilePlan
 {
@@ -926,9 +1071,13 @@ function Get-GameModeProfilePlan
 	return @($plan)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GameModeProfileCommandList
 {
-	<# .SYNOPSIS Extracts the command list from a Game Mode profile plan. #>
+	<# .SYNOPSIS Reads the command list from a Game Mode profile plan. #>
 	param (
 		[array]$Manifest,
 		[ValidateSet('Casual', 'Competitive', 'Streaming', 'Troubleshooting')]
@@ -943,6 +1092,10 @@ function Get-GameModeProfileCommandList
 			Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Resolve-ValidatedGameModeDecisionOverrides
 {

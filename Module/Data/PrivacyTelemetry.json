@@ -31,10 +31,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Records your activity across devices when signed into a Microsoft account and can sync it to the cloud. Disabling keeps activity local.",
+      "WhyThisMatters": "When enabled with a Microsoft account, Windows records which apps and files you open and can sync this timeline to the cloud. Disabling keeps usage history off Microsoft's servers.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Advertising ID",
@@ -66,10 +72,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Windows assigns a unique advertising ID to your account that apps can use to show targeted ads. Disabling stops this tracking.",
+      "WhyThisMatters": "Each Windows account gets a persistent advertising identifier apps can read to build an ad targeting profile. Disabling resets and stops issuing the ID.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Auto Reboot on Crash (BSOD)",
@@ -101,10 +113,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "When Windows crashes (blue screen), it can automatically restart. Disabling keeps the error on screen so you can read the stop code.",
+      "WhyThisMatters": "Leaving auto-reboot enabled means a blue screen disappears before you can note the stop code. Disabling keeps the crash display on screen until you manually restart.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Auto Restart After Update",
@@ -135,10 +153,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "Prevents Windows from automatically restarting after installing updates without your input. Gives you control over when reboots happen.",
+      "WhyThisMatters": "Stops Windows from rebooting on its own schedule after installing an update. The machine will prompt instead of restarting mid-session.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Automatic Map Updates",
@@ -169,10 +193,342 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Windows Maps can automatically download updated offline map data in the background. Disabling saves bandwidth if you do not use the Maps app.",
+      "WhyThisMatters": "Background downloads of offline map data for the Windows Maps app. If you do not use Maps, this is unnecessary background network activity.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Online Speech Recognition",
+      "Function": "OnlineSpeechRecognition",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Online speech recognition",
+      "Detail": "Allows apps to use Microsoft's online speech recognition services to process your voice. Disabling keeps speech processing local.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Online speech recognition is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "speech",
+        "telemetry"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Sends voice input to Microsoft's cloud recognition service. Disabling forces speech processing to stay on-device, which reduces accuracy for some recognition tasks.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Narrator Online Services",
+      "Function": "NarratorOnlineServices",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Narrator online services",
+      "Detail": "Allows Narrator to use Microsoft cloud services for richer descriptions and voice features. Disabling keeps Narrator local.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Narrator online services are enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "speech"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Allows Narrator to call Microsoft cloud APIs for enhanced image descriptions and natural-sounding voices. Disabling limits Narrator to local TTS voices.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Narrator Scripting Support",
+      "Function": "NarratorScriptingSupport",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Narrator scripting support",
+      "Detail": "Allows Narrator to execute scripts for automation and custom functionality. Disabling keeps Narrator simpler and more local.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Narrator scripting support is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "speech",
+        "automation"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Allows Narrator to run automation scripts for custom behavior. Low-risk to disable unless you have Narrator scripts in place.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Inking and Typing Personalization",
+      "Function": "InkingAndTypingPersonalization",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Inking and typing personalization",
+      "Detail": "Uses your typing history and handwriting patterns to improve text input suggestions. Disabling keeps that data local.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Inking and typing personalization is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "input",
+        "typing"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Builds a local model of your typing patterns and handwriting to improve suggestions. The data stays on-device but disabling prevents any personalization model from being built.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Device Search History",
+      "Function": "DeviceSearchHistory",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Search history on this device",
+      "Detail": "Windows Search can store your search history locally on this device. Disabling prevents local search history from being saved.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Search history on this device is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "search"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Windows Search logs your local queries so it can prioritize recent results. Disabling stops the log from accumulating.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Cloud Content Search",
+      "Function": "CloudContentSearch",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Cloud content search",
+      "Detail": "Windows Search can show results from apps and services tied to your Microsoft account or work/school account. Disabling keeps search local.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Cloud content search is enabled",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "search",
+        "cloud"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Extends Start menu and Windows Search results to include content from your Microsoft account or work account. Disabling limits results to local content only.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Block Workplace Join Messages",
+      "Function": "WorkplaceJoinMessages",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Block Workplace Join messages",
+      "Detail": "Blocks the prompts that let work or school accounts join this device or manage it from sign-in flows.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Workplace Join messages are shown",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "security",
+        "policy"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Suppresses the sign-in prompts that offer to enroll the device in organizational management. Useful on personal machines where MDM enrollment is not intended.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
+    },
+    {
+      "Name": "Prevent BitLocker Auto Encryption",
+      "Function": "BitLockerAutoEncryption",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Prevent BitLocker auto encryption",
+      "Detail": "Prevents Windows from automatically encrypting eligible devices with BitLocker during setup so encryption only happens when you choose it.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "PrivacyTelemetry",
+      "WinDefaultDesc": "Automatic BitLocker device encryption is allowed",
+      "Risk": "Low",
+      "Tags": [
+        "privacy",
+        "security",
+        "encryption"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Stops Windows from silently enabling BitLocker drive encryption during initial setup on eligible hardware. Encryption only activates when you explicitly choose it.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Camera Access",
@@ -204,10 +560,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Master toggle controlling whether apps can request access to your camera. Disabling prevents all apps from using the camera. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "System-wide toggle for camera access. When disabled, no app can use the camera regardless of its individual permission setting.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Clipboard History",
@@ -238,10 +600,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Stores a history of copied items so you can paste from previous clips using Win+V. Enable to turn this feature on.",
+      "WhyThisMatters": "Enables a persistent clipboard stack accessible via Win+V so you can paste from earlier copied items. Clipboard contents are stored in memory; sync to other devices requires an additional setting.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Connected User Experiences (DiagTrack)",
@@ -273,10 +641,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "The DiagTrack service collects and uploads Windows usage and diagnostic data to Microsoft servers. Disabling it stops background telemetry uploads. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "The DiagTrack service is the primary Windows telemetry uploader. Stopping and disabling it ends background data collection and upload to Microsoft. Windows Update and error reporting still function without it.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Device Sensors",
@@ -307,10 +681,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls access to hardware sensors like accelerometer, gyroscope, and ambient light sensor. Mainly relevant for tablets and convertible devices.",
+      "WhyThisMatters": "Controls app access to hardware sensors such as accelerometer, gyroscope, and ambient light. Primarily relevant on tablets and convertibles — negligible on desktop systems without these sensors.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Diagnostic Data Level",
@@ -344,10 +724,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls how much diagnostic data Windows sends to Microsoft. Minimal sends only basic device info and reliability data.",
+      "WhyThisMatters": "Sets how much telemetry Windows sends to Microsoft. Minimal sends only required device health and crash data. Security (enterprise only) sends no optional data.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Diagnostics Tracking Tasks",
@@ -382,10 +768,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Several scheduled tasks run in the background to collect and upload diagnostic data. Disabling stops these tasks from running automatically. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Disables the scheduled tasks that collect and upload diagnostic data on a timer. These run independently of the DiagTrack service setting.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Display and Sleep Timeouts",
@@ -416,10 +808,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls when the display turns off and when the PC enters sleep mode after inactivity. Disable to prevent automatic sleep.",
+      "WhyThisMatters": "Sets how long the system waits before turning off the display or entering sleep on AC and DC power. Use zero to prevent sleep entirely.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "High"
+      "CompatibilitySensitivity": "High",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Driver Updates via Windows Update",
@@ -450,10 +848,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Controls whether Windows Update automatically downloads and installs hardware drivers. Disabling lets you manage drivers manually. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Controls whether Windows Update fetches hardware driver updates automatically. Disabling lets you source drivers directly from the manufacturer and avoid Windows-supplied versions.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Fast Startup",
@@ -484,10 +888,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "A hybrid shutdown mode that saves the kernel state to disk so Windows boots faster. Can cause issues with dual-boot setups or full shutdowns.",
+      "WhyThisMatters": "Saves the kernel state to the hibernation file on shutdown so the next boot resumes rather than cold-starts. Can prevent full memory flush, interfere with dual-boot setups, or cause stale driver state after updates.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "High"
+      "CompatibilitySensitivity": "High",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Feedback Frequency",
@@ -521,10 +931,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls how often Windows asks you to rate your experience or submit feedback. Setting to Never stops all feedback prompts.",
+      "WhyThisMatters": "Controls how often Windows prompts you to submit feedback or rate your experience. Setting to Never eliminates these prompts entirely.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Language List Access for Websites",
@@ -555,10 +971,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Allows websites to read your Windows language preference list to tailor content. Disable to prevent websites from detecting your language settings.",
+      "WhyThisMatters": "Allows websites to read your Windows language preference list via the Accept-Language header. Disabling sends a generic language preference rather than your specific list.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Location Services",
@@ -590,10 +1012,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether apps can access your device's geographic location. Disabling prevents location tracking by all apps. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "System-wide toggle for location access. When disabled, no app can request the device's geographic position regardless of individual app permissions.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Lock Screen Widgets",
@@ -624,10 +1052,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "The Windows Web Experience Pack adds widgets and dynamic content to the lock screen and taskbar. Disabling removes these.",
+      "WhyThisMatters": "The Windows Web Experience Pack serves the lock screen news feed and taskbar weather widget. Removing it clears these from the lock screen and taskbar.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Maintenance Wake-up",
@@ -658,10 +1092,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Windows can wake your PC from sleep overnight to run automatic maintenance tasks. Disabling prevents unwanted overnight wake-ups.",
+      "WhyThisMatters": "Allows Windows to wake the machine from sleep overnight to run scheduled maintenance. Disabling prevents unwanted overnight power-on events.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "High"
+      "CompatibilitySensitivity": "High",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Malicious Software Removal Tool (MSRT)",
@@ -692,10 +1132,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether Windows Update offers the Malicious Software Removal Tool scan. Disabling prevents it from being pushed via Windows Update. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Controls whether Windows Update pushes the MSRT for periodic scanning. Disabling prevents the tool from being automatically downloaded and run.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Microphone Access",
@@ -727,10 +1173,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Master toggle controlling whether apps can request access to your microphone. Disabling prevents all apps from using the mic. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "System-wide toggle for microphone access. When disabled, no app can capture audio input regardless of individual app permissions.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Microsoft Product Updates",
@@ -752,6 +1204,7 @@
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "PrivacyTelemetry",
+      "TimeoutSeconds": 300,
       "WinDefaultDesc": "Updates for other Microsoft products are disabled",
       "Risk": "Low",
       "Tags": [
@@ -761,10 +1214,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "When enabled, Windows Update also checks for updates to other Microsoft products like Office. Disabling limits updates to Windows only.",
+      "WhyThisMatters": "Extends Windows Update to also service other Microsoft products like Office. Disabling limits the Windows Update agent to OS patches only.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "NTFS Last Access Timestamps",
@@ -795,43 +1254,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "Updates a timestamp on every file each time it is read. Disabling reduces disk write activity on systems with many small file reads.",
+      "WhyThisMatters": "NTFS updates a last-access timestamp on every file read. On read-heavy workloads this generates significant write amplification. Disabling removes this overhead.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
-    },
-    {
-      "Name": "NTFS Long Paths",
-      "Function": "NTFSLongPaths",
-      "Type": "Toggle",
-      "Options": null,
-      "DisplayOptions": null,
-      "Default": true,
-      "WinDefault": false,
-      "Description": "NTFS paths with length over 260 characters",
-      "Detail": "Removes the 260-character limit on file paths. Required for some development tools and deeply nested folder structures.",
-      "Caution": false,
-      "CautionReason": null,
-      "LinkedWith": null,
-      "Scannable": null,
-      "Restorable": true,
-      "OnParam": "Enable",
-      "OffParam": "Disable",
-      "ExtraArgs": null,
-      "SubCategory": null,
-      "SourceRegion": "PrivacyTelemetry",
-      "WinDefaultDesc": "NTFS paths over 260 characters are disabled",
-      "Risk": "Low",
-      "Tags": [
-        "filesystem"
-      ],
-      "Impact": "Low",
-      "Safe": true,
-      "RequiresRestart": false,
-      "WhyThisMatters": "Removes the 260-character limit on file paths. Required for some development tools and deeply nested folder structures.",
-      "PresetTier": "Advanced",
-      "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "PowerShell 7 Telemetry",
@@ -845,7 +1277,7 @@
       "Detail": "PowerShell 7 sends anonymous usage data to Microsoft by default. Disabling opts out of this telemetry. Linked to the Install/Update PowerShell 7 option.",
       "Caution": false,
       "CautionReason": null,
-      "LinkedWith": "Update-Powershell",
+      "LinkedWith": "UpdatePowershell",
       "Scannable": null,
       "Restorable": true,
       "OnParam": "Enable",
@@ -866,7 +1298,12 @@
       "WhyThisMatters": "PowerShell 7 sends anonymous usage data to Microsoft by default. Disabling opts out of this telemetry. Linked to the Install/Update PowerShell 7 option.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Shared Experiences",
@@ -897,10 +1334,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Allows Windows to share activity between your devices via your Microsoft account. Disabling keeps activity local to this machine only.",
+      "WhyThisMatters": "Allows Windows to relay activity between devices via your Microsoft account, enabling cross-device handoff and nearby sharing. Disabling keeps activity scoped to this machine.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Sign-in Info After Update",
@@ -931,10 +1374,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Uses your sign-in credentials to automatically finish setting up your profile after a Windows update. Disable for more privacy.",
+      "WhyThisMatters": "Uses cached credentials to auto-complete your profile setup after a Windows update reboot. Disabling requires manual sign-in to finish each post-update setup.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Sleep Button",
@@ -964,10 +1413,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether the Sleep option appears in the Start Menu and whether the sleep keyboard button is active.",
+      "WhyThisMatters": "Controls whether the Start Menu Sleep option and the keyboard sleep key are active. Disable if you want to prevent accidental sleep from keyboard shortcuts.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Superfetch Service",
@@ -998,10 +1453,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "SysMain preloads frequently used apps into RAM to speed up launch times. On SSDs it provides little benefit and can usually be safely disabled. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "SysMain preloads likely-used apps into RAM ahead of demand. On SSDs the latency benefit is minimal and the background I/O can be disruptive. On HDDs it may noticeably improve launch times.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Tailored Experiences",
@@ -1033,10 +1494,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Uses your diagnostic data to show personalized tips, ads, and recommendations from Microsoft. Disabling opts you out.",
+      "WhyThisMatters": "Uses diagnostic data to show Microsoft-curated tips, ads, and suggestions inside Windows. Disabling opts out of this personalization.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Account Info",
@@ -1067,10 +1534,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can access your account name, picture, and other account information.",
+      "WhyThisMatters": "Controls whether UWP apps can read your account name and profile picture. Disable if you do not want apps to identify your account details.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Calendar",
@@ -1101,10 +1574,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can read and write to your calendar data.",
+      "WhyThisMatters": "Controls whether UWP apps can read or write calendar entries. Disable if calendar app integration is not needed.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Call History",
@@ -1135,10 +1614,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can read your call history.",
+      "WhyThisMatters": "Controls whether UWP apps can read your call log. Relevant on Windows Mobile; on desktop this is typically unused.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Contacts",
@@ -1172,7 +1657,13 @@
       "WhyThisMatters": "Controls whether UWP apps can access your contacts list.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Diagnostic Info",
@@ -1203,10 +1694,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can collect diagnostic information about your device and its state.",
+      "WhyThisMatters": "Controls whether UWP apps can query device diagnostic information such as battery level, hardware specs, and app list.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Email",
@@ -1237,10 +1734,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can read and send email on your behalf.",
+      "WhyThisMatters": "Controls whether UWP apps can read and compose email on your behalf.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP File System",
@@ -1272,10 +1775,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can access files anywhere on your file system beyond their own app folders. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Controls whether UWP apps can access arbitrary file system locations outside their own app container. Disabling restricts UWP apps to their sandboxed storage only.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Messaging",
@@ -1306,10 +1815,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can read and send text messages.",
+      "WhyThisMatters": "Controls whether UWP apps can send and read SMS and MMS messages.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Notifications",
@@ -1340,10 +1855,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can send notifications to the Windows notification center.",
+      "WhyThisMatters": "Controls whether UWP apps can push notifications to the Action Center.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Other Devices",
@@ -1374,10 +1895,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can access other paired devices not covered by more specific categories.",
+      "WhyThisMatters": "Controls whether UWP apps can communicate with paired devices not covered by more specific permission categories.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Phone Calls",
@@ -1408,10 +1935,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can make and manage phone calls.",
+      "WhyThisMatters": "Controls whether UWP apps can initiate and manage phone calls.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Radios (Bluetooth)",
@@ -1443,10 +1976,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can control Bluetooth and other wireless radio devices.",
+      "WhyThisMatters": "Controls whether UWP apps can enable or disable Bluetooth and other radio devices.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Swap File",
@@ -1478,10 +2017,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "The UWP swap file (swapfile.sys) is used by Windows Store apps for virtual memory paging. Disabling frees disk space if you do not use Store apps. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "The swapfile.sys file provides virtual memory backing for UWP apps. Disabling frees disk space and may reduce paging activity if you have removed all Store apps.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Tasks",
@@ -1512,10 +2057,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can access your task and to-do lists.",
+      "WhyThisMatters": "Controls whether UWP apps can access your task and to-do list data.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "UWP Voice Activation",
@@ -1547,10 +2098,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether UWP apps can be activated using voice commands in the background.",
+      "WhyThisMatters": "Controls whether UWP apps can respond to voice triggers while running in the background. Disabling prevents always-on wake-word listeners.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "WAP Push Messaging",
@@ -1581,10 +2138,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "The WAP Push messaging service receives over-the-air messages from mobile carriers. Rarely needed on a PC not connected to a mobile network.",
+      "WhyThisMatters": "The WAP Push service processes over-the-air provisioning messages from mobile carriers. Essentially unused on PCs not connected to a mobile network.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Web Language Sync",
@@ -1615,10 +2178,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Syncs your preferred language list to a Microsoft server so web content can match your preferences. Disable for more privacy.",
+      "WhyThisMatters": "Syncs your Windows language preference list to Microsoft servers. Disable to prevent this list from leaving the device.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "WiFi Sense",
@@ -1650,10 +2219,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "WiFi Sense can automatically share your WiFi password with your contacts. Disabling prevents this sharing behavior.",
+      "WhyThisMatters": "WiFi Sense can share saved network credentials with your Outlook, Skype, and Facebook contacts so they connect automatically. Disabling prevents any credential sharing.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Windows Error Reporting",
@@ -1684,10 +2259,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "When an application crashes, Windows Error Reporting can send a report to Microsoft. Disabling stops this data from leaving your machine.",
+      "WhyThisMatters": "Sends crash dumps and error reports to Microsoft after application or OS failures. Disabling stops this data from leaving the machine.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     },
     {
       "Name": "Windows Update Auto Downloads",
@@ -1718,10 +2299,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether Windows Update automatically downloads updates in the background. Disabling lets you choose when to download updates. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Controls whether Windows Update downloads updates automatically in the background. Disabling means updates are only downloaded when you manually check.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Privacy and telemetry settings are not available on Windows Server."
+      }
     }
   ]
 }

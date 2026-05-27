@@ -6,7 +6,7 @@ if (Test-Path $uiSubModuleRoot)
 {
     foreach ($subModule in (Get-ChildItem -Path $uiSubModuleRoot -Filter '*.psm1' -File))
     {
-        Import-Module $subModule.FullName -Force -Global
+        Import-Module $subModule.FullName -Force -Global -DisableNameChecking -WarningAction SilentlyContinue
     }
 }
 
@@ -34,6 +34,7 @@ if (Test-Path $uiSubModuleRoot)
     .NOTES
     Current user
 #>
+
 function ClearRecentFiles
 {
 	param
@@ -64,7 +65,10 @@ function ClearRecentFiles
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "ClearRecentDocsOnExit" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" `
+					-Name "ClearRecentDocsOnExit" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -116,6 +120,7 @@ function ClearRecentFiles
     .NOTES
     Current user
 #>
+
 function RecentFiles
 {
 	param
@@ -164,7 +169,10 @@ function RecentFiles
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoRecentDocsHistory" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" `
+					-Name "NoRecentDocsHistory" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -180,6 +188,11 @@ function RecentFiles
 	.SYNOPSIS
 	Show me suggested content in the Settings app
 
+
+
+.DESCRIPTION
+
+Shows me suggested content in the Settings app from Baseline's GUI flow.
 	.PARAMETER Hide
 	Hide from me suggested content in the Settings app
 
@@ -222,9 +235,18 @@ function SettingsSuggestedContent
 			LogInfo "Disabling suggested content in the Settings app"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-338393Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-353694Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-353696Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-338393Enabled" `
+					-Value 0 `
+					-Type DWord
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-353694Enabled" `
+					-Value 0 `
+					-Type DWord
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-353696Enabled" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -239,9 +261,18 @@ function SettingsSuggestedContent
 			LogInfo "Enabling suggested content in the Settings app"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-338393Enabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-353694Enabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-353696Enabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-338393Enabled" `
+					-Value 1 `
+					-Type DWord
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-353694Enabled" `
+					-Value 1 `
+					-Type DWord
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-353696Enabled" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -257,6 +288,11 @@ function SettingsSuggestedContent
 	.SYNOPSIS
 	Ways to get the most out of Windows and finish setting up this device
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for ways to get the most out of Windows and finish setting up this device.
 	.PARAMETER Disable
 	Do not suggest ways to get the most out of Windows and finish setting up this device
 
@@ -304,7 +340,10 @@ function WhatsNewInWindows
 			LogInfo 'Disabling "suggest ways to get the most out of Windows and finish setting up this device"'
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement -Name ScoobeSystemSettingEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" `
+					-Name "ScoobeSystemSettingEnabled" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -319,7 +358,10 @@ function WhatsNewInWindows
 			LogInfo 'Enabling "suggest ways to get the most out of Windows and finish setting up this device"'
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement -Name ScoobeSystemSettingEnabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement" `
+					-Name "ScoobeSystemSettingEnabled" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -335,6 +377,11 @@ function WhatsNewInWindows
 	.SYNOPSIS
 	Getting tip and suggestions when I use Windows
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for getting tip and suggestions when I use Windows.
 	.PARAMETER Enable
 	Get tip and suggestions when using Windows (default value)
 
@@ -381,7 +428,10 @@ function WindowsTips
 			LogInfo "Enabling tip and suggestions when I use Windows"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-338389Enabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-338389Enabled" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -396,7 +446,10 @@ function WindowsTips
 			LogInfo "Disabling tip and suggestions when I use Windows"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-338389Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-338389Enabled" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -412,6 +465,11 @@ function WindowsTips
 	.SYNOPSIS
 	The Windows welcome experiences after updates and occasionally when I sign in to highlight what's new and suggested
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the Windows welcome experiences after updates and occasionally when I sign in to highlight what's new and suggested.
 	.PARAMETER Hide
 	Hide the Windows welcome experiences after updates and occasionally when I sign in to highlight what's new and suggested
 
@@ -454,7 +512,10 @@ function WindowsWelcomeExperience
 			LogInfo "Enabling Windows welcome experience"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-310093Enabled -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-310093Enabled" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -469,7 +530,10 @@ function WindowsWelcomeExperience
 			LogInfo "Disabling Windows welcome experience"
 			try
 			{
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SubscribedContent-310093Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
+					-Name "SubscribedContent-310093Enabled" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -485,6 +549,11 @@ function WindowsWelcomeExperience
 	.SYNOPSIS
 	Notification area tray icons visibility in Windows
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for notification area tray icons visibility in Windows.
 	.PARAMETER Enable
 	Always show all notification area tray icons
 
@@ -530,7 +599,10 @@ function TrayIcons
 				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoAutoTrayNotify" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" `
+					-Name "NoAutoTrayNotify" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -564,6 +636,11 @@ function TrayIcons
 	.SYNOPSIS
 	Allow or prevent changing Windows sound scheme
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for allow or prevent changing Windows sound scheme.
 	.PARAMETER Enable
 	Allow changing Windows sound scheme (default value)
 
@@ -627,7 +704,10 @@ function ChangingSoundScheme
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoChangingSoundScheme" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" `
+					-Name "NoChangingSoundScheme" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -638,5 +718,14 @@ function ChangingSoundScheme
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'ChangingSoundScheme',
+    'ClearRecentFiles',
+    'RecentFiles',
+    'SettingsSuggestedContent',
+    'TrayIcons',
+    'WhatsNewInWindows',
+    'WindowsTips',
+    'WindowsWelcomeExperience'
+)
+Export-ModuleMember -Function $ExportedFunctions

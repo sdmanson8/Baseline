@@ -1,18 +1,6 @@
-# Scenario Mode helper slice for Baseline.
-# Extracted from Manifest.Helpers.ps1 - contains scenario profile definitions,
-# plan building, and command list generation.
-#
-# Dependencies (from Manifest.Helpers.ps1, loaded first):
-#   Get-TweakManifestEntryValue, Import-TweakManifestFromData,
-#   Get-ManifestEntryByFunction, Get-TweakManifestDefaultCommand
-#
-# --- Scenario expansion policy ---
-# Scenario modes are SEPARATE from the preset ladder (Minimal/Basic/Balanced/Advanced).
-# They are workflow-driven profiles, not risk-tiered presets.
-#
-# Before adding a new scenario profile:
-#   1. It must have a clear, distinct purpose that presets do not already cover
-#   2. Its function list must be small, focused, and manually reviewed
+# Scenario mode helpers for Baseline.
+# Keep scenario workflows separate from preset tiers and build command plans for
+# focused workflows.
 #   3. All included functions must have safe defaults (no high-risk-by-default)
 #   4. It must preview clearly - each entry needs ReasonIncluded text
 #   5. It must not silently change behavior; recommendations only in v1
@@ -21,7 +9,7 @@
 #   1. The function must already exist in the manifest with complete metadata
 #   2. It must align with the profile's stated purpose (Summary field)
 #   3. It must be low-risk or have Direct recovery level
-#   4. Update the ValidateSet in Get-ScenarioProfilePlan and Baseline.ps1 if adding profiles
+#   4. Update the ValidateSet in Get-ScenarioProfilePlan and Bootstrap/Baseline.ps1 if adding profiles
 #
 # --- Design note ---
 # Scenario profiles are intentionally defined inline (not loaded from JSON) because:
@@ -30,6 +18,10 @@
 #   - Inline definitions keep the safety-review audit trail in source control
 # If the number of profiles grows beyond 5, consider migrating to a validated
 # JSON data file (similar to GameMode profiles) with schema enforcement.
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-ScenarioProfileDefinitions
 {
@@ -42,7 +34,6 @@ function Get-ScenarioProfileDefinitions
 			Functions = @(
 				'DefaultTerminalApp'
 				'Win32LongPathLimit'
-				'NTFSLongPaths'
 				'TaskbarEndTask'
 				'FileExtensions'
 				'UpdateMicrosoftProducts'
@@ -64,7 +55,6 @@ function Get-ScenarioProfileDefinitions
 				'LanguageListAccess'
 				'TailoredExperiences'
 				'SharedExperiences'
-				'Powershell7Telemetry'
 				'DNSoverHTTPS'
 				'DeliveryOptimization'
 				'LockWidgets'
@@ -88,6 +78,10 @@ function Get-ScenarioProfileDefinitions
 	)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Resolve-ScenarioProfileDefinition
 {
 	<# .SYNOPSIS Searches for and returns a scenario profile definition by name. #>
@@ -110,6 +104,10 @@ function Resolve-ScenarioProfileDefinition
 
 	return $null
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-ScenarioProfileValidationIssues
 {
@@ -188,6 +186,10 @@ function Get-ScenarioProfileValidationIssues
 	return @($issues)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-ScenarioProfilePlan
 {
 	<# .SYNOPSIS Builds the execution plan with metadata for a scenario profile. #>
@@ -252,9 +254,13 @@ function Get-ScenarioProfilePlan
 	return @($plan)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-ScenarioProfileCommandList
 {
-	<# .SYNOPSIS Extracts the command list from a scenario profile plan. #>
+	<# .SYNOPSIS Reads the command list from a scenario profile plan. #>
 	param (
 		[array]$Manifest,
 		[ValidateSet('Workstation', 'Privacy', 'Recovery')]

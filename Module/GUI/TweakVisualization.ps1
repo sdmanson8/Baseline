@@ -1,5 +1,9 @@
 # Tweak visualization helpers: visual metadata, chip panels, section headers, caution sections, execution log, file-save dialog
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-TweakVisualMetadata
 	{
 		param (
@@ -14,82 +18,112 @@
 		$isRemoval = Test-TweakRemovalOperation -Tweak $Tweak
 		$isPackageOperation = Test-TweakPackageOperation -Tweak $Tweak
 
-		$typeLabel = if ($isPackageOperation)
+		$typeKey = if ($isPackageOperation)
 		{
 			switch ($typeKind)
 			{
-				'Action' { 'Package / app setup' }
-				default { 'Package / app change' }
+				'Action' { 'PackageSetup' }
+				default { 'PackageChange' }
 			}
 		}
-		else
-		{
-			switch ($typeKind)
+			else
 			{
-				'Toggle' { 'Toggle' }
-				'Choice' { if ($isRemoval) { 'Uninstall / Remove' } else { 'Choice' } }
-				'Action' { if ($isRemoval) { 'Uninstall / Remove' } else { 'Action' } }
-				default { if ($isRemoval) { 'Uninstall / Remove' } else { $typeKind } }
+				switch ($typeKind)
+				{
+					'Toggle' { 'Toggle' }
+					'Choice' { if ($isRemoval) { 'Uninstall' } else { 'Choice' } }
+					'NumericRange' { if ($isRemoval) { 'Uninstall' } else { 'NumericRange' } }
+					'Date' { 'Date' }
+					'Action' { if ($isRemoval) { 'Uninstall' } else { 'Action' } }
+					default { if ($isRemoval) { 'Uninstall' } else { 'Other' } }
+				}
+			}
+		$typeLabel = switch ($typeKey)
+		{
+			'PackageSetup' { Get-UxLocalizedString -Key 'GuiTweakTypePackageSetup' -Fallback 'Package / app setup' }
+			'PackageChange' { Get-UxLocalizedString -Key 'GuiTweakTypePackageChange' -Fallback 'Package / app change' }
+			'Uninstall' { Get-UxLocalizedString -Key 'GuiTweakTypeUninstall' -Fallback 'Uninstall / Remove' }
+				'Toggle' { Get-UxLocalizedString -Key 'GuiTweakTypeToggle' -Fallback 'Toggle' }
+				'Choice' { Get-UxLocalizedString -Key 'GuiTweakTypeChoice' -Fallback 'Choice' }
+				'NumericRange' { Get-UxLocalizedString -Key 'GuiTweakTypeNumericRange' -Fallback 'Numeric range' }
+				'Date' { Get-UxLocalizedString -Key 'GuiTweakTypeDate' -Fallback 'Date' }
+				'Action' { Get-UxLocalizedString -Key 'GuiTweakTypeAction' -Fallback 'Action' }
+				default { $typeKind }
+			}
+
+		$typeTone = switch ($typeKey)
+		{
+			'PackageSetup' { if ([string]$Tweak.Risk -eq 'High') { 'Danger' } else { 'Caution' } }
+			'PackageChange' { if ($isRemoval -or [string]$Tweak.Risk -eq 'High') { 'Danger' } else { 'Caution' } }
+			'Uninstall' { 'Danger' }
+				'Toggle' { 'Success' }
+				'Choice' { 'Primary' }
+				'NumericRange' { 'Primary' }
+				'Date' { 'Primary' }
+				'Action' { 'Muted' }
+				default { 'Muted' }
+			}
+		$typeBadgeLabel = switch ($typeKey)
+		{
+			'PackageSetup' { Get-UxLocalizedString -Key 'GuiTweakBadgePackageSetup' -Fallback 'Package setup' }
+			'PackageChange' { Get-UxLocalizedString -Key 'GuiTweakBadgePackageChange' -Fallback 'Package change' }
+				'Toggle' { Get-UxLocalizedString -Key 'GuiTweakBadgeToggle' -Fallback 'Toggle setting' }
+				'Choice' { Get-UxLocalizedString -Key 'GuiTweakBadgeChoice' -Fallback 'Choice option' }
+				'NumericRange' { Get-UxLocalizedString -Key 'GuiTweakBadgeNumericRange' -Fallback 'Numeric range' }
+				'Date' { Get-UxLocalizedString -Key 'GuiTweakBadgeDate' -Fallback 'Date control' }
+				'Action' { Get-UxLocalizedString -Key 'GuiTweakBadgeAction' -Fallback 'One-time action' }
+				'Uninstall' { Get-UxLocalizedString -Key 'GuiTweakBadgeUninstall' -Fallback 'Remove / uninstall' }
+				default { $typeLabel }
+		}
+
+		if ([string]::IsNullOrWhiteSpace([string]$typeLabel))
+		{
+			$typeLabel = if (-not [string]::IsNullOrWhiteSpace([string]$typeBadgeLabel))
+			{
+				[string]$typeBadgeLabel
+			}
+			elseif (-not [string]::IsNullOrWhiteSpace([string]$typeKind))
+			{
+				[string]$typeKind
+			}
+			else
+			{
+				'Numeric range'
 			}
 		}
 
-		$typeTone = switch ($typeLabel)
+		if ([string]::IsNullOrWhiteSpace([string]$typeBadgeLabel))
 		{
-			'Package / app setup' { if ([string]$Tweak.Risk -eq 'High') { 'Danger' } else { 'Caution' } }
-			'Package / app change' { if ($isRemoval -or [string]$Tweak.Risk -eq 'High') { 'Danger' } else { 'Caution' } }
-			'Uninstall / Remove' { 'Danger' }
-			'Toggle' { 'Success' }
-			'Choice' { 'Primary' }
-			'Action' { 'Muted' }
-			default { 'Muted' }
-		}
-		$typeBadgeLabel = switch ($typeLabel)
-		{
-			'Package / app setup' { 'Package setup' }
-			'Package / app change' { 'Package change' }
-			'Toggle' { 'Toggle setting' }
-			'Choice' { 'Choice option' }
-			'Action' { 'One-time action' }
-			'Uninstall / Remove' { 'Remove / uninstall' }
-			default { $typeLabel }
+			$typeBadgeLabel = $typeLabel
 		}
 
 		$stateLabel = $null
 		$stateTone = 'Muted'
 		$stateDetail = $null
 		$matchesDesired = $false
+		$defaultValueText = $null
+		$detectedState = $null
+		$goalState = $null
+		$isSelected = $false
 
 		switch ($typeKind)
 		{
 			'Toggle'
 			{
-				$defaultOn = if (Test-GuiObjectField -Object $Tweak -FieldName 'Default') { [bool](Get-GuiObjectField -Object $Tweak -FieldName 'Default') } else { $false }
-				$currentOn = if (Test-GuiObjectField -Object $source -FieldName 'IsChecked') { [bool](Get-GuiObjectField -Object $source -FieldName 'IsChecked') } elseif (Test-GuiObjectField -Object $source -FieldName 'CurrentValue') { [bool](Get-GuiObjectField -Object $source -FieldName 'CurrentValue') } else { $defaultOn }
-
-				if ($currentOn -eq $defaultOn)
-				{
-					$stateLabel = 'Already set'
-					$stateTone = 'Muted'
-					$matchesDesired = $true
-					$stateDetail = 'Already set to the manifest default.'
-				}
-				elseif ($currentOn)
-				{
-					$stateLabel = 'Enabled'
-					$stateTone = 'Success'
-					$stateDetail = 'Enabled in the current selection.'
-				}
-				else
-				{
-					$stateLabel = 'Disabled'
-					$stateTone = 'Muted'
-					$stateDetail = 'Disabled in the current selection.'
-				}
+				$toggleDisplay = Get-GuiToggleDisplayState -Tweak $Tweak -StateSource $source
+				$stateLabel = [string]$toggleDisplay.StateLabel
+				$stateTone = [string]$toggleDisplay.StateTone
+				$matchesDesired = [bool]$toggleDisplay.MatchesDesired
+				$stateDetail = [string]$toggleDisplay.StateDetail
+				$detectedState = $toggleDisplay.DetectedState
+				$goalState = [bool]$toggleDisplay.GoalState
+				$isSelected = [bool]$toggleDisplay.IsSelected
+				$defaultValueText = if ($goalState) { Get-UxLocalizedString -Key 'GuiTweakDefaultEnabled' -Fallback 'Enabled' } else { Get-UxLocalizedString -Key 'GuiTweakDefaultDisabled' -Fallback 'Disabled' }
 			}
-			'Choice'
-			{
-				$displayOpts = if ($Tweak.DisplayOptions) { @($Tweak.DisplayOptions) } else { @($Tweak.Options) }
-				$selectedIndex = if (Test-GuiObjectField -Object $source -FieldName 'SelectedIndex') { [int](Get-GuiObjectField -Object $source -FieldName 'SelectedIndex') } else { -1 }
+				'Choice'
+				{
+					$displayOpts = if ($Tweak.DisplayOptions) { @($Tweak.DisplayOptions) } else { @($Tweak.Options) }
+					$selectedIndex = if (Test-GuiObjectField -Object $source -FieldName 'SelectedIndex') { [int](Get-GuiObjectField -Object $source -FieldName 'SelectedIndex') } else { -1 }
 				$selectedValue = if ($selectedIndex -ge 0 -and $selectedIndex -lt $displayOpts.Count) { [string]$displayOpts[$selectedIndex] } else { $null }
 				$defaultIndex = -1
 				if ((Test-GuiObjectField -Object $Tweak -FieldName 'Default') -and $Tweak.Options)
@@ -100,23 +134,144 @@
 
 				if ($selectedIndex -lt 0)
 				{
-					$stateLabel = 'Already set'
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateAlreadySet' -Fallback 'Already set'
 					$stateTone = 'Muted'
 					$matchesDesired = $true
-					$stateDetail = 'No explicit choice selected.'
+					$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailNoChoice' -Fallback 'No explicit choice selected.'
 				}
 				elseif (($defaultIndex -ge 0 -and $selectedIndex -eq $defaultIndex) -or ([string]$selectedValue -eq [string]$defaultValue))
 				{
-					$stateLabel = 'Already set'
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateAlreadySet' -Fallback 'Already set'
 					$stateTone = 'Muted'
 					$matchesDesired = $true
-					$stateDetail = if ($selectedValue) { "Already set to the manifest default: $selectedValue." } else { 'Already set to the manifest default.' }
+					$stateDetail = if ($selectedValue) { (Get-UxLocalizedString -Key 'GuiTweakStateDetailAlreadySetValue' -Fallback 'Already set to the manifest default: {0}.') -f $selectedValue } else { Get-UxLocalizedString -Key 'GuiTweakStateDetailAlreadySet' -Fallback 'Already set to the manifest default.' }
 				}
 				else
 				{
-					$stateLabel = 'Custom'
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateCustom' -Fallback 'Custom'
 					$stateTone = 'Primary'
-					$stateDetail = if ($selectedValue) { "Current choice: $selectedValue." } else { 'A non-default choice is selected.' }
+						$stateDetail = if ($selectedValue) { (Get-UxLocalizedString -Key 'GuiTweakStateDetailCurrentChoice' -Fallback 'Current choice: {0}.') -f $selectedValue } else { Get-UxLocalizedString -Key 'GuiTweakStateDetailNonDefault' -Fallback 'A non-default choice is selected.' }
+					}
+				$defaultValueText = if (-not [string]::IsNullOrWhiteSpace([string]$defaultValue)) { [string]$defaultValue } else { Get-UxLocalizedString -Key 'GuiTweakDefaultNoSelection' -Fallback 'No selection' }
+				}
+				'NumericRange'
+				{
+					$numericRange = if (Test-GuiObjectField -Object $Tweak -FieldName 'NumericRange') { Get-GuiObjectField -Object $Tweak -FieldName 'NumericRange' } else { $null }
+					$defaultSource = $null
+					if ((Test-GuiObjectField -Object $Tweak -FieldName 'Default'))
+					{
+						$defaultSource = Get-GuiObjectField -Object $Tweak -FieldName 'Default'
+					}
+					elseif ((Test-GuiObjectField -Object $Tweak -FieldName 'WinDefault'))
+					{
+						$defaultSource = Get-GuiObjectField -Object $Tweak -FieldName 'WinDefault'
+					}
+
+					$explicitSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$Tweak.Function)
+					$selected = $false
+					if ((Test-GuiObjectField -Object $source -FieldName 'IsChecked'))
+					{
+						$selected = [bool]$source.IsChecked
+					}
+					elseif ($explicitSelection -and [string]$explicitSelection.Type -eq 'NumericRange')
+					{
+						$selected = $true
+					}
+					elseif ((Test-GuiObjectField -Object $source -FieldName 'ACValue') -or (Test-GuiObjectField -Object $source -FieldName 'DCValue') -or (Test-GuiObjectField -Object $source -FieldName 'NumericValue') -or (Test-GuiObjectField -Object $source -FieldName 'Value'))
+					{
+						$selected = $true
+					}
+
+					$currentValueSource = if ($explicitSelection -and [string]$explicitSelection.Type -eq 'NumericRange') { $explicitSelection } else { $source }
+					$currentAC = Get-GuiNumericRangeChannelValue -Value $currentValueSource -Channel 'AC' -NumericRange $numericRange
+					$currentDC = Get-GuiNumericRangeChannelValue -Value $currentValueSource -Channel 'DC' -NumericRange $numericRange
+					$defaultAC = if ($null -ne $defaultSource) { Get-GuiNumericRangeChannelValue -Value $defaultSource -Channel 'AC' -NumericRange $numericRange } else { $null }
+					$defaultDC = if ($null -ne $defaultSource) { Get-GuiNumericRangeChannelValue -Value $defaultSource -Channel 'DC' -NumericRange $numericRange } else { $null }
+					$currentText = if ($null -ne $currentAC -or $null -ne $currentDC) { Format-GuiPowerSchemeValueText -Value ([pscustomobject]@{ ACValue = $currentAC; DCValue = $currentDC }) -NumericRange $numericRange } else { $null }
+					$defaultText = if ($null -ne $defaultAC -or $null -ne $defaultDC) { Format-GuiPowerSchemeValueText -Value ([pscustomobject]@{ ACValue = $defaultAC; DCValue = $defaultDC }) -NumericRange $numericRange } else { $null }
+
+					if (-not $selected)
+					{
+						$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateDisabled' -Fallback 'Disabled'
+						$stateTone = 'Muted'
+						$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailDisabled' -Fallback 'Disabled in the current selection.'
+					}
+					elseif ($null -ne $currentText -and $null -ne $defaultText -and [string]$currentText -eq [string]$defaultText)
+					{
+						$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateAlreadySet' -Fallback 'Already set'
+						$stateTone = 'Muted'
+						$matchesDesired = $true
+						$stateDetail = (Get-UxLocalizedString -Key 'GuiTweakStateDetailAlreadySetValue' -Fallback 'Already set to the manifest default: {0}.') -f $currentText
+					}
+					else
+					{
+						$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateCustom' -Fallback 'Custom'
+						$stateTone = 'Primary'
+						if ($null -ne $currentText)
+						{
+							$stateDetail = (Get-UxLocalizedString -Key 'GuiTweakStateDetailCurrentChoice' -Fallback 'Current choice: {0}.') -f $currentText
+						}
+						else
+						{
+							$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailNonDefault' -Fallback 'A custom numeric range is selected.'
+						}
+					}
+					$defaultValueText = if (-not [string]::IsNullOrWhiteSpace([string]$defaultText)) { [string]$defaultText } else { Get-UxLocalizedString -Key 'GuiTweakDefaultNoSelection' -Fallback 'No selection' }
+				}
+				'Date'
+				{
+					$defaultRun = if (Test-GuiObjectField -Object $Tweak -FieldName 'Default') { [bool](Get-GuiObjectField -Object $Tweak -FieldName 'Default') } else { $false }
+					$currentRun = $false
+				$currentDate = $null
+				if ((Test-GuiObjectField -Object $source -FieldName 'SelectedDate') -and $source.SelectedDate)
+				{
+					$currentRun = $true
+					$currentDate = ([datetime]$source.SelectedDate).ToString('yyyy-MM-dd')
+				}
+				elseif (Test-GuiObjectField -Object $source -FieldName 'IsChecked')
+				{
+					$currentRun = [bool]$source.IsChecked
+				}
+				$explicitSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$Tweak.Function)
+				if ($explicitSelection -and [string]$explicitSelection.Type -eq 'Date')
+				{
+					if ((Test-GuiObjectField -Object $explicitSelection -FieldName 'Run'))
+					{
+						$currentRun = [bool]$explicitSelection.Run
+					}
+					if ((Test-GuiObjectField -Object $explicitSelection -FieldName 'Value') -and -not [string]::IsNullOrWhiteSpace([string]$explicitSelection.Value))
+					{
+						$currentDate = [string]$explicitSelection.Value
+					}
+				}
+
+				if ($currentRun -eq $defaultRun -and (([string]::IsNullOrWhiteSpace($currentDate) -and [string]::IsNullOrWhiteSpace([string](Get-GuiObjectField -Object $Tweak -FieldName 'DefaultDate'))) -or ([string]$currentDate -eq [string](Get-GuiObjectField -Object $Tweak -FieldName 'DefaultDate'))))
+				{
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateAlreadySet' -Fallback 'Already set'
+					$stateTone = 'Muted'
+					$matchesDesired = $true
+					$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailAlreadySet' -Fallback 'Already set to the manifest default.'
+				}
+				elseif ($currentRun)
+				{
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateEnabled' -Fallback 'Enabled'
+					$stateTone = 'Success'
+					$stateDetail = if (-not [string]::IsNullOrWhiteSpace($currentDate)) { (Get-UxLocalizedString -Key 'GuiTweakStateDetailCurrentChoice' -Fallback 'Current choice: {0}.') -f $currentDate } else { 'Pause start date selected.' }
+				}
+				else
+				{
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateDisabled' -Fallback 'Disabled'
+					$stateTone = 'Muted'
+					$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailDisabled' -Fallback 'Disabled in the current selection.'
+				}
+				$defaultValueText = if ($defaultRun)
+				{
+					$defaultDateText = if (Test-GuiObjectField -Object $Tweak -FieldName 'DefaultDate') { [string](Get-GuiObjectField -Object $Tweak -FieldName 'DefaultDate') } elseif (Test-GuiObjectField -Object $Tweak -FieldName 'DefaultValue') { [string](Get-GuiObjectField -Object $Tweak -FieldName 'DefaultValue') } elseif (Test-GuiObjectField -Object $Tweak -FieldName 'Value') { [string](Get-GuiObjectField -Object $Tweak -FieldName 'Value') } else { $null }
+					if (-not [string]::IsNullOrWhiteSpace($defaultDateText)) { $defaultDateText } else { Get-UxLocalizedString -Key 'GuiTweakDefaultEnabled' -Fallback 'Enabled' }
+				}
+				else
+				{
+					Get-UxLocalizedString -Key 'GuiTweakDefaultDisabled' -Fallback 'Disabled'
 				}
 			}
 			'Action'
@@ -124,16 +279,17 @@
 				$isSelected = if (Test-GuiObjectField -Object $source -FieldName 'IsChecked') { [bool](Get-GuiObjectField -Object $source -FieldName 'IsChecked') } else { $false }
 				if ($isSelected)
 				{
-					$stateLabel = 'Queued'
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateQueued' -Fallback 'Queued'
 					$stateTone = 'Primary'
-					$stateDetail = ('This one-time action will run when you click {0}.' -f (Get-UxRunActionLabel))
+					$stateDetail = (Get-UxLocalizedString -Key 'GuiTweakStateDetailQueued' -Fallback 'This one-time action will run when you click {0}.') -f (Get-UxRunActionLabel)
 				}
 				else
 				{
-					$stateLabel = 'Idle'
+					$stateLabel = Get-UxLocalizedString -Key 'GuiTweakStateIdle' -Fallback 'Idle'
 					$stateTone = 'Muted'
-					$stateDetail = 'This one-time action is not selected.'
+					$stateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailIdle' -Fallback 'This one-time action is not selected.'
 				}
+				$defaultValueText = Get-UxLocalizedString -Key 'GuiTweakDefaultNotSelected' -Fallback 'Not selected'
 			}
 		}
 
@@ -154,7 +310,7 @@
 			[void]$scenarioTags.Add($formattedTag)
 		}
 
-		$scenarioSignals = @(Get-TweakScenarioSignals -Tweak $Tweak)
+		$scenarioSignals = @(Get-TweakScenarioSignals -Tweak $Tweak -IsRemoval $isRemoval)
 		foreach ($signal in $scenarioSignals)
 		{
 			if ([string]::IsNullOrWhiteSpace([string]$signal)) { continue }
@@ -164,7 +320,7 @@
 
 		$focusGroup = Get-TweakFocusGroup -Tweak $Tweak -ScenarioSignals $scenarioSignals
 		$reasonIncluded = Get-TweakInclusionReason -Tweak $Tweak -FocusGroup $focusGroup -ScenarioSignals $scenarioSignals
-		$blastRadius = Get-TweakBlastRadiusText -Tweak $Tweak -TypeLabel $typeLabel -ScenarioTags @($scenarioTags) -MatchesDesired $matchesDesired
+		$blastRadius = Get-TweakBlastRadiusText -Tweak $Tweak -TypeLabel $typeLabel -ScenarioTags @($scenarioTags) -MatchesDesired $matchesDesired -IsRemoval $isRemoval -IsPackageOperation $isPackageOperation
 
 		return [pscustomobject]@{
 			TypeKind = $typeKind
@@ -174,7 +330,11 @@
 			StateLabel = $stateLabel
 			StateTone = $stateTone
 			StateDetail = $stateDetail
+			DefaultValueText = $defaultValueText
 			MatchesDesired = $matchesDesired
+			DetectedState = $detectedState
+			GoalState = $goalState
+			IsSelected = $isSelected
 			ScenarioTags = @($scenarioTags)
 			FocusGroup = $focusGroup
 			ReasonIncluded = $reasonIncluded
@@ -184,6 +344,10 @@
 			TroubleshootingOnly = if (Test-GuiObjectField -Object $Tweak -FieldName 'TroubleshootingOnly') { [bool](Get-GuiObjectField -Object $Tweak -FieldName 'TroubleshootingOnly') } else { $false }
 		}
 	}
+
+		<#
+		    .SYNOPSIS
+		#>
 
 		function New-TweakMetadataChipPanel
 		{
@@ -214,7 +378,7 @@
 			[void]$chipItems.Add([pscustomobject]@{
 				Label = $typeBadgeText
 				Tone = if ((Test-GuiObjectField -Object $Metadata -FieldName 'TypeTone') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata.TypeTone)) { [string]$Metadata.TypeTone } else { 'Muted' }
-				ToolTip = 'Type of tweak'
+				ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipType' -Fallback 'Type of tweak'
 			})
 		}
 
@@ -223,25 +387,25 @@
 			[void]$chipItems.Add([pscustomobject]@{
 				Label = [string]$Metadata.StateLabel
 				Tone = if ((Test-GuiObjectField -Object $Metadata -FieldName 'StateTone') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata.StateTone)) { [string]$Metadata.StateTone } else { 'Muted' }
-				ToolTip = if ((Test-GuiObjectField -Object $Metadata -FieldName 'StateDetail') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata.StateDetail)) { [string]$Metadata.StateDetail } else { 'Current state in the GUI' }
+				ToolTip = if ((Test-GuiObjectField -Object $Metadata -FieldName 'StateDetail') -and -not [string]::IsNullOrWhiteSpace([string]$Metadata.StateDetail)) { [string]$Metadata.StateDetail } else { Get-UxLocalizedString -Key 'GuiTweakChipTooltipState' -Fallback 'Current state in the GUI' }
 			})
 		}
 
 		if ($IncludeRestart -and (Test-GuiObjectField -Object $Metadata -FieldName 'RequiresRestart') -and [bool]$Metadata.RequiresRestart)
 		{
 			[void]$chipItems.Add([pscustomobject]@{
-				Label = 'Restart required'
+				Label = Get-UxLocalizedString -Key 'GuiTweakChipRestartRequired' -Fallback 'Restart required'
 				Tone = 'Caution'
-				ToolTip = 'This change requires a restart to take effect.'
+				ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipRestart' -Fallback 'This change requires a restart to take effect.'
 			})
 		}
 
 		if ($IncludeRestorable -and (Test-GuiObjectField -Object $Metadata -FieldName 'Restorable') -and $null -ne $Metadata.Restorable -and -not [bool]$Metadata.Restorable)
 		{
 			[void]$chipItems.Add([pscustomobject]@{
-				Label = 'Manual recovery'
+				Label = Get-UxLocalizedString -Key 'GuiTweakChipManualRecovery' -Fallback 'Manual recovery'
 				Tone = 'Danger'
-				ToolTip = 'This change cannot be fully rolled back automatically.'
+				ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipManualRecovery' -Fallback 'This change cannot be fully rolled back automatically.'
 			})
 		}
 
@@ -256,19 +420,27 @@
 				'Manual' { 'Danger'; break }
 				default { 'Muted' }
 				}
+				$localizedRecoveryLabel = switch ($recoveryLevelLabel)
+				{
+					'Direct'       { Get-UxLocalizedString -Key 'GuiRecoveryLevelDirect' -Fallback 'Direct'; break }
+					'DefaultsOnly' { Get-UxLocalizedString -Key 'GuiRecoveryLevelDefaultsOnly' -Fallback 'Defaults Only'; break }
+					'RestorePoint' { Get-UxLocalizedString -Key 'GuiRecoveryLevelRestorePoint' -Fallback 'Restore Point'; break }
+					'Manual'       { Get-UxLocalizedString -Key 'GuiRecoveryLevelManual' -Fallback 'Manual'; break }
+					default        { $recoveryLevelLabel }
+				}
 				[void]$chipItems.Add([pscustomobject]@{
-					Label = $(if ($UseCompactRecoveryLevelLabel) { $recoveryLevelLabel } else { "Recovery: $recoveryLevelLabel" })
+					Label = $(if ($UseCompactRecoveryLevelLabel) { $localizedRecoveryLabel } else { (Get-UxLocalizedString -Key 'GuiTweakChipRecoveryFormat' -Fallback 'Recovery: {0}') -f $localizedRecoveryLabel })
 					Tone = $recoveryTone
-					ToolTip = 'Recommended recovery path for this tweak.'
+					ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipRecovery' -Fallback 'Recommended recovery path for this tweak.'
 				})
 			}
 
 		if ($IncludeTroubleshooting -and (Test-GuiObjectField -Object $Metadata -FieldName 'TroubleshootingOnly') -and [bool]$Metadata.TroubleshootingOnly)
 		{
 			[void]$chipItems.Add([pscustomobject]@{
-				Label = 'Troubleshooting only'
+				Label = Get-UxLocalizedString -Key 'GuiTweakChipTroubleshooting' -Fallback 'Troubleshooting only'
 				Tone = 'Caution'
-				ToolTip = 'Use this only when diagnosing game compatibility, overlay, or display issues.'
+				ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipTroubleshooting' -Fallback 'Use this only when diagnosing game compatibility, overlay, or display issues.'
 			})
 		}
 
@@ -281,15 +453,15 @@
 				[void]$chipItems.Add([pscustomobject]@{
 					Label = [string]$tag
 					Tone = 'Muted'
-					ToolTip = 'Scenario tag'
+					ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipScenarioTag' -Fallback 'Scenario tag'
 				})
 			}
 			if ($scenarioTags.Count -gt $MaxScenarioTags)
 			{
 				[void]$chipItems.Add([pscustomobject]@{
-					Label = "+$($scenarioTags.Count - $MaxScenarioTags) more"
+					Label = (Get-UxLocalizedString -Key 'GuiTweakChipMoreFormat' -Fallback '+{0} more') -f ($scenarioTags.Count - $MaxScenarioTags)
 					Tone = 'Muted'
-					ToolTip = 'Additional scenario tags are present in the manifest.'
+					ToolTip = Get-UxLocalizedString -Key 'GuiTweakChipTooltipMoreTags' -Fallback 'Additional scenario tags are present in the manifest.'
 				})
 			}
 		}
@@ -310,6 +482,10 @@
 
 		return $panel
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function New-SectionHeader
 	{
@@ -359,8 +535,7 @@
 		$textStack.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
 		[System.Windows.Controls.Grid]::SetColumn($textStack, 0)
 
-		$matchWord = if ($MatchCount -eq 1) { 'result' } else { 'results' }
-		$summaryText = "Showing $MatchCount $matchWord for '$Query'"
+		$summaryText = if ($MatchCount -eq 1) { (Get-UxLocalizedString -Key 'GuiTweakSearchResultsSingular' -Fallback "Showing 1 result for '{0}'") -f $Query } else { (Get-UxLocalizedString -Key 'GuiTweakSearchResultsPlural' -Fallback "Showing {0} results for '{1}'") -f $MatchCount, $Query }
 		$searchIconContent = if (Get-Command -Name 'New-GuiLabeledIconContent' -CommandType Function -ErrorAction SilentlyContinue) { New-GuiLabeledIconContent -IconName 'Search' -Text $summaryText -IconSize 16 -Gap 8 -TextFontSize 13 -Foreground ($bc.ConvertFromString('#FFFFFF')) -AllowTextOnlyFallback -Bold } else { $null }
 		if ($searchIconContent)
 		{
@@ -381,17 +556,16 @@
 
 		# "Clear" button to dismiss search results inline.
 		$clearBtn = New-Object System.Windows.Controls.Button
-		$clearIconContent = if (Get-Command -Name 'New-GuiLabeledIconContent' -CommandType Function -ErrorAction SilentlyContinue) { New-GuiLabeledIconContent -IconName 'Clear' -Text 'Clear' -IconSize 14 -Gap 6 -TextFontSize 12 -AllowTextOnlyFallback } else { $null }
-		$clearBtn.Content = if ($clearIconContent) { $clearIconContent } else { 'Clear' }
+		$clearBtnText = Get-UxLocalizedString -Key 'GuiBtnClearSearch' -Fallback 'Clear'
 		$clearBtn.FontSize = 12
 		$clearBtn.FontWeight = [System.Windows.FontWeights]::SemiBold
-		$clearBtn.Foreground = $bc.ConvertFromString($accentBlue)
-		$clearBtn.Background = $bc.ConvertFromString('#FFFFFF')
-		$clearBtn.BorderThickness = [System.Windows.Thickness]::new(0)
 		$clearBtn.Padding = [System.Windows.Thickness]::new(14, 5, 14, 5)
 		$clearBtn.Margin = [System.Windows.Thickness]::new(12, 0, 0, 0)
 		$clearBtn.Cursor = [System.Windows.Input.Cursors]::Hand
 		$clearBtn.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+		Set-ButtonChrome -Button $clearBtn -Variant 'Subtle' -Compact
+		$clearIconContent = if (Get-Command -Name 'New-GuiLabeledIconContent' -CommandType Function -ErrorAction SilentlyContinue) { New-GuiLabeledIconContent -IconName 'Clear' -Text $clearBtnText -IconSize 14 -Gap 6 -TextFontSize 12 -Foreground $clearBtn.Foreground -AllowTextOnlyFallback } else { $null }
+		$clearBtn.Content = if ($clearIconContent) { $clearIconContent } else { $clearBtnText }
 		[System.Windows.Controls.Grid]::SetColumn($clearBtn, 1)
 
 		# When clicked, clear the search text box to dismiss the inline results.
@@ -405,6 +579,10 @@
 		$border.Child = $grid
 		return $border
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function New-CautionSection
 	{
@@ -432,7 +610,8 @@
 		$headerStack.Orientation = 'Vertical'
 		[System.Windows.Controls.Grid]::SetColumn($headerStack, 0)
 
-		$cautionIconContent = if (Get-Command -Name 'New-GuiLabeledIconContent' -CommandType Function -ErrorAction SilentlyContinue) { New-GuiLabeledIconContent -IconName 'Warning' -Text 'CAUTION' -IconSize 14 -Gap 6 -TextFontSize 12 -Foreground (ConvertTo-GuiBrush -Color $Script:CurrentTheme.CautionText -Context 'New-CautionSection/Header') -AllowTextOnlyFallback -Bold } else { $null }
+		$cautionHeaderText = (Get-UxLocalizedString -Key 'GuiTweakCautionHeader' -Fallback 'CAUTION').ToUpper()
+		$cautionIconContent = if (Get-Command -Name 'New-GuiLabeledIconContent' -CommandType Function -ErrorAction SilentlyContinue) { New-GuiLabeledIconContent -IconName 'Warning' -Text $cautionHeaderText -IconSize 14 -Gap 6 -TextFontSize 12 -Foreground (ConvertTo-GuiBrush -Color $Script:CurrentTheme.CautionText -Context 'New-CautionSection/Header') -AllowTextOnlyFallback -Bold } else { $null }
 		if ($cautionIconContent)
 		{
 			[void]($headerStack.Children.Add($cautionIconContent))
@@ -440,14 +619,14 @@
 		else
 		{
 			$header = New-Object System.Windows.Controls.TextBlock
-			$header.Text = "CAUTION"
+			$header.Text = $cautionHeaderText
 			$header.FontSize = 12
 			$header.FontWeight = [System.Windows.FontWeights]::Bold
 			$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.CautionText)
 			[void]($headerStack.Children.Add($header))
 		}
 		$summary = New-Object System.Windows.Controls.TextBlock
-		$summary.Text = "$($CautionTweaks.Count) tweak$(if ($CautionTweaks.Count -eq 1) { '' } else { 's' }) need extra care in this section."
+		$summary.Text = if ($CautionTweaks.Count -eq 1) { Get-UxLocalizedString -Key 'GuiTweakCautionSummarySingular' -Fallback '1 tweak needs extra care in this section.' } else { (Get-UxLocalizedString -Key 'GuiTweakCautionSummaryPlural' -Fallback '{0} tweaks need extra care in this section.') -f $CautionTweaks.Count }
 		$summary.FontSize = 11
 		$summary.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
 		$summary.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
@@ -470,7 +649,7 @@
 
 		foreach ($ct in $CautionTweaks)
 		{
-			$reason = if ($ct.CautionReason) { $ct.CautionReason } else { "This tweak may have unintended side effects. Use with care." }
+			$reason = if ($ct.CautionReason) { $ct.CautionReason } else { Get-UxLocalizedString -Key 'GuiTweakCautionDefaultReason' -Fallback 'This tweak may have unintended side effects. Use with care.' }
 			$item = New-Object System.Windows.Controls.TextBlock
 			$item.TextWrapping = "Wrap"
 			$item.Margin = [System.Windows.Thickness]::new(0, 2, 0, 4)
@@ -479,7 +658,7 @@
 			$bold = New-Object System.Windows.Documents.Run
 			$bold.Text = "$($ct.Name): "
 			$bold.FontWeight = [System.Windows.FontWeights]::SemiBold
-			$bold.Foreground = $bc.ConvertFromString($Script:CurrentTheme.CautionText)
+			$bold.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 			[void]($item.Inlines.Add($bold))
 			$desc = New-Object System.Windows.Documents.Run
 			$desc.Text = $reason
@@ -503,6 +682,10 @@
 		return $border
 	}
 
+		<#
+		    .SYNOPSIS
+		#>
+
 		function Add-ExecutionLogLine
 		{
 		param (
@@ -514,6 +697,19 @@
 
 		$bc = New-SafeBrushConverter -Context 'Add-ExecutionLogLine'
 		$timestamp = Get-Date -Format 'HH:mm:ss'
+		$getLogColor = {
+			param (
+				[string]$ColorName,
+				[string]$FallbackColor
+			)
+
+			if ($Script:CurrentTheme -and $Script:CurrentTheme.ContainsKey($ColorName) -and -not [string]::IsNullOrWhiteSpace([string]$Script:CurrentTheme[$ColorName]))
+			{
+				return [string]$Script:CurrentTheme[$ColorName]
+			}
+
+			return $FallbackColor
+		}.GetNewClosure()
 
 		$para = New-Object System.Windows.Documents.Paragraph
 		$para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 2)
@@ -542,10 +738,11 @@
 			$iconRun.FontSize = 12
 			$logIconColor = switch ($Level.ToUpperInvariant())
 			{
-				'ERROR'   { $Script:CurrentTheme.CautionText }
-				'WARNING' { $Script:CurrentTheme.RiskMediumBadge }
-				'SUCCESS' { $Script:CurrentTheme.LowRiskBadge }
-				default   { $Script:CurrentTheme.TextMuted }
+				'ERROR'   { & $getLogColor -ColorName 'LogError' -FallbackColor $Script:CurrentTheme.CautionText }
+				'WARNING' { & $getLogColor -ColorName 'LogWarning' -FallbackColor $Script:CurrentTheme.RiskMediumBadge }
+				'SUCCESS' { & $getLogColor -ColorName 'LogSuccess' -FallbackColor $Script:CurrentTheme.LowRiskBadge }
+				'DEBUG'   { & $getLogColor -ColorName 'LogDebug' -FallbackColor $Script:CurrentTheme.TextMuted }
+				default   { & $getLogColor -ColorName 'LogInfo' -FallbackColor $Script:CurrentTheme.TextMuted }
 			}
 			$iconRun.Foreground = $bc.ConvertFromString($logIconColor)
 			[void]($para.Inlines.Add($iconRun))
@@ -558,9 +755,12 @@
 		$contentRun.Text = $Text
 		$contentColor = switch ($Level.ToUpperInvariant())
 		{
-			'ERROR'   { $Script:CurrentTheme.CautionText }
-			'WARNING' { $Script:CurrentTheme.RiskMediumBadge }
-			default   { $Script:CurrentTheme.TextPrimary }
+			'ERROR'   { & $getLogColor -ColorName 'LogError' -FallbackColor $Script:CurrentTheme.CautionText }
+			'WARNING' { & $getLogColor -ColorName 'LogWarning' -FallbackColor $Script:CurrentTheme.RiskMediumBadge }
+			'SUCCESS' { & $getLogColor -ColorName 'LogSuccess' -FallbackColor $Script:CurrentTheme.LowRiskBadge }
+			'INFO'    { & $getLogColor -ColorName 'LogInfo' -FallbackColor $Script:CurrentTheme.AccentBlue }
+			'DEBUG'   { & $getLogColor -ColorName 'LogDebug' -FallbackColor $Script:CurrentTheme.TextMuted }
+			default   { & $getLogColor -ColorName 'LogDefault' -FallbackColor $Script:CurrentTheme.TextPrimary }
 		}
 		$contentRun.Foreground = $bc.ConvertFromString($contentColor)
 		[void]($para.Inlines.Add($contentRun))
@@ -574,6 +774,10 @@
 		}
 			$null = Invoke-GuiDispatcherAction -Dispatcher $Form.Dispatcher -PriorityUsage 'RenderRefresh' -Synchronous -Action {}
 		}
+
+		<#
+		    .SYNOPSIS
+		#>
 
 		function Test-ExecutionSkipMessage
 		{
@@ -592,7 +796,8 @@
 			[string]$Title = 'Save File',
 			[string]$Filter = 'All Files (*.*)|*.*',
 			[string]$DefaultExtension = 'json',
-			[string]$FileName = 'Baseline-export.json'
+			[string]$FileName = 'Baseline-export.json',
+			[string]$InitialDirectory
 		)
 
 		$saveDialog = New-Object Microsoft.Win32.SaveFileDialog
@@ -601,7 +806,11 @@
 		$saveDialog.DefaultExt = $DefaultExtension
 		$saveDialog.AddExtension = $true
 		$saveDialog.FileName = $FileName
-		$saveDialog.InitialDirectory = GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Baseline'
+		if ([string]::IsNullOrWhiteSpace($InitialDirectory))
+		{
+			$InitialDirectory = GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Baseline'
+		}
+		$saveDialog.InitialDirectory = $InitialDirectory
 
 		$owner = if ($Script:MainForm) { $Script:MainForm } else { $null }
 		if ($saveDialog.ShowDialog($owner) -eq $true)
@@ -612,3 +821,44 @@
 		return $null
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+	function Show-GuiFolderPickerDialog
+	{
+		param (
+			[string]$Description = 'Select a folder',
+			[string]$InitialDirectory
+		)
+
+		Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+
+		$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+		$folderDialog.Description = $Description
+		$folderDialog.RootFolder = [System.Environment+SpecialFolder]::MyComputer
+		$folderDialog.ShowNewFolderButton = $true
+
+		if ([string]::IsNullOrWhiteSpace($InitialDirectory))
+		{
+			$InitialDirectory = GUICommon\Get-GuiSettingsProfileDirectory -AppName 'Baseline'
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($InitialDirectory) -and (Test-Path -LiteralPath $InitialDirectory))
+		{
+			$folderDialog.SelectedPath = $InitialDirectory
+		}
+
+		try
+		{
+			if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+			{
+				return $folderDialog.SelectedPath
+			}
+		}
+		finally
+		{
+			if ($folderDialog) { $folderDialog.Dispose() }
+		}
+
+		return $null
+	}

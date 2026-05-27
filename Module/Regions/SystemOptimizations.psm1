@@ -1,7 +1,13 @@
-using module ..\Logging.psm1
+﻿using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
 #region Production System Optimizations
+
+<#
+    .SYNOPSIS
+    Gets optimization scratch directory.
+
+    #>
 
 function Get-OptimizationScratchDirectory
 {
@@ -14,6 +20,11 @@ function Get-OptimizationScratchDirectory
 	return $scratchDirectory
 }
 
+<#
+    .SYNOPSIS
+    Gets optimization asset path.
+
+    #>
 function Get-OptimizationAssetPath
 {
 	param(
@@ -37,6 +48,12 @@ function Get-OptimizationAssetPath
 
 	return $null
 }
+
+<#
+    .SYNOPSIS
+    Imports legacy registry asset.
+
+    #>
 
 function Import-LegacyRegistryAsset
 {
@@ -73,7 +90,7 @@ function Import-LegacyRegistryAsset
 			throw "Required asset not found locally: $FileName"
 		}
 
-		Start-Process -FilePath 'regedit.exe' -ArgumentList @('/S', $targetPath) -Wait -WindowStyle Hidden -ErrorAction Stop
+		$null = Invoke-BaselineProcess -FilePath 'regedit.exe' -ArgumentList @('/S', $targetPath) -TimeoutSeconds 300
 		LogInfo "Imported $Description"
 	}
 	finally
@@ -86,6 +103,11 @@ function Import-LegacyRegistryAsset
 .SYNOPSIS
 Apply the legacy system/bootstrap optimizations from the monolithic utility.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for apply the legacy system/bootstrap optimizations from the monolithic utility..
 .EXAMPLE
 Invoke-SystemOptimizations
 #>
@@ -194,7 +216,11 @@ function Invoke-SystemOptimizations
 
 	try
 	{
-		Remove-Item -Path (Join-Path $env:USERPROFILE 'Desktop\Your Phone.lnk') -Force -ErrorAction SilentlyContinue
+		$yourPhoneShortcutPath = Join-Path $env:USERPROFILE 'Desktop\Your Phone.lnk'
+		if (Test-Path -LiteralPath $yourPhoneShortcutPath)
+		{
+			Remove-Item -LiteralPath $yourPhoneShortcutPath -Force -ErrorAction Ignore
+		}
 		LogInfo 'Removed Your Phone desktop shortcut if present'
 	}
 	catch

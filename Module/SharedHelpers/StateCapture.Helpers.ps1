@@ -1,10 +1,55 @@
-# State capture helper slice for Baseline.
+# State capture helpers for Baseline.
 # Provides system state snapshot capture, comparison, and persistence for
 # tweaks tracked by the manifest system.
 #
 # Dependencies (loaded earlier in SharedHelpers.psm1):
 #   Get-TweakManifestEntryValue, Test-TweakManifestEntryField (Manifest.Helpers.ps1)
 #   Get-OSInfo, Get-WindowsVersionData (Environment.Helpers.ps1)
+
+<#
+    .SYNOPSIS
+#>
+
+function ConvertTo-StateCaptureComparableText
+{
+	[CmdletBinding()]
+	param ([object]$Value)
+
+	if ($null -eq $Value)
+	{
+		return ''
+	}
+
+	if ($Value -is [string])
+	{
+		return [string]$Value
+	}
+
+	if ($Value -is [bool] -or $Value -is [ValueType])
+	{
+		return [System.Convert]::ToString($Value, [System.Globalization.CultureInfo]::InvariantCulture)
+	}
+
+	if ($Value -is [System.Collections.IDictionary] -or $Value -is [pscustomobject] -or ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])))
+	{
+		try
+		{
+			return ($Value | ConvertTo-Json -Depth 16 -Compress)
+		}
+		catch
+		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'StateCapture.Helpers.ConvertTo-StateCaptureComparableText:catch39' -Severity Debug }
+
+			return [string]$Value
+		}
+	}
+
+	return [string]$Value
+}
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TweakCurrentStateValue
 {
@@ -46,6 +91,43 @@ function Get-TweakCurrentStateValue
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
+function Invoke-StateCaptureProgressCallback
+{
+	[CmdletBinding()]
+	param (
+		[AllowNull()]
+		[scriptblock]$ProgressCallback,
+
+		[Parameter(Mandatory = $true)]
+		[object]$Progress
+	)
+
+	if ($null -eq $ProgressCallback)
+	{
+		return
+	}
+
+	try
+	{
+		& $ProgressCallback $Progress
+	}
+	catch
+	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			Write-SwallowedException -ErrorRecord $_ -Source 'StateCapture.ProgressCallback'
+		}
+	}
+}
+
+<#
+    .SYNOPSIS
+#>
+
 function New-SystemStateSnapshot
 {
 	<# .SYNOPSIS Captures a full system state snapshot by evaluating Detect scriptblocks across the manifest. #>
@@ -54,13 +136,25 @@ function New-SystemStateSnapshot
 		[Parameter(Mandatory = $true)]
 		[array]$Manifest,
 
-		[string]$CategoryFilter = $null
+		[string]$CategoryFilter = $null,
+
+		[AllowNull()]
+		[scriptblock]$ProgressCallback = $null
 	)
 
 	$entries = [System.Collections.ArrayList]::new()
 	$timestamp = [datetime]::UtcNow.ToString('o')
 
 	$osVersionString = $null
+	Invoke-StateCaptureProgressCallback -ProgressCallback $ProgressCallback -Progress ([pscustomobject]@{
+		Stage    = 'SystemInfo'
+		Index    = 0
+		Total    = 0
+		Name     = 'System information'
+		Function = 'Get-OSInfo'
+		Key      = 'System information|Get-OSInfo'
+		Category = 'System'
+	})
 	try
 	{
 		$osInfo = Get-OSInfo
@@ -71,6 +165,8 @@ function New-SystemStateSnapshot
 	}
 	catch
 	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'StateCapture.Helpers.New-SystemStateSnapshot:catch164' -Severity Debug }
+
 		$osVersionString = $null
 	}
 
@@ -86,10 +182,13 @@ function New-SystemStateSnapshot
 		}
 		catch
 		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'StateCapture.Helpers.New-SystemStateSnapshot:catch179' -Severity Debug }
+
 			$osVersionString = 'Unknown'
 		}
 	}
 
+	$candidateEntries = [System.Collections.ArrayList]::new()
 	foreach ($entry in @($Manifest))
 	{
 		if (-not $entry) { continue }
@@ -110,6 +209,29 @@ function New-SystemStateSnapshot
 		$detectBlock = Get-TweakManifestEntryValue -Entry $entry -FieldName 'Detect'
 		if ($null -eq $detectBlock) { continue }
 
+		[void]$candidateEntries.Add($entry)
+	}
+
+	$entryIndex = 0
+	$totalEntries = [int]$candidateEntries.Count
+	foreach ($entry in @($candidateEntries))
+	{
+		$entryIndex++
+		$functionName = [string](Get-TweakManifestEntryValue -Entry $entry -FieldName 'Function')
+		$entryName    = [string](Get-TweakManifestEntryValue -Entry $entry -FieldName 'Name')
+		$entryCategory = [string](Get-TweakManifestEntryValue -Entry $entry -FieldName 'Category')
+		$entryKey     = '{0}|{1}' -f $entryName, $functionName
+
+		Invoke-StateCaptureProgressCallback -ProgressCallback $ProgressCallback -Progress ([pscustomobject]@{
+			Stage    = 'EntryStart'
+			Index    = $entryIndex
+			Total    = $totalEntries
+			Name     = $entryName
+			Function = $functionName
+			Key      = $entryKey
+			Category = $entryCategory
+		})
+
 		$stateValue = Get-TweakCurrentStateValue -Entry $entry
 		[void]$entries.Add($stateValue)
 	}
@@ -123,6 +245,10 @@ function New-SystemStateSnapshot
 		Entries       = @($entries)
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Compare-SystemStateSnapshots
 {
@@ -195,7 +321,7 @@ function Compare-SystemStateSnapshots
 		}
 		elseif ($null -ne $beforeValue -and $null -ne $afterValue)
 		{
-			$valuesMatch = [string]$beforeValue -eq [string]$afterValue
+			$valuesMatch = (ConvertTo-StateCaptureComparableText -Value $beforeValue) -eq (ConvertTo-StateCaptureComparableText -Value $afterValue)
 		}
 
 		if ($valuesMatch)
@@ -222,6 +348,10 @@ function Compare-SystemStateSnapshots
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Export-SystemStateSnapshot
 {
 	<# .SYNOPSIS Exports a system state snapshot to a JSON file (UTF-8 no BOM). #>
@@ -245,6 +375,10 @@ function Export-SystemStateSnapshot
 	[System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Import-SystemStateSnapshot
 {
 	<# .SYNOPSIS Imports and validates a system state snapshot from a JSON file. #>
@@ -265,7 +399,7 @@ function Import-SystemStateSnapshot
 		throw "Snapshot file is empty: $Path"
 	}
 
-	$snapshot = $rawJson | ConvertFrom-Json -ErrorAction Stop
+	$snapshot = $rawJson | ConvertFrom-BaselineJson -Depth 16 -ErrorAction Stop
 
 	if (-not $snapshot.PSObject.Properties['Schema'] -or [string]$snapshot.Schema -ne 'Baseline.StateSnapshot')
 	{
@@ -279,6 +413,10 @@ function Import-SystemStateSnapshot
 
 	return $snapshot
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Limit-SnapshotDirectory
 {
@@ -311,6 +449,10 @@ function Limit-SnapshotDirectory
 		}
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TweakPlannedStateValue
 {
@@ -368,6 +510,46 @@ function Get-TweakPlannedStateValue
 				PlannedState = $plannedState
 			}
 		}
+		'Date'
+		{
+			$runFlag = $null
+			if (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'Run')
+			{
+				$runFlag = [bool](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'Run')
+			}
+			elseif (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'State')
+			{
+				$runFlag = ([string](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'State') -match '^(?i:on|true|1)$')
+			}
+			elseif (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'IsChecked')
+			{
+				$runFlag = [bool](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'IsChecked')
+			}
+
+			$dateValue = $null
+			foreach ($fieldName in @('Value', 'DateValue', 'SelectedValue'))
+			{
+				if (Test-TweakManifestEntryField -Entry $RunListItem -FieldName $fieldName)
+				{
+					$candidateValue = [string](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName $fieldName)
+					if (-not [string]::IsNullOrWhiteSpace($candidateValue))
+					{
+						$dateValue = $candidateValue
+						break
+					}
+				}
+			}
+
+			$dateParam = [string](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'DateParam')
+			return [pscustomobject]@{
+				Function     = $functionName
+				Type         = 'Date'
+				Run          = if ($null -eq $runFlag) { [bool]$dateValue } else { [bool]$runFlag }
+				DateParam    = $dateParam
+				Value        = $dateValue
+				PlannedState = if ($null -eq $runFlag) { $dateValue } elseif ($runFlag) { $dateValue } else { $false }
+			}
+		}
 		'Choice'
 		{
 			$selection = [string](Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'Selection')
@@ -377,6 +559,63 @@ function Get-TweakPlannedStateValue
 				Type         = 'Choice'
 				Selection    = $selection
 				PlannedState = $selection
+			}
+		}
+		'NumericRange'
+		{
+			$rawValue = $null
+			if (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'Value')
+			{
+				$rawValue = Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'Value'
+			}
+			elseif (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'NumericValue')
+			{
+				$rawValue = Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'NumericValue'
+			}
+			elseif ((Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'ACValue') -or (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'DCValue'))
+			{
+				$rawValue = [ordered]@{
+					ACValue = if (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'ACValue') { Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'ACValue' } else { $null }
+					DCValue = if (Test-TweakManifestEntryField -Entry $RunListItem -FieldName 'DCValue') { Get-TweakManifestEntryValue -Entry $RunListItem -FieldName 'DCValue' } else { $null }
+				}
+			}
+
+			$acValue = $null
+			$dcValue = $null
+			if ($rawValue -is [System.Collections.IDictionary])
+			{
+				if ($rawValue.Contains('ACValue'))
+				{
+					$acValue = $rawValue['ACValue']
+				}
+				if ($rawValue.Contains('DCValue'))
+				{
+					$dcValue = $rawValue['DCValue']
+				}
+			}
+			elseif ($rawValue -is [pscustomobject])
+			{
+				if ($rawValue.PSObject.Properties['ACValue'])
+				{
+					$acValue = $rawValue.ACValue
+				}
+				if ($rawValue.PSObject.Properties['DCValue'])
+				{
+					$dcValue = $rawValue.DCValue
+				}
+			}
+
+			$numericValue = if ($null -ne $acValue) { $acValue } else { $rawValue }
+			$plannedState = if ($null -ne $dcValue -or $null -ne $acValue) { [ordered]@{ ACValue = $acValue; DCValue = if ($null -ne $dcValue) { $dcValue } else { $acValue } } } else { $numericValue }
+
+			return [pscustomobject]@{
+				Function     = $functionName
+				Type         = 'NumericRange'
+				Value        = $rawValue
+				NumericValue = $numericValue
+				ACValue      = $acValue
+				DCValue      = $dcValue
+				PlannedState = $plannedState
 			}
 		}
 		default
@@ -389,3 +628,4 @@ function Get-TweakPlannedStateValue
 		}
 	}
 }
+

@@ -1,0 +1,512 @@
+{
+  "Tab": "Applications",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
+  "Entries": [
+    {
+      "Name": "RustDesk",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Fast Open-Source Remote Access and Support Software",
+      "Detail": "WinGet: RustDesk.RustDesk | Chocolatey: rustdesk",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "RustDesk.RustDesk",
+        "ChocoId": "rustdesk"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Fast Open-Source Remote Access and Support Software",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "AnyDesk",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote desktop software for remote access and support",
+      "Detail": "WinGet: AnyDesk.AnyDesk | Chocolatey: anydesk",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "AnyDesk.AnyDesk",
+        "ChocoId": "anydesk"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote desktop software for remote access and support",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "TeamViewer",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote control, desktop sharing, online meetings and file transfer",
+      "Detail": "WinGet: TeamViewer.TeamViewer | Chocolatey: teamviewer",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "TeamViewer.TeamViewer",
+        "ChocoId": "teamviewer"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote control, desktop sharing, online meetings and file transfer",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "UltraViewer",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote support as if sitting in front of their screen",
+      "Detail": "WinGet: DucFabulous.UltraViewer | Chocolatey: ultraviewer",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "DucFabulous.UltraViewer",
+        "ChocoId": "ultraviewer"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote support as if sitting in front of their screen",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "RealVNC Server",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote access software",
+      "Detail": "WinGet: RealVNC.VNCServer | Chocolatey: vnc-connect",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "RealVNC.VNCServer",
+        "ChocoId": "vnc-connect"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote access software",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "RealVNC Viewer",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote access software",
+      "Detail": "WinGet: RealVNC.VNCViewer | Chocolatey: vnc-viewer",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "RealVNC.VNCViewer",
+        "ChocoId": "vnc-viewer"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote access software",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Chrome Remote Desktop",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Remote access through Chrome browser",
+      "Detail": "WinGet: Google.ChromeRemoteDesktopHost | Chocolatey: chrome-remote-desktop-host",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Google.ChromeRemoteDesktopHost",
+        "ChocoId": "chrome-remote-desktop-host"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Remote access through Chrome browser",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Parsec",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Secure, flexible, effortless remote desktop access",
+      "Detail": "WinGet: Parsec.Parsec | Chocolatey: parsec",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Parsec.Parsec",
+        "ChocoId": "parsec"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Secure, flexible, effortless remote desktop access",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Parsec Virtual Display Driver",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Virtual display driver for Parsec Remote Desktop",
+      "Detail": "WinGet: Parsec.ParsecVDD",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Parsec.ParsecVDD"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Virtual display driver for Parsec Remote Desktop",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Parsec Virtual USB Driver",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Virtual USB driver for Parsec Remote Desktop",
+      "Detail": "WinGet: Parsec.ParsecVUD",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Parsec.ParsecVUD"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Virtual USB driver for Parsec Remote Desktop",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "InputLeap",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open-source KVM software for sharing mouse and keyboard between computers",
+      "Detail": "WinGet: input-leap.input-leap | Chocolatey: input-leap",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "input-leap.input-leap",
+        "ChocoId": "input-leap"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Open-source KVM software for sharing mouse and keyboard between computers",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Deskflow",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Share a single keyboard and mouse between multiple computers",
+      "Detail": "WinGet: Deskflow.Deskflow | Chocolatey: deskflow",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Deskflow.Deskflow",
+        "ChocoId": "deskflow"
+      },
+      "SubCategory": "RemoteAccess",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "remoteaccess"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Share a single keyboard and mouse between multiple computers",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    }
+  ]
+}

@@ -1,10 +1,15 @@
-﻿using module ..\..\Logging.psm1
+using module ..\..\Logging.psm1
 using module ..\..\SharedHelpers.psm1
 
 <#
     .SYNOPSIS
-    Access to account info from UWP (Universal Windows Platform) apps settings
+    Configures UWP app permission controls.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's UWP app permission controls in GUI and headless runs.
     .PARAMETER Enable
     Enable access to account info from UWP apps
 
@@ -68,7 +73,7 @@ function UWPAccountInfo
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessAccountInfo" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessAccountInfo" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -84,6 +89,11 @@ function UWPAccountInfo
     .SYNOPSIS
     Access to calendar from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to calendar from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to calendar from UWP apps
 
@@ -147,7 +157,7 @@ function UWPCalendar
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCalendar" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCalendar" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -163,6 +173,11 @@ function UWPCalendar
     .SYNOPSIS
     Access to call history from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to call history from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to call history from UWP apps
 
@@ -226,7 +241,7 @@ function UWPCallHistory
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCallHistory" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCallHistory" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -242,6 +257,11 @@ function UWPCallHistory
     .SYNOPSIS
     Access to contacts from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to contacts from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to contacts from UWP apps
 
@@ -305,7 +325,7 @@ function UWPContacts
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessContacts" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessContacts" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -321,6 +341,11 @@ function UWPContacts
     .SYNOPSIS
     Access to diagnostic information from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to diagnostic information from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to diagnostic information from UWP apps
 
@@ -384,7 +409,7 @@ function UWPDiagInfo
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsGetDiagnosticInfo" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsGetDiagnosticInfo" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -400,6 +425,11 @@ function UWPDiagInfo
     .SYNOPSIS
     Access to email from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to email from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to email from UWP apps
 
@@ -463,7 +493,7 @@ function UWPEmail
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessEmail" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessEmail" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -479,6 +509,11 @@ function UWPEmail
     .SYNOPSIS
     Access to libraries and file system from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to libraries and file system from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to libraries and file system from UWP apps
 
@@ -521,10 +556,10 @@ function UWPFileSystem
 			LogInfo "Enabling access to libraries and the file system from UWP apps"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\documentsLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\picturesLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\videosLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\broadFileSystemAccess" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\documentsLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\picturesLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\videosLibrary" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\broadFileSystemAccess" -Name "Value" -Type String -Value "Allow" -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -539,10 +574,10 @@ function UWPFileSystem
 			LogInfo "Disabling access to libraries and the file system from UWP apps"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\documentsLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\picturesLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\videosLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\broadFileSystemAccess" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\documentsLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\picturesLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\videosLibrary" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\broadFileSystemAccess" -Name "Value" -Type String -Value "Deny" -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -558,6 +593,11 @@ function UWPFileSystem
     .SYNOPSIS
     Access to messaging (SMS, MMS) from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to messaging (SMS, MMS) from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to messaging (SMS, MMS) from UWP apps
 
@@ -621,7 +661,7 @@ function UWPMessaging
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessMessaging" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessMessaging" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -637,6 +677,11 @@ function UWPMessaging
     .SYNOPSIS
     Access to notifications from UWP (Universal Windows Platform) apps
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to notifications from UWP (Universal Windows Platform) apps.
     .PARAMETER Enable
     Enable access to notifications from UWP apps
 
@@ -704,7 +749,7 @@ function UWPNotifications
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessNotifications" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessNotifications" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -720,6 +765,11 @@ function UWPNotifications
     .SYNOPSIS
     Access to other devices (unpaired, beacons, TVs etc.) from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to other devices (unpaired, beacons, TVs etc.) from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to other devices (unpaired, beacons, TVs etc.) from UWP apps
 
@@ -783,7 +833,7 @@ function UWPOtherDevices
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsSyncWithDevices" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsSyncWithDevices" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -799,6 +849,11 @@ function UWPOtherDevices
     .SYNOPSIS
     Access to phone calls from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to phone calls from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to phone calls from UWP apps
 
@@ -862,7 +917,7 @@ function UWPPhoneCalls
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessPhone" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessPhone" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -878,6 +933,11 @@ function UWPPhoneCalls
     .SYNOPSIS
     Access to radios (e.g. Bluetooth) from UWP (Universal Windows Platform) apps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to radios (e.g. Bluetooth) from UWP (Universal Windows Platform) apps settings.
     .PARAMETER Enable
     Enable access to radios (e.g. Bluetooth) from UWP apps
 
@@ -941,7 +1001,7 @@ function UWPRadios
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessRadios" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessRadios" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -957,6 +1017,11 @@ function UWPRadios
     .SYNOPSIS
     Access to tasks from UWP (Universal Windows Platform) apps
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to tasks from UWP (Universal Windows Platform) apps.
     .PARAMETER Enable
     Enable access to tasks from UWP apps
 
@@ -1020,7 +1085,7 @@ function UWPTasks
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessTasks" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessTasks" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1036,6 +1101,11 @@ function UWPTasks
     .SYNOPSIS
     Access to voice activation from UWP (Universal Windows Platform) apps
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for access to voice activation from UWP (Universal Windows Platform) apps.
     .PARAMETER Enable
     Enable access to voice activation from UWP apps
 
@@ -1097,8 +1167,8 @@ function UWPVoiceActivation
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsActivateWithVoice" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsActivateWithVoiceAboveLock" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsActivateWithVoice" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsActivateWithVoiceAboveLock" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1109,5 +1179,20 @@ function UWPVoiceActivation
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'UWPAccountInfo',
+    'UWPCalendar',
+    'UWPCallHistory',
+    'UWPContacts',
+    'UWPDiagInfo',
+    'UWPEmail',
+    'UWPFileSystem',
+    'UWPMessaging',
+    'UWPNotifications',
+    'UWPOtherDevices',
+    'UWPPhoneCalls',
+    'UWPRadios',
+    'UWPTasks',
+    'UWPVoiceActivation'
+)
+Export-ModuleMember -Function $ExportedFunctions

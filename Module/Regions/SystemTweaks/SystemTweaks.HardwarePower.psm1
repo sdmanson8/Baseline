@@ -1,7 +1,12 @@
 <#
 	.SYNOPSIS
-	Enable or disable Block Razer Software Installs
+	Configures hardware power and device blocking settings.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's hardware power and device blocking settings in GUI and headless runs.
 	.PARAMETER Enable
 	Enable Block Razer Software Installs
 
@@ -26,6 +31,7 @@
 
 	Use only if you understand the implications.
 #>
+
 function RazerBlock
 {
 	[CmdletBinding()]
@@ -49,9 +55,9 @@ function RazerBlock
 			try
 			{
 				# Registry changes
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				LogInfo "Set DriverSearching SearchOrderConfig to 0"
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Installer" -Name "DisableCoInstallers" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Installer" -Name "DisableCoInstallers" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				LogInfo "Set DisableCoInstallers to 1"
 
 				# Block Razer installer directory
@@ -87,9 +93,9 @@ function RazerBlock
 			try
 			{
 				# Restore registry values
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				LogInfo "Restored DriverSearching SearchOrderConfig to 1"
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Installer" -Name "DisableCoInstallers" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Installer" -Name "DisableCoInstallers" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				LogInfo "Restored DisableCoInstallers to 0"
 
 				# Remove directory deny permission
@@ -114,6 +120,11 @@ function RazerBlock
 .SYNOPSIS
 Enable or disable S3 Sleep
 
+
+
+.DESCRIPTION
+
+Enables or disables S3 Sleep in GUI and headless runs.
 .PARAMETER Enable
 Enable S3 Sleep
 
@@ -156,7 +167,7 @@ function S3Sleep
 			LogInfo "Enabling S3 Sleep"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name "PlatformAoAcOverride" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name "PlatformAoAcOverride" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -187,6 +198,11 @@ function S3Sleep
 .SYNOPSIS
 Enable or disable recommended Windows service startup configuration
 
+
+
+.DESCRIPTION
+
+Enables or disables recommended Windows service startup configuration in GUI and headless runs.
 .PARAMETER Enable
 Apply recommended startup types to Windows services
 
@@ -335,7 +351,7 @@ function ServicesManual
 		@{ Name = "UsoSvc";                     StartupType = "Manual";                OriginalType = "Automatic" }
 		@{ Name = "VSS";                        StartupType = "Manual";                OriginalType = "Manual" }
 		@{ Name = "VaultSvc";                   StartupType = "Manual";                OriginalType = "Manual" }
-		@{ Name = "W32Time";                    StartupType = "Manual";                OriginalType = "Manual" }
+		@{ Name = "W32Time";                    StartupType = "Manual";                OriginalType = "AutomaticDelayedStart" }
 		@{ Name = "WEPHOSTSVC";                 StartupType = "Manual";                OriginalType = "Manual" }
 		@{ Name = "WFDSConMgrSvc";              StartupType = "Manual";                OriginalType = "Manual" }
 		@{ Name = "WMPNetworkSvc";              StartupType = "Manual";                OriginalType = "Manual" }
@@ -392,7 +408,7 @@ function ServicesManual
 				$_.Exception.Message -like "*Cannot find any service with service name*"
 			)
 			{
-				LogWarning "Service $Name was not found"
+				LogInfo "Skipping service $Name because it is not available on this system."
 			}
 			else
 			{
@@ -406,29 +422,20 @@ function ServicesManual
 }
 
 <#
-.SYNOPSIS
-Enable or disable Teredo
+    .SYNOPSIS
+    Enable or disable Teredo tunneling support.
 
-.PARAMETER Enable
-Enable Teredo (default value)
+    .DESCRIPTION
+    Updates the IPv6 DisabledComponents value and the Teredo interface state so Baseline can turn Teredo support on or off.
 
-.PARAMETER Disable
-Disable Teredo
+    .PARAMETER Enable
+    Turn Teredo support on.
 
-.EXAMPLE
-Teredo -Enable
+    .PARAMETER Disable
+    Turn Teredo support off.
 
-.EXAMPLE
-Teredo -Disable
-
-.NOTES
-Current user
-
-.CAUTION
-Teredo is an IPv6 tunneling protocol used for NAT traversal.
-Disabling it may reduce network latency for some applications.
-However, some games and peer-to-peer applications rely on Teredo for connectivity.
-Xbox Live and certain multiplayer games may not function correctly without Teredo.
+    .EXAMPLE
+    Teredo -Disable
 #>
 function Teredo
 {
@@ -450,7 +457,7 @@ function Teredo
 			LogInfo "Enabling Teredo"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name "DisabledComponents" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name "DisabledComponents" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				netsh interface teredo set state default 2>$null | Out-Null
 				if ($LASTEXITCODE -ne 0) { throw "netsh returned exit code $LASTEXITCODE" }
 				LogInfo "Teredo enabled and set to default state"
@@ -468,7 +475,7 @@ function Teredo
 			LogInfo "Disabling Teredo"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name "DisabledComponents" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Name "DisabledComponents" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				netsh interface teredo set state disabled 2>$null | Out-Null
 				if ($LASTEXITCODE -ne 0) { throw "netsh returned exit code $LASTEXITCODE" }
 				LogInfo "Teredo disabled"
@@ -487,6 +494,11 @@ function Teredo
 .SYNOPSIS
 Enable or disable Windows Platform Binary Table (WPBT)
 
+
+
+.DESCRIPTION
+
+Enables or disables Windows Platform Binary Table (WPBT) in GUI and headless runs.
 .PARAMETER Enable
 Enable Windows Platform Binary Table (WPBT) (default value)
 
@@ -544,7 +556,7 @@ function WPBT
 			LogInfo "Disabling Windows Platform Binary Table (WPBT)"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name "DisableWpbtExecution" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name "DisableWpbtExecution" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -555,5 +567,11 @@ function WPBT
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'RazerBlock',
+    'S3Sleep',
+    'ServicesManual',
+    'Teredo',
+    'WPBT'
+)
+Export-ModuleMember -Function $ExportedFunctions

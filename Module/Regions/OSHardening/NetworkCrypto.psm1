@@ -2,12 +2,13 @@
 
 <#
     .SYNOPSIS
-    Enable or disable DCOM and legacy remote command surfaces.
+    Configures network and cryptography hardening.
 
     .DESCRIPTION
     Controls DCOM remote activation and device metadata file associations.
     DCOM is required by SCCM, remote WMI, and many enterprise tools.
-    Disabling reduces attack surface but may break remote management.
+    Disabling reduces attack surface but may break remote management. This is
+    an internal hardening module, not user-facing setup guidance.
 
     .PARAMETER Disable
     Disable DCOM and remove device metadata associations (hardened).
@@ -16,15 +17,16 @@
     Re-enable DCOM for enterprise/remote management compatibility.
 
     .EXAMPLE
-    Disable-RemoteCommands -Disable
+    RemoteCommands -Disable
 
     .EXAMPLE
-    Disable-RemoteCommands -Enable
+    RemoteCommands -Enable
 
     .NOTES
     Machine-wide
 #>
-function Disable-RemoteCommands {
+
+function RemoteCommands {
 	[CmdletBinding()]
 	param
 	(
@@ -42,7 +44,7 @@ function Disable-RemoteCommands {
 	LogInfo "$action Remote Commands (DCOM)"
     try
     {
-        Set-ItemProperty -Path "HKLM:\Software\Microsoft\OLE" -Name "EnableDCOM" -Value $dcomVal -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath "HKLM:\Software\Microsoft\OLE" -Name "EnableDCOM" -Value $dcomVal -ErrorAction Stop | Out-Null
 
 		if ($Disable)
 		{
@@ -70,20 +72,25 @@ function Disable-RemoteCommands {
     .SYNOPSIS
     Configure the SCHANNEL cipher suite list used by this preset.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for configure the SCHANNEL cipher suite list used by this preset..
     .EXAMPLE
-    Update-CipherSuites
+    CipherSuites
 
     .NOTES
     Machine-wide
 #>
-function Update-CipherSuites
+function CipherSuites
 {
     Write-ConsoleStatus -Action "Configure Cipher Suites"
 	LogInfo "Configuring Cipher Suites"
     try
 	{
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\CipherSuites" -Name "TLS_RSA_WITH_AES_256_CBC_SHA256" -Value 0x1 -ErrorAction Stop | Out-Null
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\CipherSuites" -Name "TLS_RSA_WITH_AES_128_CBC_SHA256" -Value 0x1 -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\CipherSuites" -Name "TLS_RSA_WITH_AES_256_CBC_SHA256" -Value 0x1 -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\CipherSuites" -Name "TLS_RSA_WITH_AES_128_CBC_SHA256" -Value 0x1 -ErrorAction Stop | Out-Null
 		Write-ConsoleStatus -Status success
     }
     catch
@@ -97,13 +104,18 @@ function Update-CipherSuites
     .SYNOPSIS
     Configure SCHANNEL key exchange algorithm settings.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for configure SCHANNEL key exchange algorithm settings..
     .EXAMPLE
-    Update-KeyExchanges
+    KeyExchanges
 
     .NOTES
     Machine-wide
 #>
-function Update-KeyExchanges
+function KeyExchanges
 {
     Write-ConsoleStatus -Action "Configure Key Exchanges"
 	LogInfo "Configuring Key Exchanges"
@@ -122,7 +134,7 @@ function Update-KeyExchanges
                 New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\KeyExchangeAlgorithms" -Name $keyPath -Force -ErrorAction Stop | Out-Null
             }
 
-            Set-ItemProperty -Path $fullPath -Name 'Enabled' -Value 0xffffffff -ErrorAction Stop | Out-Null
+            Set-ItemProperty -LiteralPath $fullPath -Name 'Enabled' -Value 0xffffffff -ErrorAction Stop | Out-Null
         }
 		Write-ConsoleStatus -Status success
     }
@@ -151,15 +163,16 @@ function Update-KeyExchanges
     you have devices or services that cannot negotiate TLS 1.2+.
 
     .EXAMPLE
-    Update-Protocols -Disable
+    Protocols -Disable
 
     .EXAMPLE
-    Update-Protocols -Enable
+    Protocols -Enable
 
     .NOTES
     Machine-wide
 #>
-function Update-Protocols
+
+function Protocols
 {
 	[CmdletBinding()]
 	param
@@ -202,9 +215,9 @@ function Update-Protocols
 			{
                 $protocolPath = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\$protocol"
 
-                if (Update-RegistryPaths -path $protocolPath)
+                if (RegistryPaths -path $protocolPath)
 				{
-                    Set-ItemProperty -Path $protocolPath -Name $key -Value $protocols[$protocol][$key] -ErrorAction Stop | Out-Null
+                    Set-ItemProperty -LiteralPath $protocolPath -Name $key -Value $protocols[$protocol][$key] -ErrorAction Stop | Out-Null
 				}
             }
         }
@@ -221,13 +234,18 @@ function Update-Protocols
     .SYNOPSIS
     Enable strong .NET authentication behavior.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for enable strong .NET authentication behavior..
     .EXAMPLE
-    Update-DotNetStrongAuth
+    DotNetStrongAuth
 
     .NOTES
     Machine-wide
 #>
-function Update-DotNetStrongAuth
+function DotNetStrongAuth
 {
     Write-ConsoleStatus -Action "Use Strong .Net Authentication"
 	LogInfo "Using Strong .Net Authentication"
@@ -263,13 +281,18 @@ function Update-DotNetStrongAuth
     .SYNOPSIS
     Disable SCHANNEL cipher entries defined in this preset.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for disable SCHANNEL cipher entries defined in this preset..
     .EXAMPLE
-    Disable-AESCiphers
+    AESCiphers
 
     .NOTES
     Machine-wide
 #>
-function Disable-AESCiphers
+function AESCiphers
 {
     Write-ConsoleStatus -Action "Disable AES Ciphers"
 	LogInfo "Disabling AES Ciphers"
@@ -287,7 +310,7 @@ function Disable-AESCiphers
                 New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers" -Name $cipher -Force -ErrorAction Stop | Out-Null
             }
 
-            Set-ItemProperty -Path $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
+            Set-ItemProperty -LiteralPath $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
         }
 		Write-ConsoleStatus -Status success
     }
@@ -302,19 +325,24 @@ function Disable-AESCiphers
     .SYNOPSIS
     Disable IPv6.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for disable IPv6..
     .EXAMPLE
-    Disable-IPv6
+    IPv6
 
     .NOTES
     Machine-wide
 #>
-function Disable-IPv6
+function IPv6
 {
     Write-ConsoleStatus -Action "Disable IPv6"
 	LogInfo "Disabling IPv6"
     try
     {
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\services\tcpip6\parameters" -Name "DisabledComponents" -Value 0xFF -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\services\tcpip6\parameters" -Name "DisabledComponents" -Value 0xFF -ErrorAction Stop | Out-Null
 		Write-ConsoleStatus -Status success
     }
     catch
@@ -328,13 +356,18 @@ function Disable-IPv6
     .SYNOPSIS
     Disable RC2 and RC4 SCHANNEL ciphers.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for disable RC2 and RC4 SCHANNEL ciphers..
     .EXAMPLE
-    Disable-RC2RC4Ciphers
+    RC2RC4Ciphers
 
     .NOTES
     Machine-wide
 #>
-function Disable-RC2RC4Ciphers
+function RC2RC4Ciphers
 {
     Write-ConsoleStatus -Action "Disable RC2 and RC4 Ciphers"
 	LogInfo "Disabling RC2 and RC4 Ciphers"
@@ -350,7 +383,7 @@ function Disable-RC2RC4Ciphers
                 New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers" -Name $cipher -Force -ErrorAction Stop | Out-Null
             }
 
-            Set-ItemProperty -Path $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
+            Set-ItemProperty -LiteralPath $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
         }
 		Write-ConsoleStatus -Status success
     }
@@ -370,18 +403,18 @@ function Disable-RC2RC4Ciphers
     module's network hardening preset.
 
     .EXAMPLE
-    Disable-SMBv3Compression
+    SMBv3Compression
 
     .NOTES
     Machine-wide
 #>
-function Disable-SMBv3Compression
+function SMBv3Compression
 {
     Write-ConsoleStatus -Action "Disable SMB version 3 Compression"
 	LogInfo "Disabling SMB version 3 Compression"
     try
     {
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "DisableCompression" -Value 1 -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "DisableCompression" -Value 1 -ErrorAction Stop | Out-Null
 		Write-ConsoleStatus -Status success
     }
     catch
@@ -395,13 +428,18 @@ function Disable-SMBv3Compression
     .SYNOPSIS
     Disable TCP timestamps.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for disable TCP timestamps..
     .EXAMPLE
-    Disable-TCPTimestamps
+    TCPTimestamps
 
     .NOTES
     Machine-wide
 #>
-function Disable-TCPTimestamps
+function TCPTimestamps
 {
     Write-ConsoleStatus -Action "Disable TCP Timestamps"
 	LogInfo "Disabling TCP Timestamps"
@@ -425,13 +463,18 @@ function Disable-TCPTimestamps
     .SYNOPSIS
     Disable the Triple DES SCHANNEL cipher.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for disable the Triple DES SCHANNEL cipher..
     .EXAMPLE
-    Disable-TripleDESCipher
+    TripleDESCipher
 
     .NOTES
     Machine-wide
 #>
-function Disable-TripleDESCipher
+function TripleDESCipher
 {
     Write-ConsoleStatus -Action "Disable Triple DES Ciphers"
 	LogInfo "Disabling Triple DES Ciphers"
@@ -444,7 +487,7 @@ function Disable-TripleDESCipher
             New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Ciphers' -Name 'Triple DES 168' -Force -ErrorAction Stop | Out-Null
         }
 
-        Set-ItemProperty -Path $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
+        Set-ItemProperty -LiteralPath $cipherPath -Name 'Enabled' -Value 0 -ErrorAction Stop | Out-Null
 		Write-ConsoleStatus -Status success
     }
     catch
@@ -458,13 +501,18 @@ function Disable-TripleDESCipher
     .SYNOPSIS
     Configure SCHANNEL hash algorithm settings.
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for configure SCHANNEL hash algorithm settings..
     .EXAMPLE
-    Disable-HashAlgorithms
+    HashAlgorithms
 
     .NOTES
     Machine-wide
 #>
-function Disable-HashAlgorithms
+function HashAlgorithms
 {
     Write-ConsoleStatus -Action "Disable Hash Algorithms"
 	LogInfo "Disabling Hash Algorithms"
@@ -481,7 +529,7 @@ function Disable-HashAlgorithms
                 New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Hashes" -Name $hash -Force -ErrorAction Stop | Out-Null
             }
 
-            Set-ItemProperty -Path $hashPath -Name 'Enabled' -Value 0xffffffff -ErrorAction Stop | Out-Null
+            Set-ItemProperty -LiteralPath $hashPath -Name 'Enabled' -Value 0xffffffff -ErrorAction Stop | Out-Null
         }
 		Write-ConsoleStatus -Status success
     }
@@ -493,5 +541,18 @@ function Disable-HashAlgorithms
 }
 
 #endregion Network & Cryptography Hardening
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'AESCiphers',
+    'CipherSuites',
+    'DotNetStrongAuth',
+    'HashAlgorithms',
+    'IPv6',
+    'KeyExchanges',
+    'Protocols',
+    'RC2RC4Ciphers',
+    'RemoteCommands',
+    'SMBv3Compression',
+    'TCPTimestamps',
+    'TripleDESCipher'
+)
+Export-ModuleMember -Function $ExportedFunctions

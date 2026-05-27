@@ -33,7 +33,13 @@
       "WhyThisMatters": "The Start Menu search box can show Bing web results alongside local results. Disabling keeps Start Menu search local only.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu search personalization is not configured on Windows Server."
+      }
     },
     {
       "Name": "Start Menu Account Notifications",
@@ -67,7 +73,13 @@
       "WhyThisMatters": "Microsoft can show account-related notifications and prompts in the Start Menu. Hiding removes these.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu account notifications are not surfaced on Windows Server."
+      }
     },
     {
       "Name": "Start Menu Recommendations/Tips",
@@ -101,7 +113,13 @@
       "WhyThisMatters": "The Start Menu can show tips about Windows features and recommendations for new apps. Hiding removes these suggestions.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu recommendations and tips are not surfaced on Windows Server."
+      }
     },
     {
       "Name": "Web Search in System Search",
@@ -135,7 +153,13 @@
       "WhyThisMatters": "Integrates Bing web results into the Windows search bar. Disabling makes system search show only local files and settings.",
       "PresetTier": "Minimal",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Web search integration is a client-only feature."
+      }
     },
     {
       "Name": "Start Layout",
@@ -177,7 +201,14 @@
       "WhyThisMatters": "Controls the layout ratio of the Windows 11 Start Menu between pinned apps and recommended content.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 22000,
+        "UnavailableReason": "Start layout ratios are a Windows 11-specific Start Menu feature."
+      }
     },
     {
       "Name": "Start Menu Recommended Section",
@@ -211,7 +242,14 @@
       "WhyThisMatters": "Shows or hides the Recommended section at the bottom of the Start Menu. On Enterprise and Education editions this can be hidden via policy.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 22000,
+        "UnavailableReason": "The Recommended section is a Windows 11 Start Menu feature."
+      }
     }
   ]
 }

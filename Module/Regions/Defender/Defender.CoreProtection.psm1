@@ -1,7 +1,12 @@
 <#
 	.SYNOPSIS
-	Accounts protection warning configuration
+	Configures account protection warning configuration.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's account protection warning configuration in GUI and headless runs.
 	.PARAMETER Enable
 	Enable account protection warning for Microsoft accounts
 
@@ -62,7 +67,7 @@ function AccountProtectionWarn
 				If (!(Test-Path "HKCU:\Software\Microsoft\Windows Security Health\State")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty "HKCU:\Software\Microsoft\Windows Security Health\State" -Name "AccountProtection_MicrosoftAccount_Disconnected" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Name "AccountProtection_MicrosoftAccount_Disconnected" -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -78,6 +83,11 @@ function AccountProtectionWarn
 	.SYNOPSIS
 	Microsoft Defender SmartScreen
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for microsoft Defender SmartScreen.
 	.PARAMETER Disable
 	Disable apps and files checking within Microsoft Defender SmartScreen
 
@@ -111,13 +121,6 @@ function AppsSmartScreen
 		[switch]
 		$Enable
 	)
-
-	if (-not $Script:DefenderEnabled)
-	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
-		return
-	}
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
@@ -159,6 +162,11 @@ function AppsSmartScreen
 	.SYNOPSIS
 	Windows Defender Cloud-delivered protection configuration
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Defender Cloud-delivered protection configuration.
 	.PARAMETER Enable
 	Enable Windows Defender cloud protection (MAPS reporting and automatic sample submission default behavior) (default value)
 
@@ -220,8 +228,8 @@ function DefenderCloud
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name "SpynetReporting" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name "SubmitSamplesConsent" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name "SpynetReporting" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet" -Name "SubmitSamplesConsent" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -238,6 +246,11 @@ function DefenderCloud
 	.SYNOPSIS
 	Sandboxing for Microsoft Defender
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for sandboxing for Microsoft Defender.
 	.PARAMETER Enable
 	Enable sandboxing for Microsoft Defender
 
@@ -272,10 +285,9 @@ function DefenderSandbox
 		$Disable
 	)
 
-	if (-not $Script:DefenderEnabled)
+	if (-not (Test-BaselineDefenderComponentAvailable))
 	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
+		LogWarning ("Skipping {0}: {1}" -f (Get-TweakSkipLabel $MyInvocation), (Get-BaselineDefenderComponentUnavailableReason))
 		return
 	}
 
@@ -318,8 +330,171 @@ function DefenderSandbox
 
 <#
 	.SYNOPSIS
+	Cap Microsoft Defender's CPU usage during scheduled scans.
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for cap Microsoft Defender's CPU usage during scheduled scans..
+	.PARAMETER Enable
+	Cap Defender scan CPU usage at 25% via Set-MpPreference -ScanAvgCPULoadFactor 25.
+
+	.PARAMETER Disable
+	Restore Defender's default scan CPU cap (50%) via Set-MpPreference -ScanAvgCPULoadFactor 50.
+
+	.EXAMPLE
+	DefenderScanCPULimit -Enable
+
+	.EXAMPLE
+	DefenderScanCPULimit -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function DefenderScanCPULimit
+{
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+		[switch]
+		$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+		[switch]
+		$Disable
+	)
+
+	if (-not (Test-BaselineDefenderExecutionAvailable))
+	{
+		LogWarning ("Skipping {0}: {1}" -f (Get-TweakSkipLabel $MyInvocation), (Get-BaselineDefenderExecutionUnavailableReason))
+		return
+	}
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		'Enable'
+		{
+			Write-ConsoleStatus -Action 'Capping Defender scheduled-scan CPU at 25%'
+			LogInfo 'Capping Defender scheduled-scan CPU at 25%'
+			try
+			{
+				Set-MpPreference -ScanAvgCPULoadFactor 25 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to cap Defender scan CPU usage: $($_.Exception.Message)"
+			}
+		}
+		'Disable'
+		{
+			Write-ConsoleStatus -Action 'Restoring Defender default scan CPU cap (50%)'
+			LogInfo 'Restoring Defender default scan CPU cap (50%)'
+			try
+			{
+				Set-MpPreference -ScanAvgCPULoadFactor 50 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to restore Defender scan CPU cap: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Microsoft Defender signature-definition update interval.
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for microsoft Defender signature-definition update interval..
+	.PARAMETER Enable
+	Check for Defender signature updates every hour
+	(Set-MpPreference -SignatureUpdateInterval 1).
+
+	.PARAMETER Disable
+	Restore the default signature-update interval (0 = managed by Windows Update,
+	typically every 8 hours).
+
+	.EXAMPLE
+	DefenderSignatureUpdateInterval -Enable
+
+	.EXAMPLE
+	DefenderSignatureUpdateInterval -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function DefenderSignatureUpdateInterval
+{
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+		[switch]
+		$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+		[switch]
+		$Disable
+	)
+
+	if (-not (Test-BaselineDefenderExecutionAvailable))
+	{
+		LogWarning ("Skipping {0}: {1}" -f (Get-TweakSkipLabel $MyInvocation), (Get-BaselineDefenderExecutionUnavailableReason))
+		return
+	}
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		'Enable'
+		{
+			Write-ConsoleStatus -Action 'Checking Defender signatures hourly'
+			LogInfo 'Checking Defender signatures hourly'
+			try
+			{
+				Set-MpPreference -SignatureUpdateInterval 1 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to set Defender signature update interval: $($_.Exception.Message)"
+			}
+		}
+		'Disable'
+		{
+			Write-ConsoleStatus -Action 'Restoring default Defender signature update interval'
+			LogInfo 'Restoring default Defender signature update interval'
+			try
+			{
+				Set-MpPreference -SignatureUpdateInterval 0 -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to restore Defender signature update interval: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
 	Windows Defender notification area (system tray) icon configuration
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Defender notification area (system tray) icon configuration.
 	.PARAMETER Enable
 	Show Windows Defender (Windows Security) system tray icon (default value)
 
@@ -362,11 +537,11 @@ function DefenderTrayIcon
 			LogInfo "Enabling Windows Defender SysTray icon"
 			Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" -Name "HideSystray" | Out-Null
 			If ([System.Environment]::OSVersion.Version.Build -eq 14393) {
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsDefender" -Type ExpandString -Value "`"%ProgramFiles%\Windows Defender\MSASCuiL.exe`"" | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsDefender" -Type ExpandString -Value "`"%ProgramFiles%\Windows Defender\MSASCuiL.exe`"" | Out-Null
 			} ElseIf ([System.Environment]::OSVersion.Version.Build -ge 15063 -And [System.Environment]::OSVersion.Version.Build -le 17134) {
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SecurityHealth" -Type ExpandString -Value "%ProgramFiles%\Windows Defender\MSASCuiL.exe" | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SecurityHealth" -Type ExpandString -Value "%ProgramFiles%\Windows Defender\MSASCuiL.exe" | Out-Null
 			} ElseIf ([System.Environment]::OSVersion.Version.Build -ge 17763) {
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SecurityHealth" -Type ExpandString -Value "%windir%\system32\SecurityHealthSystray.exe" | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SecurityHealth" -Type ExpandString -Value "%windir%\system32\SecurityHealthSystray.exe" | Out-Null
 			}
 			Write-ConsoleStatus -Status success
 		}
@@ -377,7 +552,7 @@ function DefenderTrayIcon
 			If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray")) {
 				New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" -Force | Out-Null
 			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" -Name "HideSystray" -Type DWord -Value 1 | Out-Null
+			Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" -Name "HideSystray" -Type DWord -Value 1 | Out-Null
 			If ([System.Environment]::OSVersion.Version.Build -eq 14393) {
 				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "WindowsDefender" | Out-Null
 			} ElseIf ([System.Environment]::OSVersion.Version.Build -ge 15063) {
@@ -405,18 +580,11 @@ function DefenderTrayIcon
 #>
 function DismissMSAccount
 {
-	if (-not $Script:DefenderEnabled)
-	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
-		return
-	}
-
 	Write-ConsoleStatus -Action "Dismissing Microsoft Defender offer in the Windows Security about signing in Microsoft account"
 	LogInfo "Dismissing Microsoft Defender offer in the Windows Security about signing in Microsoft account"
 	try
 	{
-		Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows Security Health\State' -Name 'AccountProtection_MicrosoftAccount_Disconnected' -Value 1 -Type DWord | Out-Null
+		Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AccountProtection_MicrosoftAccount_Disconnected -Type DWord -Value 1 | Out-Null
 		Write-ConsoleStatus -Status success
 	}
 	catch
@@ -442,18 +610,11 @@ function DismissMSAccount
 #>
 function DismissSmartScreenFilter
 {
-	if (-not $Script:DefenderEnabled)
-	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
-		return
-	}
-
 	Write-ConsoleStatus -Action "Disabling the SmartScreen filter for Microsoft Edge"
 	LogInfo "Disabling the SmartScreen filter for Microsoft Edge"
 	try
 	{
-		Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows Security Health\State' -Name 'AppAndBrowser_EdgeSmartScreenOff' -Value 0 -Type DWord | Out-Null
+		Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows Security Health\State" -Name AppAndBrowser_EdgeSmartScreenOff -Type DWord -Value 0 | Out-Null
 		Write-ConsoleStatus -Status success
 	}
 	catch
@@ -465,32 +626,59 @@ function DismissSmartScreenFilter
 
 <#
 	.SYNOPSIS
-	DNS-over-HTTPS for IPv4
+	DNS-over-HTTPS provider presets and custom DNS-over-HTTPS configuration
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for dNS-over-HTTPS provider presets and custom DNS-over-HTTPS configuration.
 	.PARAMETER Enable
-	Enable DNS-over-HTTPS for IPv4
+	Enable DNS-over-HTTPS with a custom known server pair
+
+	.PARAMETER Google
+	Enable DNS-over-HTTPS using Google Public DNS
+
+	.PARAMETER Cloudflare
+	Enable DNS-over-HTTPS using Cloudflare DNS
+
+	.PARAMETER CloudflareMalware
+	Enable DNS-over-HTTPS using Cloudflare Malware protection DNS
+
+	.PARAMETER CloudflareMalwareAdult
+	Enable DNS-over-HTTPS using Cloudflare Malware + Adult protection DNS
+
+	.PARAMETER Quad9
+	Enable DNS-over-HTTPS using Quad9 DNS
+
+	.PARAMETER AdGuardAdsTrackers
+	Enable DNS-over-HTTPS using AdGuard Ads + Trackers protection DNS
+
+	.PARAMETER AdGuardAdsTrackersMalwareAdult
+	Enable DNS-over-HTTPS using AdGuard Ads + Trackers + Malware + Adult protection DNS
+
+	.PARAMETER OpenDNS
+	Enable DNS-over-HTTPS using OpenDNS
 
 	.PARAMETER Disable
-	Disable DNS-over-HTTPS for IPv4 (default value)
+	Disable DNS-over-HTTPS (default value)
 
 	.EXAMPLE
 	DNSoverHTTPS -Enable -PrimaryDNS 1.0.0.1 -SecondaryDNS 1.1.1.1
 
 	.EXAMPLE
+	DNSoverHTTPS -Google
+
+	.EXAMPLE
 	DNSoverHTTPS -Disable
 
 	.NOTES
-	The valid IPv4 addresses: 1.0.0.1, 1.1.1.1, 149.112.112.112, 8.8.4.4, 8.8.8.8, 9.9.9.9
-
-	.LINK
-	https://docs.microsoft.com/en-us/windows-server/networking/dns/doh-client-support
-
-	.LINK
-	https://www.comss.ru/page.php?id=7315
+	Custom manual configuration can target any known DNS-over-HTTPS server in the Windows DoH registry, including IPv6 addresses.
 
 	.NOTES
 	Machine-wide
 #>
+
 function DNSoverHTTPS
 {
 	[CmdletBinding()]
@@ -503,18 +691,80 @@ function DNSoverHTTPS
 		[switch]
 		$Enable,
 
-		[Parameter(Mandatory = $false)]
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Google"
+		)]
+		[switch]
+		$Google,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Cloudflare"
+		)]
+		[switch]
+		$Cloudflare,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "CloudflareMalware"
+		)]
+		[switch]
+		$CloudflareMalware,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "CloudflareMalwareAdult"
+		)]
+		[switch]
+		$CloudflareMalwareAdult,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Quad9"
+		)]
+		[switch]
+		$Quad9,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "AdGuardAdsTrackers"
+		)]
+		[switch]
+		$AdGuardAdsTrackers,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "AdGuardAdsTrackersMalwareAdult"
+		)]
+		[switch]
+		$AdGuardAdsTrackersMalwareAdult,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "OpenDNS"
+		)]
+		[switch]
+		$OpenDNS,
+
+		[Parameter(
+			Mandatory = $false,
+			ParameterSetName = "Enable"
+		)]
 		[ValidateScript({
-			# Isolate IPv4 IP addresses and check whether $PrimaryDNS is not equal to $SecondaryDNS
-			((@((Get-ChildItem -Path HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DohWellKnownServers).PSChildName) | Where-Object -FilterScript {($_ -as [IPAddress]).AddressFamily -ne "InterNetworkV6"}) -contains $_) -and ($_ -ne $SecondaryDNS)
+			$knownServers = @(Get-ChildItem -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DohWellKnownServers' -ErrorAction Stop | ForEach-Object { [string]$_.PSChildName })
+			($knownServers -contains $_) -and ($_ -ne $SecondaryDNS)
 		})]
 		[string]
 		$PrimaryDNS,
 
-		[Parameter(Mandatory = $false)]
+		[Parameter(
+			Mandatory = $false,
+			ParameterSetName = "Enable"
+		)]
 		[ValidateScript({
-			# Isolate IPv4 IP addresses and check whether $PrimaryDNS is not equal to $SecondaryDNS
-			((@((Get-ChildItem -Path HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DohWellKnownServers).PSChildName) | Where-Object -FilterScript {($_ -as [IPAddress]).AddressFamily -ne "InterNetworkV6"}) -contains $_) -and ($_ -ne $PrimaryDNS)
+			$knownServers = @(Get-ChildItem -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DohWellKnownServers' -ErrorAction Stop | ForEach-Object { [string]$_.PSChildName })
+			($knownServers -contains $_) -and ($_ -ne $PrimaryDNS)
 		})]
 		[string]
 		$SecondaryDNS,
@@ -527,72 +777,183 @@ function DNSoverHTTPS
 		$Disable
 	)
 
-	# Determining whether Hyper-V is enabled
-	# After enabling Hyper-V feature a virtual switch breing created, so we need to use different method to isolate the proper adapter
-	if (-not (Get-CimInstance -ClassName CIM_ComputerSystem).HypervisorPresent)
-	{
-		$InterfaceGuids = @((Get-NetAdapter -Physical).InterfaceGuid)
+	$providerConfigurations = @{
+		Google = [pscustomobject]@{
+			DisplayName = 'Google'
+			ServerAddresses = @('8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844')
+		}
+		Cloudflare = [pscustomobject]@{
+			DisplayName = 'Cloudflare'
+			ServerAddresses = @('1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001')
+		}
+		CloudflareMalware = [pscustomobject]@{
+			DisplayName = 'Cloudflare (Malware)'
+			ServerAddresses = @('1.1.1.2', '1.0.0.2', '2606:4700:4700::1112', '2606:4700:4700::1002')
+		}
+		CloudflareMalwareAdult = [pscustomobject]@{
+			DisplayName = 'Cloudflare (Malware+Adult)'
+			ServerAddresses = @('1.1.1.3', '1.0.0.3', '2606:4700:4700::1113', '2606:4700:4700::1003')
+		}
+		Quad9 = [pscustomobject]@{
+			DisplayName = 'Quad9'
+			ServerAddresses = @('9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9')
+		}
+		AdGuardAdsTrackers = [pscustomobject]@{
+			DisplayName = 'AdGuard (Ads+Trackers)'
+			ServerAddresses = @('94.140.14.14', '94.140.15.15', '2a10:50c0::ad1:ff', '2a10:50c0::ad2:ff')
+		}
+		AdGuardAdsTrackersMalwareAdult = [pscustomobject]@{
+			DisplayName = 'AdGuard (Ads+Trackers+Malware+Adult)'
+			ServerAddresses = @('94.140.14.15', '94.140.15.16', '2a10:50c0::bad1:ff', '2a10:50c0::bad2:ff')
+		}
+		OpenDNS = [pscustomobject]@{
+			DisplayName = 'OpenDNS'
+			ServerAddresses = @('208.67.222.222', '208.67.220.220', '2620:119:35::35', '2620:119:53::53')
+		}
 	}
-	else
+
+	<#
+	    .SYNOPSIS
+	    Gets DNS over HTTPS adapter targets.
+
+		#>
+
+	function Get-DnsOverHttpsAdapterTargets
 	{
-		$InterfaceGuids = @((Get-NetRoute -AddressFamily IPv4 | Where-Object -FilterScript {$_.DestinationPrefix -eq "0.0.0.0/0"} | Get-NetAdapter).InterfaceGuid)
+		param ([bool]$HypervisorPresent)
+
+		if ($HypervisorPresent)
+		{
+			return @(
+				Get-NetRoute -AddressFamily IPv4 |
+					Where-Object -FilterScript { $_.DestinationPrefix -eq '0.0.0.0/0' } |
+					Get-NetAdapter
+			)
+		}
+
+		return @(Get-NetAdapter -Physical)
 	}
+
+	<#
+	    .SYNOPSIS
+	    Gets DNS over HTTPS server configuration.
+
+		#>
+
+	function Get-DnsOverHttpsServerConfiguration
+	{
+		param ([string]$ParameterSetName)
+
+		if ($ParameterSetName -eq 'Enable')
+		{
+			return [pscustomobject]@{
+				DisplayName = 'custom DNS servers'
+				ServerAddresses = @($PrimaryDNS, $SecondaryDNS)
+			}
+		}
+
+		if ($providerConfigurations.ContainsKey($ParameterSetName))
+		{
+			return $providerConfigurations[$ParameterSetName]
+		}
+
+		return $null
+	}
+
+	<#
+	    .SYNOPSIS
+	    Sets DNS over HTTPS interface registry values.
+
+		#>
+
+	function Set-DnsOverHttpsInterfaceRegistryValues
+	{
+		param (
+			[string[]]$InterfaceGuids,
+			[string[]]$ServerAddresses
+		)
+
+		foreach ($InterfaceGuid in @($InterfaceGuids | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+		{
+			foreach ($serverAddress in @($ServerAddresses | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+			{
+				$serverPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$serverAddress"
+				if (-not (Test-Path -Path $serverPath))
+				{
+					New-Item -Path $serverPath -Force -ErrorAction Stop | Out-Null
+				}
+
+				New-ItemProperty -Path $serverPath -Name DohFlags -PropertyType QWord -Value 5 -Force -ErrorAction Stop | Out-Null
+			}
+		}
+	}
+
+	$computerSystem = Get-CimInstance -ClassName CIM_ComputerSystem
+	$interfaceGuids = @(
+		Get-DnsOverHttpsAdapterTargets -HypervisorPresent ([bool]$computerSystem.HypervisorPresent) |
+			ForEach-Object { $_.InterfaceGuid }
+	)
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling DNS-over-HTTPS for IPv4"
-			LogInfo "Enabling DNS-over-HTTPS for IPv4"
-			# Set a primary and secondary DNS servers
-			if ((Get-CimInstance -ClassName CIM_ComputerSystem).HypervisorPresent)
-			{
-				Get-NetRoute | Where-Object -FilterScript {$_.DestinationPrefix -eq "0.0.0.0/0"} | Get-NetAdapter | Set-DnsClientServerAddress -ServerAddresses $PrimaryDNS, $SecondaryDNS | Out-Null
-			}
-			else
-			{
-				Get-NetAdapter -Physical | Get-NetIPInterface -AddressFamily IPv4 | Set-DnsClientServerAddress -ServerAddresses $PrimaryDNS, $SecondaryDNS | Out-Null
-			}
-
-			foreach ($InterfaceGuid in $InterfaceGuids)
-			{
-				if (-not (Test-Path -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$PrimaryDNS"))
-				{
-					New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$PrimaryDNS" -Force | Out-Null
-				}
-				if (-not (Test-Path -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$SecondaryDNS"))
-				{
-					New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$SecondaryDNS" -Force | Out-Null
-				}
-				# Encrypted preffered, unencrypted allowed
-				New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$PrimaryDNS" -Name DohFlags -PropertyType QWord -Value 5 -Force | Out-Null
-				New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh\$SecondaryDNS" -Name DohFlags -PropertyType QWord -Value 5 -Force | Out-Null
-			}
-			Write-ConsoleStatus -Status success
-		}
 		"Disable"
 		{
-			Write-ConsoleStatus -Action "Disabling DNS-over-HTTPS for IPv4"
-			LogInfo "Disabling DNS-over-HTTPS for IPv4"
-			# Determining whether Hyper-V is enabled
-			if (-not (Get-CimInstance -ClassName CIM_ComputerSystem).HypervisorPresent)
+			try
 			{
-				# Configure DNS servers automatically
-				Get-NetAdapter -Physical | Set-DnsClientServerAddress -ResetServerAddresses | Out-Null
+				Write-ConsoleStatus -Action "Disabling DNS-over-HTTPS"
+				LogInfo "Disabling DNS-over-HTTPS"
+
+				# Configure DNS servers automatically.
+				Get-DnsOverHttpsAdapterTargets -HypervisorPresent ([bool]$computerSystem.HypervisorPresent) |
+					Set-DnsClientServerAddress -ResetServerAddresses -ErrorAction Stop | Out-Null
+
+				foreach ($InterfaceGuid in @($interfaceGuids | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+				{
+					# Clear the static NameServer registry value so Windows fully reverts to DHCP DNS.
+					Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$InterfaceGuid" -Name "NameServer" -Value "" -ErrorAction SilentlyContinue | Out-Null
+					Remove-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				}
+
+				Write-ConsoleStatus -Status success
 			}
-			else
+			catch
 			{
-				# Configure DNS servers automatically
-				Get-NetRoute | Where-Object -FilterScript {$_.DestinationPrefix -eq "0.0.0.0/0"} | Get-NetAdapter | Set-DnsClientServerAddress -ResetServerAddresses | Out-Null
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable DNS-over-HTTPS: $($_.Exception.Message)"
+				return
+			}
+		}
+		default
+		{
+			$serverConfiguration = Get-DnsOverHttpsServerConfiguration -ParameterSetName $PSCmdlet.ParameterSetName
+			if ($null -eq $serverConfiguration -or @($serverConfiguration.ServerAddresses).Count -eq 0)
+			{
+				throw "Unsupported DNS-over-HTTPS parameter set '$($PSCmdlet.ParameterSetName)'."
 			}
 
-			foreach ($InterfaceGuid in $InterfaceGuids)
+			$actionLabel = if ($PSCmdlet.ParameterSetName -eq 'Enable') { 'custom DNS servers' } else { [string]$serverConfiguration.DisplayName }
+
+			try
 			{
-				# Clear the static NameServer registry value so Windows fully reverts to DHCP DNS
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$InterfaceGuid" -Name "NameServer" -Value "" -ErrorAction SilentlyContinue | Out-Null
-				Remove-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\$InterfaceGuid\DohInterfaceSettings\Doh" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Action ("Enabling DNS-over-HTTPS for {0}" -f $actionLabel)
+				LogInfo ("Enabling DNS-over-HTTPS for {0}" -f $actionLabel)
+
+				$adapterTargets = @(Get-DnsOverHttpsAdapterTargets -HypervisorPresent ([bool]$computerSystem.HypervisorPresent))
+				if ($adapterTargets.Count -eq 0)
+				{
+					throw 'No network adapters were found to configure DNS-over-HTTPS.'
+				}
+
+				$adapterTargets | Set-DnsClientServerAddress -ServerAddresses $serverConfiguration.ServerAddresses -ErrorAction Stop | Out-Null
+				Set-DnsOverHttpsInterfaceRegistryValues -InterfaceGuids $interfaceGuids -ServerAddresses $serverConfiguration.ServerAddresses
+				Write-ConsoleStatus -Status success
 			}
-			Write-ConsoleStatus -Status success
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError ("Failed to configure DNS-over-HTTPS for {0}: {1}" -f $actionLabel, $_.Exception.Message)
+				return
+			}
 		}
 	}
 
@@ -633,6 +994,11 @@ function DNSoverHTTPS
 	.SYNOPSIS
 	Blocks or allows file downloads from the internet
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for blocks or allows file downloads from the internet.
 	.PARAMETER Enable
 	Enable blocking of file downloads (default value)
 
@@ -693,7 +1059,7 @@ function DownloadBlocking
 				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name "SaveZoneInformation" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name "SaveZoneInformation" -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -704,5 +1070,17 @@ function DownloadBlocking
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'AccountProtectionWarn',
+    'AppsSmartScreen',
+    'DefenderCloud',
+    'DefenderSandbox',
+    'DefenderScanCPULimit',
+    'DefenderSignatureUpdateInterval',
+    'DefenderTrayIcon',
+    'DismissMSAccount',
+    'DismissSmartScreenFilter',
+    'DNSoverHTTPS',
+    'DownloadBlocking'
+)
+Export-ModuleMember -Function $ExportedFunctions

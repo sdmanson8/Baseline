@@ -1,5 +1,12 @@
 Set-StrictMode -Version Latest
 
+$script:SourceContentHelperPath = Join-Path $PSScriptRoot 'Support/SourceContent.Helpers.ps1'
+if (-not (Test-Path -LiteralPath $script:SourceContentHelperPath))
+{
+    $script:SourceContentHelperPath = Join-Path $PSScriptRoot '../Support/SourceContent.Helpers.ps1'
+}
+. $script:SourceContentHelperPath
+
 # Populate manifest entries at script scope before Pester discovery so that
 # -ForEach data-driven tests can reference $script:ManifestEntries.
 # Must use @{} hashtables (not [PSCustomObject]) so Pester v5 unpacks
@@ -7,7 +14,7 @@ Set-StrictMode -Version Latest
 $script:ManifestEntries = & {
     $dataDir = Join-Path $PSScriptRoot '../../Module/Data'
     foreach ($jsonFile in (Get-ChildItem -LiteralPath $dataDir -Filter '*.json' -File | Sort-Object Name)) {
-        $payload = Get-Content -LiteralPath $jsonFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        $payload = Get-BaselineTestSourceText -Path $jsonFile.FullName | ConvertFrom-Json -ErrorAction Stop
         if (-not $payload.PSObject.Properties['Entries']) { continue }
         foreach ($entry in @($payload.Entries)) {
             if (-not $entry) { continue }
@@ -25,7 +32,7 @@ BeforeAll {
     $script:ValidRiskValues = @('Low', 'Medium', 'High')
     $script:ValidRecoveryLevels = @('Direct', 'DefaultsOnly', 'RestorePoint', 'Manual')
     $script:ValidImpactValues = @('Low', 'Medium', 'High')
-    $script:ValidTypeValues = @('Toggle', 'Choice', 'Action')
+    $script:ValidTypeValues = @('Toggle', 'Choice', 'Action', 'Date', 'NumericRange')
     $script:RequiredGuiFields = @('Name', 'Function', 'Type', 'Risk', 'Impact', 'Safe', 'RequiresRestart', 'Restorable', 'RecoveryLevel', 'WhyThisMatters', 'Tags')
 }
 
@@ -106,6 +113,16 @@ Describe 'Manifest-to-UI contract' {
         ) {
             $type = [string]$Entry.Type
             $type | Should -BeIn $script:ValidTypeValues -Because "'$Name' in $FileName has Type='$type' which is not one of: $($script:ValidTypeValues -join ', ')"
+        }
+    }
+
+    Describe 'Date parameter validation' {
+        It '<FileName> :: <Name> (Type=Date) has non-empty DateParam' -ForEach @(
+            $script:ManifestEntries | Where-Object { [string]$_.Entry.Type -eq 'Date' }
+        ) {
+            $value = $Entry.DateParam
+            $value | Should -Not -BeNullOrEmpty -Because "'$Name' in $FileName has Type=Date and must declare DateParam"
+            [string]::IsNullOrWhiteSpace([string]$value) | Should -Be $false -Because "'$Name' in $FileName DateParam must not be whitespace-only"
         }
     }
 }

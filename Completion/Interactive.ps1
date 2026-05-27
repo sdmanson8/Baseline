@@ -3,13 +3,12 @@
     Bootstraps an interactive Baseline session and provides tab completion for functions, arguments, and presets.
 
     .VERSION
-    3.1.0 (beta)
+    1.0.0
 
     .DATE
-    17.03.2026 - initial beta version
-    21.03.2026 - Added GUI
+    21.03.2026 - Initial Release
     06.04.2026 - Major changes to the GUI, and added more features
-    26.04.2026 - Minor Fixes
+    25.05.2026
 
     .AUTHOR
     sdmanson8 - Copyright (c) 2026
@@ -78,6 +77,11 @@ foreach ($functionName in @(
     Remove-Item -Path ("Function:\global:{0}" -f $functionName) -Force -ErrorAction Ignore
 }
 
+<#
+    .SYNOPSIS
+    Internal function global.
+#>
+
 function global:ConvertTo-BaselineInteractivePresetName
 {
     param (
@@ -99,6 +103,11 @@ function global:ConvertTo-BaselineInteractivePresetName
     }
 }
 
+<#
+    .SYNOPSIS
+    Internal function global.
+#>
+
 function global:Get-BaselineInteractivePresetNames
 {
     $presetRoot = $Global:BaselineInteractivePresetRoot
@@ -114,6 +123,11 @@ function global:Get-BaselineInteractivePresetNames
             Sort-Object -Unique
     )
 }
+
+<#
+    .SYNOPSIS
+    Internal function global.
+#>
 
 function global:Get-BaselineInteractivePresetCommandList
 {
@@ -201,6 +215,11 @@ function global:Get-BaselineInteractivePresetCommandList
 
     return $commandList.ToArray()
 }
+
+<#
+    .SYNOPSIS
+    Internal function global.
+#>
 
 function global:Baseline
 {

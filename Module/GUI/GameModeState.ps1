@@ -1,4 +1,8 @@
-# Game Mode state initialization and reset
+﻿# Game Mode state initialization and reset
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Initialize-GameModeState
 	{
@@ -24,6 +28,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Reset-GameModeState
 	{
 		param ([hashtable]$Context = $Script:Ctx)
@@ -40,6 +48,10 @@
 			Sync-GameModeContextState -Context $Context
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Sync-GameModeContextState
 	{
@@ -76,6 +88,10 @@
 		$Context.GameMode.ExecutionContext = $Script:ExecutionGameModeContext
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-HasGameModeTweaks
 	{
 		param ([object[]]$TweakList)
@@ -94,6 +110,10 @@
 		return ($active -and (Test-HasGameModeTweaks -TweakList $TweakList))
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-IsGameModeActive
 	{
 		param ([hashtable]$Context = $Script:Ctx)
@@ -108,6 +128,10 @@
 		return $Script:GameModeProfile
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-GameModePlan
 	{
 		param ([hashtable]$Context = $Script:Ctx)
@@ -121,6 +145,10 @@
 		if ($Context) { return $Context.GameMode.DecisionOverrides }
 		return $Script:GameModeDecisionOverrides
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-ExecutionGameModeContext
 	{

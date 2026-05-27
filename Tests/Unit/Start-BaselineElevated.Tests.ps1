@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     $filePath = Join-Path $PSScriptRoot '../../Bootstrap/Start-BaselineElevated.ps1'
@@ -10,23 +10,8 @@ BeforeAll {
 }
 
 Describe 'New-BaselineLauncherArgumentList' {
-    It 'builds the hidden elevated PowerShell argument list for Baseline.ps1' {
-        $result = @(New-BaselineLauncherArgumentList -ScriptPath 'C:\Baseline\Baseline.ps1')
-
-        $result | Should -Be @(
-            '-NoProfile'
-            '-ExecutionPolicy'
-            'Bypass'
-            '-WindowStyle'
-            'Hidden'
-            '-STA'
-            '-File'
-            'C:\Baseline\Baseline.ps1'
-        )
-    }
-
-    It 'appends forwarded arguments without rewriting or flattening them' {
-        $result = @(New-BaselineLauncherArgumentList -ScriptPath 'C:\Baseline\Baseline.ps1' -ForwardedArguments @(
+    It 'returns forwarded launcher arguments unchanged' {
+        $result = @(New-BaselineLauncherArgumentList -ForwardedArguments @(
             '-Preset'
             'Basic'
             '-Functions'
@@ -34,18 +19,16 @@ Describe 'New-BaselineLauncherArgumentList' {
         ))
 
         $result | Should -Be @(
-            '-NoProfile'
-            '-ExecutionPolicy'
-            'Bypass'
-            '-WindowStyle'
-            'Hidden'
-            '-STA'
-            '-File'
-            'C:\Baseline\Baseline.ps1'
             '-Preset'
             'Basic'
             '-Functions'
             'DiagTrackService -Disable'
         )
+    }
+
+    It 'returns an empty array when no forwarded arguments are supplied' {
+        $result = @(New-BaselineLauncherArgumentList)
+
+        $result | Should -Be @()
     }
 }

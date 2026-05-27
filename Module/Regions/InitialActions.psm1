@@ -1,44 +1,150 @@
-﻿using module ..\Logging.psm1
+using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
+
+# Appx cmdlets fail with "The type initializer for '<Module>' threw an exception"
+# in the minimal embedded runspace the Baseline launcher creates. Fall back to the
+# WinRT PackageManager so presence checks still work. Returns $null when neither
+# path produces a conclusive answer (caller should treat that as "unknown", not
+# "missing", to avoid a false "Windows is broken" warning).
+function Test-BaselineAppxPackagePresence
+{
+	<#
+	    .SYNOPSIS
+	    Check whether an Appx package is present.
+
+	    .DESCRIPTION
+	    Tries the Appx module first and falls back to the WinRT PackageManager so package presence checks still work when Appx cmdlets are unavailable.
+
+	    .PARAMETER Name
+	    Package identity name to look up.
+
+	    .EXAMPLE
+	    Test-BaselineAppxPackagePresence -Name 'Microsoft.WindowsStore'
+	#>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[string]
+		$Name
+	)
+
+	try
+	{
+		[void](Initialize-BaselineWinRtRuntimeDependencies)
+		Import-Module Appx -DisableNameChecking -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
+		$package = Get-AppxPackage -Name $Name -WarningAction SilentlyContinue -ErrorAction Stop
+		return [bool]$package
+	}
+	catch
+	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'InitialActions.Test-BaselineAppxPackagePresence:catch40' -Severity Debug }
+
+		# Fall through to WinRT probe.
+	}
+
+	try
+	{
+		$packageManager = [Windows.Management.Deployment.PackageManager, Windows.Web, ContentType=WindowsRuntime]::new()
+		$match = $packageManager.FindPackages() | Where-Object { $_.Id.Name -eq $Name } | Select-Object -First 1
+		return [bool]$match
+	}
+	catch
+	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'InitialActions.Test-BaselineAppxPackagePresence:catch51' -Severity Debug }
+
+		return $null
+	}
+}
+
+function Start-BaselineInitialActionsSplashSystemStep
+{
+	param(
+		[Parameter(Mandatory = $false)]
+		[object]
+		$LoadingSplash = $Global:LoadingSplash
+	)
+
+	if (-not $Global:GUIMode -or -not $LoadingSplash -or -not $LoadingSplash.IsAlive)
+	{
+		return
+	}
+
+	$stepStates = $null
+	if ($LoadingSplash -is [hashtable] -and $LoadingSplash.ContainsKey('StepStates'))
+	{
+		$stepStates = $LoadingSplash['StepStates']
+	}
+
+	if ($stepStates -is [System.Collections.IDictionary] -and $stepStates.Contains('system') -and [string]$stepStates['system'] -eq 'in_progress')
+	{
+		return
+	}
+
+	try
+	{
+		if (Get-Command -Name 'Set-BootstrapLoadingSplashStep' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			Set-BootstrapLoadingSplashStep -Splash $LoadingSplash -StepId 'system' -Status 'in_progress' -SubAction ''
+		}
+	}
+	catch
+	{
+		Write-SwallowedException -ErrorRecord $_ -Source 'InitialActions.SplashSystemStep'
+	}
+}
+
 #region InitialActions
-<#
-	.SYNOPSIS
-	Run the shared startup checks and runtime setup used before applying tweaks.
-
-	.DESCRIPTION
-	Prepares the Baseline session by clearing previous errors, unblocking
-	script files, setting network and compiler prerequisites, and initializing
-	the runtime helpers used by other region modules.
-
-	.PARAMETER Warning
-	Show the warning prompt during startup checks.
-
-	.EXAMPLE
-	InitialActions
-#>
 function InitialActions
 {
+	<#
+		.SYNOPSIS
+		Run the shared startup checks and runtime setup used before applying tweaks.
+
+		.DESCRIPTION
+		Prepares the Baseline session by clearing previous errors, unblocking
+		script files, setting network and compiler prerequisites, and initializing
+		the runtime helpers used by other region modules.
+
+		.PARAMETER Warning
+		Show the warning prompt during startup checks.
+
+		.PARAMETER SkipWinGetCheck
+		Skip the GUI splash WinGet availability/bootstrap check.
+
+		.PARAMETER SkipChocolateyCheck
+		Skip the GUI splash Chocolatey availability/bootstrap check.
+
+		.EXAMPLE
+		InitialActions
+	#>
 	param
 	(
 		[Parameter(Mandatory = $false)]
 		[switch]
-		$Warning
+		$Warning,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
+		$SkipWinGetCheck,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
+		$SkipChocolateyCheck
 	)
 
 	$osInfo = Get-OSInfo
 	$osName = $osInfo.OSName
 	$displayVersion = Get-BaselineDisplayVersion
 
-	$startupLabel = "Baseline | Utility for $osName"
-	if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
-	{
-		$startupLabel = "$startupLabel $displayVersion"
-	}
+	$startupLabel = Get-BaselineStartupLabel -OSName $osName -DisplayVersion $displayVersion
 
-	LogInfo "Starting $startupLabel" -addGap
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_Starting' -Fallback 'Starting {0}' -FormatArgs @($startupLabel)) -addGap
 
-	LogInfo "Beginning Initial Checks:"
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_BeginningInitialChecks' -Fallback 'Beginning Initial Checks:')
+
+	Start-BaselineInitialActionsSplashSystemStep
 
 	# Clear the $Error variable
 	$Global:Error.Clear()
@@ -56,76 +162,13 @@ function InitialActions
 	$Script:CompilerParameters = [System.CodeDom.Compiler.CompilerParameters]::new("System.dll")
 	$Script:CompilerParameters.TempFiles = [System.CodeDom.Compiler.TempFileCollection]::new($env:TEMP, $false)
 	$Script:CompilerParameters.GenerateInMemory = $true
-	$Signature = @{
-		Namespace          = "WinAPI"
-		Name               = "GetStrings"
-		Language           = "CSharp"
-		UsingNamespace     = "System.Text"
-		CompilerParameters = $CompilerParameters
-		MemberDefinition   = @"
-[DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-public static extern IntPtr GetModuleHandle(string lpModuleName);
-
-[DllImport("user32.dll", CharSet = CharSet.Auto)]
-internal static extern int LoadString(IntPtr hInstance, uint uID, StringBuilder lpBuffer, int nBufferMax);
-
-public static string GetString(uint strId)
-{
-	IntPtr intPtr = GetModuleHandle("shell32.dll");
-	StringBuilder sb = new StringBuilder(255);
-	LoadString(intPtr, strId, sb, sb.Capacity);
-	return sb.ToString();
-}
-
-// Get string from other DLLs
-[DllImport("shlwapi.dll", CharSet=CharSet.Unicode)]
-private static extern int SHLoadIndirectString(string pszSource, StringBuilder pszOutBuf, int cchOutBuf, string ppvReserved);
-
-public static string GetIndirectString(string indirectString)
-{
-	try
-	{
-		int returnValue;
-		StringBuilder lptStr = new StringBuilder(1024);
-		returnValue = SHLoadIndirectString(indirectString, lptStr, 1024, null);
-
-		if (returnValue == 0)
-		{
-			return lptStr.ToString();
-		}
-		else
-		{
-			return null;
-			// return "SHLoadIndirectString Failure: " + returnValue;
-		}
-	}
-	catch // (Exception ex)
-	{
-		return null;
-		// return "Exception Message: " + ex.Message;
-	}
-}
-"@
-	}
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\ShellStringWinApi.ps1')
 	if (-not ("WinAPI.GetStrings" -as [type]))
 	{
 		Add-Type @Signature
 	}
 
-	$Signature = @{
-		Namespace          = "WinAPI"
-		Name               = "ForegroundWindow"
-		Language           = "CSharp"
-		CompilerParameters = $CompilerParameters
-		MemberDefinition   = @"
-[DllImport("user32.dll")]
-public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-
-[DllImport("user32.dll")]
-[return: MarshalAs(UnmanagedType.Bool)]
-public static extern bool SetForegroundWindow(IntPtr hWnd);
-"@
-	}
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\ForegroundWindowWinApi.ps1')
 
 	if (-not ("WinAPI.ForegroundWindow" -as [type]))
 	{
@@ -133,313 +176,144 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	}
 
 	# Checking whether the logged-in user is an admin
-	LogInfo "Checking whether the logged-in user is an admin"
-	$CurrentUserName = (Get-Process -Id $PID -IncludeUserName).UserName | Split-Path -Leaf
-	$LoginUserName = (Get-CimInstance -ClassName Win32_Process -Filter "name='explorer.exe'" | Invoke-CimMethod -MethodName GetOwner | Select-Object -First 1).User
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingAdmin' -Fallback 'Checking whether the logged-in user is an admin')
+	$CurrentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name | Split-Path -Leaf
+	$LoginUserName = $null
+	try
+	{
+		$LoginUserName = (Get-CimInstance -ClassName Win32_Process -Filter "name='explorer.exe'" | Invoke-CimMethod -MethodName GetOwner | Select-Object -First 1).User
+	}
+	catch
+	{
+		LogWarning (Get-BaselineBilingualString -Key 'Bootstrap_UnableToDetermineLoggedInUserFromExplorer' -Fallback 'Unable to determine the logged-in user from explorer.exe: {0}' -FormatArgs @($_.Exception.Message))
+	}
 
 	if ($CurrentUserName -ne $LoginUserName)
 	{
-		LogWarning $Localization.LoggedInUserNotAdmin
+		LogWarning (Get-BaselineBilingualString -Key 'LoggedInUserNotAdmin' -Fallback "The logged-on user doesn't have admin rights.")
 	}
 
+	$IsAdmin = ([System.Security.Principal.WindowsPrincipal]::new([System.Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
 	# Checking whether the script was run in PowerShell ISE or VS Code
-	LogInfo "Checking whether the script was run in PowerShell ISE or VS Code"
-	if (($Host.Name -match "ISE") -or ($env:TERM_PROGRAM -eq "vscode"))
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingHostEnvironment' -Fallback 'Checking whether the script was run in PowerShell ISE or VS Code')
+	if (Test-BaselineUnsupportedHost -HostName $Host.Name -TermProgram $env:TERM_PROGRAM)
 	{
-		LogWarning ($Localization.UnsupportedHost -f $Host.Name.Replace("Host", ""))
+		LogWarning (Get-BaselineBilingualString -Key 'UnsupportedHost' -Fallback "The script doesn't support running via {0}." -FormatArgs @($Host.Name.Replace('Host', '')))
 	}
 
 	# Checking whether Windows was broken by 3rd party harmful tweakers, trojans, or custom Windows images
-	LogInfo "Checking whether Windows was broken by 3rd party harmful tweakers, trojans, or custom Windows images"
-	$Tweakers = @{
-		# https://github.com/Sycnex/Windows10Debloater
-		Windows10Debloater  = "$env:SystemDrive\Temp\Windows10Debloater"
-		# https://github.com/Fs00/Win10BloatRemover
-		Win10BloatRemover   = "$env:TEMP\.net\Win10BloatRemover"
-		# https://github.com/arcadesdude/BRU
-		"Bloatware Removal" = "$env:SystemDrive\BRU\Bloatware-Removal*.log"
-		# https://www.youtube.com/GHOSTSPECTRE
-		"Ghost Toolbox"     = "$env:SystemRoot\System32\migwiz\dlmanifests\run.ghost.cmd"
-		# https://win10tweaker.ru
-		"Win 10 Tweaker"    = "HKCU:\Software\Win 10 Tweaker"
-		# https://boosterx.ru
-		BoosterX            = "$env:ProgramFiles\GameModeX\GameModeX.exe"
-		# https://forum.ru-board.com/topic.cgi?forum=5&topic=14285&start=400#11
-		"Defender Control"  = "$env:APPDATA\Defender Control"
-		# https://forum.ru-board.com/topic.cgi?forum=5&topic=14285&start=260#12
-		"Defender Switch"   = "$env:ProgramData\DSW"
-		# https://revi.cc/revios/download
-		"Revision Tool"     = "${env:ProgramFiles(x86)}\Revision Tool"
-		# https://www.youtube.com/watch?v=L0cj_I6OF2o
-		"WinterOS Tweaker"  = "$env:SystemRoot\WinterOS*"
-		# https://github.com/ThePCDuke/WinCry
-		WinCry              = "$env:SystemRoot\TempCleaner.exe"
-		# https://www.youtube.com/watch?v=5NBqbUUB1Pk
-		WinClean             = "$env:ProgramFiles\WinClean Plus Apps"
-		# https://github.com/Atlas-OS/Atlas
-		AtlasOS              = "$env:SystemRoot\AtlasModules"
-		# https://x.com/NPKirbyy
-		KirbyOS              = "$env:ProgramData\KirbyOS"
-		# https://pc-np.com
-		PCNP                 = "HKCU:\Software\PCNP"
-	}
-	foreach ($Tweaker in $Tweakers.Keys)
-	{
-		if (Test-Path -Path $Tweakers[$Tweaker])
-		{
-			if ($Tweakers[$Tweaker] -eq "HKCU:\Software\Win 10 Tweaker")
-			{
-				LogWarning $Localization.Win10TweakerWarning
-
-			}
-			LogWarning ($Localization.TweakerWarning -f $Tweaker)
-		}
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingWindowsIntegrity' -Fallback 'Checking whether Windows was broken by 3rd party harmful tweakers, trojans, or custom Windows images')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\KnownTweakerDetectionMap.ps1')
+	$DetectedTweakers = New-Object System.Collections.Generic.List[string]
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\KnownTweakerWarnings.ps1')
 
 		# Checking whether Windows was broken by 3rd party harmful tweakers, trojans, or custom Windows images
+		# These probes are advisory only and must never block startup on restricted or unsupported systems.
 		$MuiCacheProperties = @()
 		if (Test-Path -Path "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache")
 		{
-			$MuiCacheProperties = (Get-ItemProperty -Path "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache" -ErrorAction SilentlyContinue).PSObject.Properties
+			try
+			{
+				$MuiCacheProperties = (Get-ItemProperty -Path "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache" -ErrorAction SilentlyContinue).PSObject.Properties
+			}
+			catch
+			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'InitialActions.InitialActions:catch202' -Severity Debug }
+
+				$MuiCacheProperties = @()
+			}
 		}
 
-		$Tweakers = @{
-			# https://forum.ru-board.com/topic.cgi?forum=62&topic=30617&start=1600#14
-			AutoSettingsPS   = "$(Get-Item -Path `"HKLM:\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths`" | Where-Object -FilterScript {$_.Property -match `"AutoSettingsPS`"})"
-			# Flibustier custom Windows image
-			Flibustier       = "$(Get-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\.NETFramework\Performance -Name *flibustier)"
-			# https://github.com/builtbybel/Winpilot
-			Winpilot         = "$($MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq `"Winpilot`"})"
-			# https://github.com/builtbybel/Winpilot
-			Bloatynosy       = "$($MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq `"BloatynosyNue`"})"
-			# https://github.com/builtbybel/xd-AntiSpy
-			"xd-AntiSpy"     = "$($MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq `"xd-AntiSpy`"})"
-			# https://forum.ru-board.com/topic.cgi?forum=5&topic=50519
-			"Modern Tweaker" = "$($MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq `"Modern Tweaker`"})"
-			# https://discord.com/invite/kernelos
-			KernelOS         = "$(Get-CimInstance -Namespace root/CIMV2/power -ClassName Win32_PowerPlan | Where-Object -FilterScript {$_.ElementName -match `"KernelOS`"})"
-			# https://discord.com/invite/9ZCgxhaYV6
-		ChlorideOS       = "$(Get-Volume | Where-Object -FilterScript {$_.FileSystemLabel -eq `"ChlorideOS`"})"
-	}
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\OptionalProbeInvoker.ps1')
+
+		$AutoSettingsPS = & $InvokeOptionalProbe {
+			Get-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths" | Where-Object -FilterScript {$_.Property -match "AutoSettingsPS"}
+		}
+		$Flibustier = & $InvokeOptionalProbe {
+			Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\.NETFramework\Performance" -Name *flibustier
+		}
+		$Winpilot = & $InvokeOptionalProbe {
+			$MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq "Winpilot"}
+		}
+		$Bloatynosy = & $InvokeOptionalProbe {
+			$MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq "BloatynosyNue"}
+		}
+		$XdAntiSpy = & $InvokeOptionalProbe {
+			$MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq "xd-AntiSpy"}
+		}
+		$ModernTweaker = & $InvokeOptionalProbe {
+			$MuiCacheProperties | Where-Object -FilterScript {$_.Value -eq "Modern Tweaker"}
+		}
+		$KernelOS = & $InvokeOptionalProbe {
+			Get-CimInstance -Namespace root/CIMV2/power -ClassName Win32_PowerPlan | Where-Object -FilterScript {$_.ElementName -match "KernelOS"}
+		}
+		$ChlorideOS = & $InvokeOptionalProbe {
+			Get-Volume | Where-Object -FilterScript {$_.FileSystemLabel -eq "ChlorideOS"}
+		}
+
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\AdditionalTweakerDetectionMap.ps1')
 	foreach ($Tweaker in $Tweakers.Keys)
 	{
 		if ($Tweakers[$Tweaker])
 		{
-			LogWarning ($Localization.TweakerWarning -f $Tweaker)
+			[void]$DetectedTweakers.Add([string]$Tweaker)
+			LogWarning (Get-BaselineBilingualString -Key 'TweakerWarning' -Fallback 'The Windows stability may have been compromised by using {0}. Reinstall Windows using only a genuine ISO image.' -FormatArgs @($Tweaker))
 		}
 	}
 
-	# Remove harmful blocked DNS domains list from https://github.com/schrebra/Windows.10.DNS.Block.List
-	LogInfo "Remove harmful blocked DNS domains list from https://github.com/schrebra/Windows.10.DNS.Block.List"
-	Get-NetFirewallRule -DisplayName Block.MSFT* -ErrorAction Ignore | Remove-NetFirewallRule | Out-Null
-
-	# Remove firewalled IP addresses that block Microsoft recourses added by harmful tweakers
-	# https://wpd.app
-	LogInfo "Remove firewalled IP addresses that block Microsoft recourses added by harmful tweakers"
-	Get-NetFirewallRule -DisplayName "Blocker MicrosoftTelemetry*", "Blocker MicrosoftExtra*", "windowsSpyBlocker*" -ErrorAction Ignore | Remove-NetFirewallRule | Out-Null
-
-	# Remove IP addresses from hosts file that block Microsoft resources added by WindowsSpyBlocker
-	# https://github.com/crazy-max/WindowsSpyBlocker
-	LogInfo "Remove IP addresses from hosts file that block Microsoft resources added by WindowsSpyBlocker"
-	try
+	$Global:BaselineHostTaint = Resolve-BaselineHostTaintAssessment -DetectedTweakerNames $DetectedTweakers
+	if ($Global:BaselineHostTaint.Level -eq 'Blocked')
 	{
-		# Checking whether https://github.com is alive
-		$Parameters = @{
-			Uri              = "https://github.com"
-			Method           = "Head"
-			DisableKeepAlive = $true
-			UseBasicParsing  = $true
-			TimeoutSec       = 15
-		}
-		(Invoke-WebRequest @Parameters).StatusDescription | Out-Null
-
-		Clear-Variable -Name IPArray -ErrorAction Ignore
-
-		# https://github.com/crazy-max/WindowsSpyBlocker/tree/master/data/hosts
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$extra = (Invoke-WebRequest @Parameters).Content
-
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra_v6.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$extra_v6 = (Invoke-WebRequest @Parameters).Content
-
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$spy = (Invoke-WebRequest @Parameters).Content
-
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy_v6.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$spy_v6 = (Invoke-WebRequest @Parameters).Content
-
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$update = (Invoke-WebRequest @Parameters).Content
-
-		$Parameters = @{
-			Uri             = "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update_v6.txt"
-			UseBasicParsing = $true
-			TimeoutSec      = 15
-		}
-		$update_v6 = (Invoke-WebRequest @Parameters).Content
-
-		$IPArray = @($extra, $extra_v6, $spy, $spy_v6, $update, $update_v6) -split "`r?`n" |
-			Where-Object { $_ -and ($_ -notmatch "^\s*#") }
-
-		# Validate downloaded hosts entries for integrity
-		$HostsEntryPattern = '^\s*[\d.:a-fA-F]+\s+\S+'
-		$TotalLines = @($IPArray).Count
-		$InvalidLines = @($IPArray | Where-Object { $_ -notmatch $HostsEntryPattern })
-		$ValidLines = @($IPArray | Where-Object { $_ -match $HostsEntryPattern })
-
-		if ($InvalidLines.Count -gt 0)
+		foreach ($Url in $Global:BaselineHostTaint.AdvisoryUrls)
 		{
-			foreach ($BadLine in $InvalidLines)
-			{
-				LogWarning "Invalid hosts entry skipped: $BadLine"
-			}
-		}
-
-		if ($TotalLines -gt 0 -and ($InvalidLines.Count / $TotalLines) -gt 0.5)
-		{
-			LogWarning "More than 50% of downloaded hosts entries failed validation ($($InvalidLines.Count)/$TotalLines). Downloaded data may be corrupted or tampered. Skipping WindowsSpyBlocker hosts cleanup."
-			return
-		}
-
-		$IPArray = $ValidLines
-
-		$HostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
-		$HostsContent = Get-Content -Path $HostsPath -Encoding Default -Force
-
-		$MatchedHostsEntries = $HostsContent | Where-Object {
-			$Line = $_.Trim()
-			$Line -and
-			(-not $Line.StartsWith("#")) -and
-			($IPArray | Select-String -SimpleMatch -Pattern $Line -Quiet)
-		}
-
-		if ($MatchedHostsEntries)
-		{
-			LogInfo "WindowsSpyBlocker entries detected in hosts file"
-
-			$FilteredHosts = $HostsContent | Where-Object {
-				$Line = $_.Trim()
-
-				if (-not $Line -or $Line.StartsWith("#"))
-				{
-					return $true
-				}
-
-				-not ($IPArray | Select-String -SimpleMatch -Pattern $Line -Quiet)
-			}
-
-			LogInfo "Cleaning hosts file"
-			$FilteredHosts | Set-Content -Path $HostsPath -Encoding Default -Force
-
-			Start-Process -FilePath notepad.exe -ArgumentList $HostsPath | Out-Null
+			LogWarning (Get-BaselineBilingualString -Key 'Bootstrap_HostTaintAdvisoryUrl' -Fallback 'See: {0}' -FormatArgs @([string]$Url))
 		}
 	}
-	catch [System.Net.WebException]
-	{
-		LogWarning "$( $Localization.NoResponse -f 'https://github.com' ) Skipping WindowsSpyBlocker hosts cleanup."
-	}
+
+		$__baselineExtractedPartDidReturn = $false
+		$__baselineExtractedPartHasReturnValue = $false
+		$__baselineExtractedPartReturnValue = $null
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\HarmfulTweakerNetworkCleanup.ps1')
+		if ($__baselineExtractedPartDidReturn) { if ($__baselineExtractedPartHasReturnValue) { return $__baselineExtractedPartReturnValue }; return }
 
 	# Checking whether Windows Feature Experience Pack was removed by harmful tweakers
-	LogInfo "Checking whether Windows Feature Experience Pack was removed by harmful tweakers"
-	if ($osInfo.IsWindowsServer)
-	{
-		LogInfo "Windows Feature Experience Pack check is not applicable on Windows Server."
-	}
-	elseif (-not (Get-AppxPackage -Name MicrosoftWindows.Client.CBS -WarningAction SilentlyContinue))
-	{
-		LogWarning ($Localization.WindowsComponentBroken -f "Windows Feature Experience Pack")
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingFeatureExperiencePack' -Fallback 'Checking whether Windows Feature Experience Pack was removed by harmful tweakers')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\FeatureExperiencePackPresenceCheck.ps1')
 
 	# Checking whether EventLog service is running
-	LogInfo "Checking whether EventLog service is running"
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingEventLogService' -Fallback 'Checking whether EventLog service is running')
 	if ((Get-Service -Name EventLog).Status -eq "Stopped")
 	{
-		LogWarning ($Localization.WindowsComponentBroken -f $([WinAPI.GetStrings]::GetString(22029)))
+		LogWarning (Get-BaselineBilingualString -Key 'WindowsComponentBroken' -Fallback '{0} is broken or removed from Windows. Reinstall Windows using only a genuine ISO image.' -FormatArgs @([WinAPI.GetStrings]::GetString(22029)))
 	}
 
 	# Checking whether the Microsoft Store being an important system component was removed
-	LogInfo "Checking whether the Microsoft Store being an important system component was removed"
-	if ($osInfo.IsWindowsServer)
-	{
-		LogInfo "Microsoft Store presence check is not applicable on Windows Server."
-	}
-	elseif (-not (Get-AppxPackage -Name Microsoft.WindowsStore -WarningAction SilentlyContinue))
-	{
-		LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Store")
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingMicrosoftStore' -Fallback 'Checking whether the Microsoft Store being an important system component was removed')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\MicrosoftStorePresenceCheck.ps1')
 
 	#region Defender checks
 	# Checking whether necessary Microsoft Defender components exists
-	LogInfo "Checking whether necessary Microsoft Defender components exists"
-	$Files = if ($osInfo.IsWindowsServer)
-	{
-		@(
-			"$env:SystemRoot\System32\smartscreen.exe",
-			"$env:SystemRoot\System32\CompatTelRunner.exe"
-		)
-	}
-	else
-	{
-		@(
-			"$env:SystemRoot\System32\smartscreen.exe",
-			"$env:SystemRoot\System32\SecurityHealthSystray.exe",
-			"$env:SystemRoot\System32\CompatTelRunner.exe"
-		)
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingDefenderComponents' -Fallback 'Checking whether necessary Microsoft Defender components exists')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\RequiredWindowsFiles.ps1')
 	foreach ($File in $Files)
 	{
 		if (-not (Test-Path -Path $File))
 		{
-			LogWarning ($Localization.WindowsComponentBroken -f $File)
+			LogWarning (Get-BaselineBilingualString -Key 'WindowsComponentBroken' -Fallback '{0} is broken or removed from Windows. Reinstall Windows using only a genuine ISO image.' -FormatArgs @($File))
 		}
 	}
 
 	# Checking whether Windows Security Settings page was hidden from UI
-	LogInfo "Checking whether Windows Security Settings page was hidden from UI"
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingSecurityPageVisibility' -Fallback 'Checking whether Windows Security Settings page was hidden from UI')
 	if ([Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer", "SettingsPageVisibility", $null) -match "hide:windowsdefender")
 	{
-		LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
+		LogWarning (Get-BaselineBilingualString -Key 'WindowsComponentBroken' -Fallback '{0} is broken or removed from Windows. Reinstall Windows using only a genuine ISO image.' -FormatArgs @('Microsoft Defender'))
 	}
 
 	# Checking whether WMI is corrupted
-	LogInfo "Checking whether WMI is corrupted"
-	if ($osInfo.IsWindowsServer)
-	{
-		LogInfo "Skipping Microsoft Defender WMI health check on Windows Server."
-	}
-	else
-	{
-		try
-		{
-			Get-CimInstance -ClassName MSFT_MpComputerStatus -Namespace root/Microsoft/Windows/Defender -ErrorAction Stop | Out-Null
-		}
-		catch [Microsoft.Management.Infrastructure.CimException]
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogWarning ($_.Exception.Message)
-			LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
-		}
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingWmi' -Fallback 'Checking whether WMI is corrupted')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\DefenderWmiHealthCheck.ps1')
 
 	# Check Microsoft Defender state
 	$SecurityCenterProducts = @()
@@ -450,203 +324,89 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	$Script:RealtimeMonitoringEnabled = $false
 	$Script:BehaviorMonitoringEnabled = $false
 
-	if ($osInfo.IsWindowsServer)
-	{
-		LogInfo "Skipping SecurityCenter2 antivirus checks on Windows Server."
-	}
-	else
-	{
-		try
-		{
-			$SecurityCenterProducts = @(Get-CimInstance -ClassName AntiVirusProduct -Namespace root/SecurityCenter2 -ErrorAction Stop)
-			$SecurityCenterAvailable = $true
-			if (-not $SecurityCenterProducts)
-			{
-				LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
-			}
-		}
-		catch [Microsoft.Management.Infrastructure.CimException]
-		{
-			LogWarning ($_.Exception.Message)
-			LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
-		}
-	}
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\SecurityCenterAntivirusProducts.ps1')
 
 	# Checking services
-	LogInfo "Checking services"
-	try
-	{
-		$DefenderServiceNames = if ($osInfo.IsWindowsServer)
-		{
-			@("WinDefend", "wscsvc")
-		}
-		else
-		{
-			@("WinDefend", "SecurityHealthService", "wscsvc")
-		}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingServices' -Fallback 'Checking services')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\DefenderServiceHealth.ps1')
 
-		$Services = Get-Service -Name $DefenderServiceNames -ErrorAction Stop
-		if ((-not $osInfo.IsWindowsServer) -and ($Services.Name -contains "SecurityHealthService"))
-		{
-			Get-Service -Name SecurityHealthService -ErrorAction Stop | Start-Service | Out-Null
-		}
-	}
-	catch [Microsoft.PowerShell.Commands.ServiceCommandException]
-	{
-		Remove-HandledErrorRecord -ErrorRecord $_
-		$Services = @()
-		LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
-	}
-
-	$Script:DefenderServices = (($Services | Where-Object { $_.Status -ne "Running" } | Measure-Object).Count -lt $Services.Count)
+	$Script:DefenderServices = Test-BaselineDefenderServicesHealthy -Services $Services
 
 	# Checking Get-MpPreference cmdlet
-	LogInfo "Checking Get-MpPreference cmdlet"
-	if (Get-Command -Name Get-MpPreference -ErrorAction SilentlyContinue)
-	{
-		try
-		{
-			(Get-MpPreference -ErrorAction Stop).EnableControlledFolderAccess | Out-Null
-		}
-		catch [Microsoft.Management.Infrastructure.CimException]
-		{
-			LogWarning ($Localization.WindowsComponentBroken -f "Microsoft Defender")
-		}
-	}
-	else
-	{
-		LogInfo "Microsoft Defender preference cmdlets are not available on this OS."
-	}
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingGetMpPreference' -Fallback 'Checking Get-MpPreference cmdlet')
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\DefenderPreferenceHealthCheck.ps1')
 
 	# Check Microsoft Defender state
-	LogInfo "Checking Microsoft Defender state"
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingMicrosoftDefenderState' -Fallback 'Checking Microsoft Defender state')
 	$DefenderState = $null
-	if ($SecurityCenterAvailable)
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\DefenderPolicyState.ps1')
+
+	if (Get-Command -Name 'Set-BaselineDefenderExecutionAvailability' -CommandType Function -ErrorAction SilentlyContinue)
 	{
-		$DefenderProduct = $SecurityCenterProducts | Where-Object { $_.instanceGuid -eq "{D68DDC3A-831F-4fae-9E44-DA132C1ACF46}" } | Select-Object -First 1
-		if ($DefenderProduct -and ($null -ne $DefenderProduct.productState))
+		$defenderExecutionAvailability = Resolve-BaselineDefenderExecutionAvailability
+		Set-BaselineDefenderExecutionAvailability -Available ([bool]$defenderExecutionAvailability.Available) -UnavailableReason ([string]$defenderExecutionAvailability.Reason)
+		if (-not $defenderExecutionAvailability.Available)
 		{
-			try
-			{
-				$ProductStateHex = '0x{0:x}' -f ([int]$DefenderProduct.productState)
-				if ($ProductStateHex.Length -ge 5)
-				{
-					$DefenderState = $ProductStateHex.Substring(3, 2)
-				}
-			}
-			catch
-			{
-				LogWarning "Unable to parse Microsoft Defender product state: $($_.Exception.Message)"
-			}
+			LogWarning (Get-BaselineBilingualString -Key 'Bootstrap_DefenderExecutionUnavailable' -Fallback 'Microsoft Defender command surface is unavailable: {0}' -FormatArgs @([string]$defenderExecutionAvailability.Reason))
+		}
+		elseif (-not $Script:DefenderEnabled)
+		{
+			LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_DefenderHealthNotFullyEnabled' -Fallback 'Microsoft Defender command surface is available, but Defender is not reported as the active fully enabled antivirus. Defender-backed actions will run and report command failures directly if Windows rejects them.')
 		}
 	}
-	else
+	if (Get-Command -Name 'Set-BaselineDefenderComponentAvailability' -CommandType Function -ErrorAction SilentlyContinue)
 	{
-		LogInfo "Microsoft Defender Security Center product state is not available on this OS."
-	}
-
-	if ($DefenderState -and $DefenderState -notmatch "00|01")
-	{
-		# Defender is a currently used AV. Continue...
-		$Script:DefenderProductState = $true
-
-		# Checking whether Microsoft Defender was turned off via GPO
-		if ([Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender", "DisableAntiSpyware", $null) -eq 1)
+		$defenderComponentAvailability = Resolve-BaselineDefenderComponentAvailability
+		Set-BaselineDefenderComponentAvailability -Available ([bool]$defenderComponentAvailability.Available) -UnavailableReason ([string]$defenderComponentAvailability.Reason)
+		if (-not $defenderComponentAvailability.Available)
 		{
-			$Script:AntiSpywareEnabled = $false
+			LogWarning (Get-BaselineBilingualString -Key 'Bootstrap_DefenderComponentsUnavailable' -Fallback 'Microsoft Defender components are unavailable: {0}' -FormatArgs @([string]$defenderComponentAvailability.Reason))
 		}
-		else
-		{
-			$Script:AntiSpywareEnabled = $true
-		}
-
-		# Checking whether Microsoft Defender was turned off via GPO
-		if ([Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableRealtimeMonitoring", $null) -eq 1)
-		{
-			$Script:RealtimeMonitoringEnabled = $false
-		}
-		else
-		{
-			$Script:RealtimeMonitoringEnabled = $true
-		}
-
-		# Checking whether Microsoft Defender was turned off via GPO
-		if ([Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableBehaviorMonitoring", $null) -eq 1)
-		{
-			$Script:BehaviorMonitoringEnabled = $false
-		}
-		else
-		{
-			$Script:BehaviorMonitoringEnabled = $true
-		}
-	}
-	else
-	{
-		$Script:DefenderProductState = $false
-		$Script:AntiSpywareEnabled = $false
-		$Script:RealtimeMonitoringEnabled = $false
-		$Script:BehaviorMonitoringEnabled = $false
-	}
-
-	if ($Script:DefenderServices -and $Script:DefenderProductState -and $Script:AntiSpywareEnabled -and $Script:RealtimeMonitoringEnabled -and $Script:BehaviorMonitoringEnabled)
-	{
-		# Defender is enabled
-		$Script:DefenderEnabled = $true
-
-		switch ((Get-MpPreference).EnableControlledFolderAccess)
-		{
-			"1"
-			{
-				LogInfo "Disabling Controlled folder access"
-				$Script:ControlledFolderAccess = $true
-				Set-MpPreference -EnableControlledFolderAccess Disabled | Out-Null
-
-				Start-Process -FilePath "windowsdefender://RansomwareProtection" | Out-Null
-			}
-			"0"
-			{
-				LogInfo "Controlled folder access has already been disabled"
-				$Script:ControlledFolderAccess = $false
-			}
-			default
-			{
-				$Script:ControlledFolderAccess = $false
-			}
-		}
-	}
-	else
-	{
-		$Script:DefenderEnabled = $false
-		$Script:ControlledFolderAccess = $false
 	}
 	#endregion Defender checks
 
-	# Checking whether LGPO.exe exists in the Assets folder
-	LogInfo "Checking whether LGPO.exe exists in the Assets folder"
-	if (-not (Test-Path -Path "$PSScriptRoot\..\..\Assets\LGPO.exe"))
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingBaselinePolicyToolExists' -Fallback 'Checking whether Baseline policy tool exists in the Assets folder')
+	try
 	{
-		LogWarning ($Localization.Bin -f [IO.Path]::GetFullPath("$PSScriptRoot\..\..\Assets"))
+		$null = Resolve-BaselinePolicyToolPath
+	}
+	catch
+	{
+		LogWarning $_.Exception.Message
 	}
 
 	# Enable back the SysMain service if it was disabled by harmful tweakers
-	LogInfo "Enable back the SysMain service if it was disabled by harmful tweakers"
-	if ((Get-Service -Name SysMain).Status -eq "Stopped")
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingSysMain' -Fallback 'Enable back the SysMain service if it was disabled by harmful tweakers')
+	if ($IsAdmin -and ((Get-Service -Name SysMain).Status -eq "Stopped"))
 	{
 		Get-Service -Name SysMain | Set-Service -StartupType Automatic | Out-Null
 		Get-Service -Name SysMain | Start-Service | Out-Null
 	}
+	elseif ((Get-Service -Name SysMain).Status -eq "Stopped")
+	{
+		LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_SkippingSysMainRecoveryNotElevated' -Fallback 'Skipping SysMain recovery because Baseline is not running elevated.')
+	}
 
 	# Automatically manage paging file size for all drives
-	LogInfo "Automatically manage paging file size for all drives"
-	if (-not (Get-CimInstance -ClassName CIM_ComputerSystem).AutomaticManagedPageFile)
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_CheckingPagingFile' -Fallback 'Automatically manage paging file size for all drives')
+	if ($IsAdmin -and (-not (Get-CimInstance -ClassName CIM_ComputerSystem).AutomaticManagedPageFile))
 	{
 		Get-CimInstance -ClassName CIM_ComputerSystem | Set-CimInstance -Property @{AutomaticManagedPageFile = $true} | Out-Null
+	}
+	elseif (-not (Get-CimInstance -ClassName CIM_ComputerSystem).AutomaticManagedPageFile)
+	{
+		LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_SkippingPagingFileRemediationNotElevated' -Fallback 'Skipping automatic paging file remediation because Baseline is not running elevated.')
 	}
 
 	# PowerShell 5.1 (7.5 too) interprets 8.3 file name literally, if an environment variable contains a non-Latin word
 	# https://github.com/PowerShell/PowerShell/issues/21070
-	Get-ChildItem -Path "$env:TEMP\Computer.txt", "$env:TEMP\User.txt" -Force -ErrorAction Ignore |
-		Remove-Item -Force -ErrorAction Ignore | Out-Null
+	foreach ($temporaryPolicyFile in @((Join-Path $env:TEMP 'Computer.txt'), (Join-Path $env:TEMP 'User.txt')))
+	{
+		if (Test-Path -LiteralPath $temporaryPolicyFile)
+		{
+			Remove-Item -LiteralPath $temporaryPolicyFile -Force -ErrorAction Ignore
+		}
+	}
 
 	$Global:BaselinePostActionRequirements = @{
 		EnsurePrintManagementConsole = $false
@@ -663,86 +423,35 @@ public static extern bool SetForegroundWindow(IntPtr hWnd);
 	}
 	catch [System.Management.Automation.PropertyNotFoundException]
 	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'InitialActions.InitialActions:catch404' -Severity Debug }
+
 		$Script:OpenedFolders = @()
 	}
-	Clear-Host
+	if ($env:BASELINE_EMBEDDED_HOST -ne '1' -and (Test-InteractiveHost))
+	{
+		Clear-Host
+	}
 
-	# Extract the localized "Browse" string from shell32.dll
 	$Script:Browse = Get-LocalizedShellString -ResourceId 9015 -Fallback 'Browse'
-	# Extract the localized "&No" string from shell32.dll
 	$Script:No = Get-LocalizedShellString -ResourceId 33232 -Fallback 'No' -StripAccelerators
-	# Extract the localized "&Yes" string from shell32.dll
 	$Script:Yes = Get-LocalizedShellString -ResourceId 33224 -Fallback 'Yes' -StripAccelerators
-	$Script:KeyboardArrows = if ($Localization -and $Localization.KeyboardArrows)
-	{
-		$Localization.KeyboardArrows -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193)
-	}
-	else
-	{
-		"Please use the arrow keys {0} and {1} on your keyboard to select your answer" -f [System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193)
-	}
-	# Extract the localized "Skip" string from shell32.dll
+	$Script:KeyboardArrows = Get-BaselineBilingualString -Key 'KeyboardArrows' -Fallback 'Please use the arrow keys {0} and {1} on your keyboard to select your answer' -FormatArgs @([System.Char]::ConvertFromUtf32(0x2191), [System.Char]::ConvertFromUtf32(0x2193))
 	$Script:Skip = Get-LocalizedShellString -ResourceId 16956 -Fallback 'Skip'
 
-	Write-Information -MessageData "┏┓   *     ┏      ┓ ┏*   ┓ 		" -InformationAction Continue
-	Write-Information -MessageData "┗┓┏┏┓┓┏┓╋  ╋┏┓┏┓  ┃┃┃┓┏┓┏┫┏┓┓┏┏┏" -InformationAction Continue
-	Write-Information -MessageData "┗┛┗┛ ┗┣┛┗  ┛┗┛┛   ┗┻┛┗┛┗┗┻┗┛┗┻┛┛" -InformationAction Continue
-	Write-Information -MessageData "      ┛                   		" -InformationAction Continue
+	Write-Information -MessageData "Baseline | Windows Utility" -InformationAction Continue
 
 	# Display a warning message about whether a user has customized the preset file
-	if ($Warning)
+		. (Join-Path $PSScriptRoot 'InitialActions\InitialActions\StartupWarningAndSplashFinalization.ps1')
+
+	LogInfo (Get-BaselineBilingualString -Key 'Bootstrap_InitialChecksFinished' -Fallback 'Initial Checks finished, continuing with Main Script') -addGap
+	if ($env:BASELINE_EMBEDDED_HOST -ne '1' -and (Test-InteractiveHost))
 	{
-		# Get the name of a preset (e.g Baseline.ps1) regardless if it was named
-		# $_.File has no EndsWith() method
-		[string]$PresetName = ((Get-PSCallStack).Position | Where-Object -FilterScript {$_.File}).File | Where-Object -FilterScript {$_.EndsWith(".ps1")}
-		LogWarning ($Localization.CustomizationWarning -f "`"$PresetName`"")
-		LogInfo "Showing Main Menu, waiting for input"
-
-		do
-		{
-			$Choice = Show-Menu -Menu @($Script:Yes, $Script:No) -Default 2
-
-			switch ($Choice)
-			{
-				$Script:Yes
-				{
-					continue
-				}
-				$Script:No
-				{
-					Invoke-Item -Path $PresetName
-					Start-Sleep -Seconds 5
-				}
-				$Script:KeyboardArrows {}
-			}
-		}
-		until ($Choice -ne $Script:KeyboardArrows)
+		Clear-Host
 	}
-
-	if ($Global:LoadingSplash -and $Global:LoadingSplash.IsAlive)
-	{
-		try
-		{
-			$Global:LoadingSplash.Dispatcher.Invoke([System.Action]{
-				try
-				{
-					$statusText = $Global:LoadingSplash.Window.FindName('StatusText')
-					if ($statusText)
-					{
-						$statusText.Text = 'Please wait - opening GUI...'
-					}
-				}
-				catch { $null = $_ }
-			})
-			# The launcher closes the splash immediately after InitialActions
-			# returns, once startup checks are done and before the GUI builds.
-		}
-		catch { $null = $_ }
-	}
-
-	LogInfo "Initial Checks finished, continuing with Main Script" -addGap
-	Clear-Host
 }
 #endregion InitialActions
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'InitialActions',
+    'Test-BaselineAppxPackagePresence'
+)
+Export-ModuleMember -Function $ExportedFunctions

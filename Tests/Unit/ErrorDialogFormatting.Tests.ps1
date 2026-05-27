@@ -1,10 +1,29 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     . (Join-Path $PSScriptRoot '../../Module/SharedHelpers/ErrorHandling.Helpers.ps1')
 }
 
 Describe 'User-facing error dialog formatting' {
+    It 'treats absent registry keys and values as ignorable idempotent cleanup records' {
+        $missingKeyRecord = $null
+        try {
+            Get-ItemProperty -Path 'HKLM:\SOFTWARE\BaselineDefinitelyMissingForTests' -ErrorAction Stop | Out-Null
+        } catch {
+            $missingKeyRecord = $_
+        }
+
+        $missingValueRecord = $null
+        try {
+            Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion' -Name 'BaselineDefinitelyMissingForTests' -ErrorAction Stop | Out-Null
+        } catch {
+            $missingValueRecord = $_
+        }
+
+        Test-IgnorableErrorRecord -ErrorRecord $missingKeyRecord | Should -BeTrue
+        Test-IgnorableErrorRecord -ErrorRecord $missingValueRecord | Should -BeTrue
+    }
+
     It 'returns a friendly title and guidance for startup errors' {
         $errorInfo = Get-BaselineErrorInfo -Exception ([System.InvalidOperationException]::new('First-run welcome failed: test')) -Context 'GUI startup'
 

@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     $filePath = Join-Path $PSScriptRoot '../../Module/Regions/SystemTweaks.psm1'
@@ -10,7 +10,7 @@ BeforeAll {
         }
     }
 
-    # Also scan extracted sub-modules (e.g. SystemTweaks.SMBRepair.psm1)
+    # Also scan loaded sub-modules (e.g. SystemTweaks.SMBRepair.psm1)
     $subModuleDir = Join-Path $PSScriptRoot '../../Module/Regions/SystemTweaks'
     if (Test-Path $subModuleDir) {
         foreach ($subFile in (Get-ChildItem -LiteralPath $subModuleDir -Filter '*.psm1' -File)) {
@@ -31,6 +31,10 @@ Describe 'LanmanWorkstationGuestAuthPolicy' {
     BeforeEach {
         $script:loggedInfoMessages = [System.Collections.Generic.List[string]]::new()
 
+        <#
+            .SYNOPSIS
+        #>
+
         function Write-ConsoleStatus {
             param(
                 [string]$Action,
@@ -38,14 +42,24 @@ Describe 'LanmanWorkstationGuestAuthPolicy' {
             )
         }
 
+        <#
+            .SYNOPSIS
+        #>
         function LogInfo {
             param([string]$Message)
             [void]$script:loggedInfoMessages.Add($Message)
         }
 
+        <#
+            .SYNOPSIS
+        #>
         function LogError {
             param([string]$Message)
         }
+
+        <#
+            .SYNOPSIS
+        #>
 
         function Set-Policy {
             param(

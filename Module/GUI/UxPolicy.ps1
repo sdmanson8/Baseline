@@ -1,4 +1,4 @@
-﻿# Mode presentation helpers - Safe Mode gets beginner-focused wording while
+# Mode presentation helpers - Safe Mode gets beginner-focused wording while
 # the existing full-detail views keep the original wording.
 # The execution engine is the same in all views; these only change what the user sees.
 #
@@ -6,17 +6,15 @@
 # five different dialog and summary functions, and the wording kept diverging between them.
 # Not a full policy framework - just the branches that were actually painful to keep consistent.
 
-	function Test-IsSafeModeUX
-	{
-		return ([bool]$Script:SafeMode)
-	}
+	<#
+	    .SYNOPSIS
+	#>
+function Test-IsDesignModeUX
+{
+	return ([bool]$Script:DesignMode)
+}
 
-	function Test-IsExpertModeUX
-	{
-		return ([bool]$Script:AdvancedMode)
-	}
-
-	function Get-UxOnboardingMode
+function Get-UxOnboardingMode
 	{
 		if (Test-IsExpertModeUX)
 		{
@@ -30,36 +28,63 @@
 		return 'Standard'
 	}
 
-	function Get-UxLocalizedString
-	{
-		param (
+	<#
+	    .SYNOPSIS
+	#>
+
+function Get-UxLocalizedString
+{
+	param (
 			[Parameter(Mandatory = $true)]
 			[string]$Key,
 
 			[Parameter(Mandatory = $true)]
+			[AllowEmptyString()]
 			[string]$Fallback,
 
 			[object[]]$FormatArgs = @()
 		)
 
-		$template = $Fallback
+		# GUI callers pass Fallback as the required display text. Use it whenever
+		# the active locale does not provide a non-empty value so controls never
+		# receive blank labels from incomplete translation packs.
 		$localizationSource = $Global:Localization
-		if ($null -ne $localizationSource)
+		$cacheVariable = Get-Variable -Name 'UxLocalizedStringTemplateCache' -Scope Script -ErrorAction SilentlyContinue
+		$cacheSourceVariable = Get-Variable -Name 'UxLocalizedStringTemplateCacheSource' -Scope Script -ErrorAction SilentlyContinue
+		$cacheSource = if ($cacheSourceVariable) { $cacheSourceVariable.Value } else { $null }
+		if (-not $cacheVariable -or -not ($cacheVariable.Value -is [hashtable]) -or -not [object]::ReferenceEquals($cacheSource, $localizationSource))
 		{
-			$candidate = $null
-			if ($localizationSource -is [System.Collections.IDictionary] -and $localizationSource.Contains($Key))
+			$Script:UxLocalizedStringTemplateCache = @{}
+			$Script:UxLocalizedStringTemplateCacheSource = $localizationSource
+		}
+
+		$cacheKey = [string]::Concat($Key, [char]0, $Fallback)
+		if ($Script:UxLocalizedStringTemplateCache.ContainsKey($cacheKey))
+		{
+			$template = [string]$Script:UxLocalizedStringTemplateCache[$cacheKey]
+		}
+		else
+		{
+			$template = $Fallback
+			if ($null -ne $localizationSource)
 			{
-				$candidate = [string]$localizationSource[$Key]
-			}
-			elseif ($localizationSource.PSObject -and $localizationSource.PSObject.Properties[$Key])
-			{
-				$candidate = [string]$localizationSource.$Key
+				$candidate = $null
+				if ($localizationSource -is [System.Collections.IDictionary] -and $localizationSource.Contains($Key))
+				{
+					$candidate = [string]$localizationSource[$Key]
+				}
+				elseif ($localizationSource.PSObject -and $localizationSource.PSObject.Properties[$Key])
+				{
+					$candidate = [string]$localizationSource.$Key
+				}
+
+				if (-not [string]::IsNullOrWhiteSpace($candidate))
+				{
+					$template = $candidate
+				}
 			}
 
-			if (-not [string]::IsNullOrWhiteSpace($candidate))
-			{
-				$template = $candidate
-			}
+			$Script:UxLocalizedStringTemplateCache[$cacheKey] = $template
 		}
 
 		if ($FormatArgs.Count -gt 0)
@@ -67,8 +92,79 @@
 			return ($template -f $FormatArgs)
 		}
 
-		return $template
+	return $template
+}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+function Get-UxMainWindowTitleText
+{
+	$osName = 'Windows'
+	try
+	{
+		$osInfo = Get-OSInfo
+		if ($osInfo -and -not [string]::IsNullOrWhiteSpace([string]$osInfo.OSName))
+		{
+			$osName = [string]$osInfo.OSName
+		}
 	}
+	catch { Write-SwallowedException -ErrorRecord $_ -Source 'UxPolicy.GetUxMainWindowTitleText.LoadOSInfo' }
+
+	if (Test-IsDesignModeUX)
+	{
+		return ('Baseline (Design Mode - not applying changes) | Utility for {0}' -f $osName)
+	}
+
+	return (Get-UxLocalizedString -Key 'GuiMainWindowTitleFormat' -Fallback 'Baseline | Utility for {0}' -FormatArgs @($osName))
+}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-UxString
+	{
+		param (
+			[Parameter(Mandatory = $true)]
+			[string]$Key,
+
+			[Parameter(Mandatory = $true)]
+			[AllowEmptyString()]
+			[string]$Fallback,
+
+			[object[]]$FormatArgs = @()
+		)
+
+		return (Get-UxLocalizedString -Key $Key -Fallback $Fallback -FormatArgs $FormatArgs)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-UxBilingualLocalizedString
+	{
+		param (
+			[Parameter(Mandatory = $true)]
+			[string]$Key,
+
+			[Parameter(Mandatory = $true)]
+			[AllowEmptyString()]
+			[string]$Fallback,
+
+			[object[]]$FormatArgs = @(),
+
+			[string]$Separator = ' | '
+		)
+
+		return (Get-BaselineBilingualString -Key $Key -Fallback $Fallback -FormatArgs $FormatArgs -Separator $Separator)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxToggleStateLabel
 	{
@@ -83,6 +179,10 @@
 
 		return (Get-UxLocalizedString -Key 'GuiToggleStateDisabled' -Fallback 'Disabled')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxExecutionSummaryDialogStrings
 	{
@@ -109,6 +209,10 @@
 			default   { return (Get-UxLocalizedString -Key 'GuiExecutionPreparing' -Fallback 'Preparing...') }
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxEmptyTabStateMessage
 	{
@@ -154,6 +258,10 @@
 		return (Get-UxLocalizedString -Key 'GuiEmptyStateTabQueryOnly' -Fallback "No tweaks match '{0}' in this tab." -FormatArgs @($normalizedQuery))
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxRecommendedPresetName
 	{
 		if ((Get-UxOnboardingMode) -eq 'Expert')
@@ -169,15 +277,19 @@
 		return 'Basic'
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxFirstRunPrimaryActionLabel
 	{
 		if ([bool]$Script:GameMode)
 		{
-			return 'Review Plan'
+			return (Get-UxLocalizedString -Key 'GuiFirstRunReviewPlan' -Fallback 'Review Plan')
 		}
 
 		$recommendedPreset = Get-UxRecommendedPresetName
-		return ("Start with {0}" -f (Get-UxPresetDisplayName -PresetName $recommendedPreset))
+		return (Get-UxLocalizedString -Key 'GuiFirstRunStartWith' -Fallback 'Start with {0}' -FormatArgs @((Get-UxPresetDisplayName -PresetName $recommendedPreset)))
 	}
 
 	function Get-UxPresetLoadedStatusText
@@ -186,27 +298,35 @@
 
 		$presetDisplayName = Get-UxPresetDisplayName -PresetName $PresetName
 		$previewLabel = Get-UxPreviewButtonLabel
-		return ("{0} loaded. Use {1} before applying it." -f $presetDisplayName, $previewLabel)
+		return (Get-UxLocalizedString -Key 'GuiPresetLoadedStatus' -Fallback '{0} loaded. Use {1} before applying it.' -FormatArgs @($presetDisplayName, $previewLabel))
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxStartGuideButtonLabel
 	{
 		if ((Get-UxOnboardingMode) -eq 'Expert')
 		{
-			return 'Quick Start'
+			return (Get-UxLocalizedString -Key 'GuiStartGuideQuickStartLabel' -Fallback 'Quick Start')
 		}
 
-		return 'Start Guide'
+		return (Get-UxLocalizedString -Key 'GuiStartGuideLabel' -Fallback 'Start Guide')
 	}
 
 	function Get-UxHelpButtonLabel
 	{
-		return 'Help'
+		return (Get-UxLocalizedString -Key 'GuiHelpBtnLabel' -Fallback 'Help')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxOpenHelpActionLabel
 	{
-		return 'Open Help'
+		return (Get-UxLocalizedString -Key 'GuiOpenHelpActionLabel' -Fallback 'Open Help')
 	}
 
 	function Get-UxPreviewButtonLabel
@@ -218,31 +338,64 @@
 	{
 		if ((Get-UxOnboardingMode) -eq 'Expert')
 		{
-			return 'Expert Quick Start'
+			return (Get-UxLocalizedString -Key 'GuiFirstRunDialogTitleExpert' -Fallback 'Expert Quick Start')
 		}
 
-		return 'Welcome to Baseline'
+		return (Get-UxLocalizedString -Key 'GuiFirstRunDialogTitle' -Fallback 'Welcome to Baseline')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxHelpDialogTitle
 	{
-		return 'Help'
+		return (Get-UxLocalizedString -Key 'GuiHelpDialogTitle' -Fallback 'Help')
 	}
 
 	function Get-UxHelpDialogSubtitle
 	{
+		$subtitle = $null
 		if ([bool]$Script:GameMode -and (Get-UxOnboardingMode) -eq 'Expert')
 		{
-			return 'Game Mode workflow and execution help'
+			$subtitle = (Get-UxLocalizedString -Key 'GuiHelpSubtitleGameModeExpert' -Fallback 'Game Mode workflow and execution help')
+		}
+		else
+		{
+			switch (Get-UxOnboardingMode)
+			{
+				'Safe' { $subtitle = (Get-UxLocalizedString -Key 'GuiHelpSubtitleSafe' -Fallback 'Safe Mode guidance and first-run walkthrough') }
+				'Expert' { $subtitle = (Get-UxLocalizedString -Key 'GuiHelpSubtitleExpert' -Fallback 'Advanced workflow and execution help') }
+				default { $subtitle = (Get-UxLocalizedString -Key 'GuiHelpSubtitle' -Fallback 'Baseline - usage guide') }
+			}
 		}
 
-		switch (Get-UxOnboardingMode)
+		$displayVersion = if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiDisplayVersion))
 		{
-			'Safe' { return 'Safe Mode guidance and first-run walkthrough' }
-			'Expert' { return 'Advanced workflow and execution help' }
-			default { return 'Baseline - usage guide' }
+			[string]$Script:GuiDisplayVersion
 		}
+		elseif (Get-Command -Name 'Get-BaselineDisplayVersion' -ErrorAction SilentlyContinue)
+		{
+			try { [string](Get-BaselineDisplayVersion) } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'UxPolicy.Get-UxHelpDialogSubtitle:catch360' -Severity Debug }
+			 $null }
+		}
+		else
+		{
+			$null
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
+		{
+			return ('{0} - {1}' -f $subtitle, $displayVersion)
+		}
+
+		return $subtitle
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxExpertGameModeHelpSections
 	{
@@ -258,51 +411,60 @@
 		)
 
 		return [ordered]@{
-			'Game Mode Workflow' = @(
-				("Game Mode is active and using the {0} profile." -f $ProfileName)
-				'Expert Mode keeps the full gaming workflow visible, including advanced options and risk metadata.'
-				'While Game Mode is active, only the Gaming tab plan can be edited or run.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeSection' -Fallback 'Game Mode Workflow') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeActive' -Fallback 'Game Mode is active and using the {0} profile.' -FormatArgs @($ProfileName))
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeVisible' -Fallback 'Expert Mode keeps the full gaming workflow visible, including advanced options and risk metadata.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeOnlyGaming' -Fallback 'While Game Mode is active, only the Gaming tab plan can be edited or run.')
 			)
-			'Profiles and Plan Building' = @(
-				'Build Profile replaces the current Game Mode plan with a reviewed manifest-backed gaming selection.'
-				'Casual, Competitive, Streaming, and Troubleshooting each target a different gaming workflow.'
-				'Decision prompts and optional advanced selections refine the active profile before execution.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeProfilesSection' -Fallback 'Profiles and Plan Building') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeBuildProfile' -Fallback 'Build Profile replaces the current Game Mode plan with a reviewed manifest-backed gaming selection.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeProfileTypes' -Fallback 'Casual, Competitive, Streaming, and Troubleshooting each target a different gaming workflow.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeDecisions' -Fallback 'Decision prompts and optional advanced selections refine the active profile before execution.')
 			)
 			$PreviewLabel = @(
-				("{0} shows the active Game Mode plan, including risk, restart required, restore, category, and grouped gaming metadata." -f $PreviewLabel)
-				'Use it to inspect the exact gaming actions before applying changes.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModePreview' -Fallback '{0} shows the active Game Mode plan, including risk, restart required, restore, category, and grouped gaming metadata.' -FormatArgs @($PreviewLabel))
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModePreviewUse' -Fallback 'Use it to inspect the exact gaming actions before applying changes.')
 			)
 			$ApplyLabel = @(
-				("{0} executes the active Game Mode plan only." -f $ApplyLabel)
-				'Non-Gaming tabs stay out of scope until Game Mode is turned off.'
-				'Outcome states per item: Success, Failed, Skipped, Already Applied.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeApply' -Fallback '{0} executes the active Game Mode plan only.' -FormatArgs @($ApplyLabel))
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeNonGaming' -Fallback 'Non-Gaming tabs stay out of scope until Game Mode is turned off.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeOutcomes' -Fallback 'Outcome states per item: Success, Failed, Skipped, Already Applied.')
 			)
-			'Risk and Recovery' = @(
-				'Risk, restart, direct-undo, and restore-point guidance come from the active plan metadata.'
-				'Restore to Windows Defaults resets supported defaults. It is separate from direct undo and rollback export.'
-				'Export Rollback Profile, when available after a run, includes only reversible-here undo commands.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeRiskSection' -Fallback 'Risk and Recovery') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeRiskMeta' -Fallback 'Risk, restart, direct-undo, and restore-point guidance come from the active plan metadata.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeRestoreDefaultsRecorded' -Fallback 'Restore Defaults resets supported recorded defaults. It is separate from direct undo and rollback export.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeRollbackExport' -Fallback 'Export Rollback Profile, when available after a run, includes only reversible-here undo commands.')
 			)
-			'Advanced Options' = @(
-				'Advanced Options appear only after a profile is selected and only outside Safe Mode.'
-				'They expose reviewed expert-only overrides that are not part of every profile by default.'
-				'Troubleshooting-only entries stay labeled so diagnostic changes are easy to spot.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeAdvancedSection' -Fallback 'Advanced Options') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeAdvancedAfter' -Fallback 'Advanced Options appear only after a profile is selected and only outside Safe Mode.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeAdvancedOverrides' -Fallback 'They expose reviewed expert-only overrides that are not part of every profile by default.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeAdvancedTroubleshoot' -Fallback 'Troubleshooting-only entries stay labeled so diagnostic changes are easy to spot.')
 			)
-			'System Scan and Logs' = @(
-				'System Scan can adjust Game Mode recommendation copy, but it does not change profile defaults automatically.'
-				'Open Log shows the session output if you need exact failure or recovery details.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeScanSection' -Fallback 'System Scan and Logs') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeScanAdjust' -Fallback 'System Scan can adjust Game Mode recommendation copy, but it does not change profile defaults automatically.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeLogOpen' -Fallback 'Open Log shows the session output if you need exact failure or recovery details.')
 			)
-			'Import / Export / Session Restore' = @(
-				'Export/Import saves and restores GUI selections for review, including the active Game Mode state.'
-				'Restore Snapshot restores the last captured GUI state only. It does not execute changes.'
-				'Turn off Game Mode to return to preset-based workflows.'
+			(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeIESection' -Fallback 'Import / Export / Session Restore') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeIEExport' -Fallback 'Export/Import saves and restores GUI selections for review, including the active Game Mode state.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeIESnapshot' -Fallback 'Restore Snapshot restores the last captured GUI state only. It does not execute changes.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertGameModeIETurnOff' -Fallback 'Turn off Game Mode to return to preset-based workflows.')
 			)
 		}
 	}
 
-	function Get-UxRunActionLabel
+	<#
+	    .SYNOPSIS
+	#>
+
+function Get-UxRunActionLabel
+{
+	if (Test-IsDesignModeUX)
 	{
-		return (Get-UxLocalizedString -Key 'GuiBtnRun' -Fallback 'Run Tweaks')
+		return 'Save Config...'
 	}
+
+	return (Get-UxLocalizedString -Key 'GuiBtnRun' -Fallback 'Run Tweaks')
+}
 
 	function Get-UxPreviewButtonToolTip
 	{
@@ -310,46 +472,65 @@
 		{
 			switch (Get-UxOnboardingMode)
 			{
-				'Safe' { return 'Beginner preview for the active Game Mode plan. Review what will run before applying changes.' }
-				'Expert' { return 'Expert preview for the active Game Mode plan, including risk, restart, and recovery details.' }
-				default { return 'Preview the active Game Mode plan before running it.' }
+				'Safe' { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipSafeGame' -Fallback 'Beginner preview for the active Game Mode plan. Review what will run before applying changes.') }
+				'Expert' { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipExpertGame' -Fallback 'Expert preview for the active Game Mode plan, including risk, restart, and recovery details.') }
+				default { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipDefaultGame' -Fallback 'Preview the active Game Mode plan before running it.') }
 			}
 		}
 
 		switch (Get-UxOnboardingMode)
 		{
-			'Safe' { return 'Beginner preview: shows what will change in plain language before you run tweaks.' }
-			'Expert' { return 'Expert preview: shows full execution plan details, including risk and recovery guidance.' }
-			default { return 'Preview what will run from your current selection without applying changes.' }
+			'Safe' { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipSafe' -Fallback 'Beginner preview: shows what will change in plain language before you run tweaks.') }
+			'Expert' { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipExpert' -Fallback 'Expert preview: shows full execution plan details, including risk and recovery guidance.') }
+			default { return (Get-UxLocalizedString -Key 'GuiPreviewTooltipDefault' -Fallback 'Preview what will run from your current selection without applying changes.') }
 		}
 	}
 
-	function Get-UxRunActionToolTip
+	<#
+	    .SYNOPSIS
+	#>
+
+function Get-UxRunActionToolTip
+{
+	if (Test-IsDesignModeUX)
 	{
-		if ([bool]$Script:GameMode)
-		{
+		return 'Saves the current GUI selections to a config file without applying changes.'
+	}
+
+	if ([bool]$Script:GameMode)
+	{
+		$previewLabel = Get-UxPreviewButtonLabel
 			switch (Get-UxOnboardingMode)
 			{
-				'Safe' { return 'Runs the active Game Mode plan with beginner-safe flow. Preview Run is recommended first.' }
-				'Expert' { return 'Runs the active Game Mode plan with expert-level scope. Preview Run is recommended first.' }
-				default { return 'Runs the active Game Mode plan only.' }
+				'Safe' { return (Get-UxLocalizedString -Key 'GuiRunTooltipSafeGame' -Fallback 'Runs the active Game Mode plan with beginner-safe flow. {0} is recommended first.' -FormatArgs @($previewLabel)) }
+				'Expert' { return (Get-UxLocalizedString -Key 'GuiRunTooltipExpertGame' -Fallback 'Runs the active Game Mode plan with expert-level scope. {0} is recommended first.' -FormatArgs @($previewLabel)) }
+				default { return (Get-UxLocalizedString -Key 'GuiRunTooltipDefaultGame' -Fallback 'Runs the active Game Mode plan only.') }
 			}
 		}
 
 		switch (Get-UxOnboardingMode)
 		{
-			'Safe' { return 'Applies the selected tweaks using beginner-focused safeguards.' }
-			'Expert' { return 'Runs the selected tweaks with full expert scope and detailed execution handling.' }
-			default { return 'Runs the currently selected tweaks.' }
+			'Safe' { return (Get-UxLocalizedString -Key 'GuiRunTooltipSafe' -Fallback 'Applies the selected tweaks using beginner-focused safeguards.') }
+			'Expert' { return (Get-UxLocalizedString -Key 'GuiRunTooltipExpert' -Fallback 'Runs the selected tweaks with full expert scope and detailed execution handling.') }
+			default { return (Get-UxLocalizedString -Key 'GuiRunTooltipDefault' -Fallback 'Runs the currently selected tweaks.') }
 		}
 	}
 
-	function Get-UxRunPathContext
+	<#
+	    .SYNOPSIS
+	#>
+
+function Get-UxRunPathContext
+{
+	if (Test-IsDesignModeUX)
 	{
-		if ($Script:GameMode -and [string]$Script:GameModeProfile -eq 'Troubleshooting')
-		{
-			return @{ Path = 'Troubleshooting'; Label = 'Troubleshoot'; Tone = 'caution' }
-		}
+		return @{ Path = 'DesignMode'; Label = 'Design Mode'; Tone = 'accent' }
+	}
+
+	if ($Script:GameMode -and [string]$Script:GameModeProfile -eq 'Troubleshooting')
+	{
+		return @{ Path = 'Troubleshooting'; Label = 'Troubleshoot'; Tone = 'caution' }
+	}
 		if ([bool]$Script:GameMode)
 		{
 			return @{ Path = 'GameMode'; Label = "Game: $([string]$Script:GameModeProfile)"; Tone = 'accent' }
@@ -363,8 +544,12 @@
 			$scenarioLabel = @($Script:ActiveScenarioNames.Keys | Sort-Object) -join ' + '
 			return @{ Path = 'Scenario'; Label = "Scenario: $scenarioLabel"; Tone = 'accent' }
 		}
-		return @{ Path = 'Manual'; Label = 'Mode: Custom Selection'; Tone = 'accent' }
+		return @{ Path = 'Manual'; Label = (Get-UxLocalizedString -Key 'GuiModeCustomSelection' -Fallback 'Mode: Custom Selection'); Tone = 'accent' }
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxRunPathConfirmationMessage
 	{
@@ -375,119 +560,176 @@
 		{
 			'Preset'
 			{
-				return "Apply $($RunPathContext.Label) preset? $previewLabel is recommended first."
+				return (Get-UxLocalizedString -Key 'GuiRunPathConfirmPreset' -Fallback 'Apply {0} preset? {1} is recommended first.' -FormatArgs @($RunPathContext.Label, $previewLabel))
 			}
 			'Troubleshooting'
 			{
-				return 'Run troubleshooting profile? This targets gaming-related settings only.'
+				return (Get-UxLocalizedString -Key 'GuiRunPathConfirmTroubleshooting' -Fallback 'Run troubleshooting profile? This targets gaming-related settings only.')
 			}
 			'GameMode'
 			{
-				return "Apply $($RunPathContext.Label) profile? $previewLabel is recommended first."
+				return (Get-UxLocalizedString -Key 'GuiRunPathConfirmGameMode' -Fallback 'Apply {0} profile? {1} is recommended first.' -FormatArgs @($RunPathContext.Label, $previewLabel))
 			}
 			default
 			{
-				return "Apply custom selection? This includes tweaks you selected individually. $previewLabel is strongly recommended."
+				return (Get-UxLocalizedString -Key 'GuiRunPathConfirmCustom' -Fallback 'Apply custom selection? This includes tweaks you selected individually. {0} is strongly recommended.' -FormatArgs @($previewLabel))
 			}
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxUndoSelectionActionLabel
 	{
 		if ((Test-IsSafeModeUX) -or (Test-IsExpertModeUX))
 		{
-			return 'Undo Selection Change'
+			return (Get-UxLocalizedString -Key 'GuiUndoSelectionChange' -Fallback 'Undo Selection Change')
 		}
 
-		return 'Restore Snapshot'
+		return (Get-UxLocalizedString -Key 'GuiRestoreSnapshot' -Fallback 'Restore Snapshot')
 	}
 
 	function Get-UxUndoProfileActionLabel
 	{
 		if ((Get-UxOnboardingMode) -eq 'Safe')
 		{
-			return 'Export Undo Profile'
+			return (Get-UxLocalizedString -Key 'GuiExportUndoProfile' -Fallback 'Export Undo Profile')
 		}
 
-		return 'Export Rollback Profile'
+		return (Get-UxLocalizedString -Key 'GuiExportRollbackProfile' -Fallback 'Export Rollback Profile')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxScenarioHeading
 	{
 		if ((Get-UxOnboardingMode) -eq 'Safe')
 		{
-			return 'Optional: Scenario Profiles'
+			return (Get-UxLocalizedString -Key 'GuiScenarioHeadingSafe' -Fallback 'Optional: Scenario Profiles')
 		}
 
 		return (Get-UxLocalizedString -Key 'GuiScenarioModesHeading' -Fallback 'Scenario Modes')
 	}
 
-	function Get-UxQuickStartSteps
-	{
-		$previewLabel = Get-UxPreviewButtonLabel
+function Get-UxQuickStartSteps
+{
+	$previewLabel = Get-UxPreviewButtonLabel
 		$isGameModeActive = [bool]$Script:GameMode
 		$gameModeProfile = if ([string]::IsNullOrWhiteSpace([string]$Script:GameModeProfile)) { 'Gaming' } else { [string]$Script:GameModeProfile }
 
 		if ($isGameModeActive)
 		{
 			return @(
-				("Game Mode is active and using the {0} profile." -f $gameModeProfile)
-				("Review the gaming profile and selected gaming tweaks with {0}." -f $previewLabel)
-				('Click {0} to apply the gaming plan.' -f (Get-UxRunActionLabel))
+				(Get-UxLocalizedString -Key 'GuiQuickStepGameModeActive' -Fallback 'Game Mode is active and using the {0} profile.' -FormatArgs @($gameModeProfile))
+				(Get-UxLocalizedString -Key 'GuiQuickStepGameModeReview' -Fallback 'Review the gaming profile and selected gaming tweaks with {0}.' -FormatArgs @($previewLabel))
+				(Get-UxLocalizedString -Key 'GuiQuickStepGameModeApply' -Fallback 'Click {0} to apply the gaming plan.' -FormatArgs @((Get-UxRunActionLabel)))
 			)
 		}
 
 		if ((Get-UxOnboardingMode) -eq 'Expert')
 		{
 			return @(
-				'Load Advanced to start from the full expert preset, or customize individual tweaks.'
-				("Click {0} to inspect risk, restart, and recovery details before applying anything." -f $previewLabel)
-				('Click {0} to apply the reviewed selection.' -f (Get-UxRunActionLabel))
+				(Get-UxLocalizedString -Key 'GuiQuickStepExpertLoad' -Fallback 'Load Advanced to start from the full expert preset, or customize individual tweaks.')
+				(Get-UxLocalizedString -Key 'GuiQuickStepExpertPreview' -Fallback 'Click {0} to inspect risk, restart, and recovery details before applying anything.' -FormatArgs @($previewLabel))
+				(Get-UxLocalizedString -Key 'GuiQuickStepExpertApply' -Fallback 'Click {0} to apply the reviewed selection.' -FormatArgs @((Get-UxRunActionLabel)))
 			)
 		}
 
 		return @(
-			("Choose a preset - {0} is recommended for most users." -f (Get-UxRecommendedPresetName))
-			("Click {0} to see what will change." -f $previewLabel)
-			('Click {0} to apply.' -f (Get-UxRunActionLabel))
-		)
+			(Get-UxLocalizedString -Key 'GuiQuickStepDefaultPreset' -Fallback 'Choose a preset - {0} is recommended for most users.' -FormatArgs @((Get-UxRecommendedPresetName)))
+			(Get-UxLocalizedString -Key 'GuiQuickStepDefaultPreview' -Fallback 'Click {0} to see what will change.' -FormatArgs @($previewLabel))
+			(Get-UxLocalizedString -Key 'GuiQuickStepDefaultApply' -Fallback 'Click {0} to apply.' -FormatArgs @((Get-UxRunActionLabel)))
+	)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-UxHelpGettingStartedLines
+	{
+		param (
+			[Parameter(Mandatory)]
+			[string]$Mode
+		)
+
+		switch ($Mode)
+		{
+			'Safe' {
+				return @(
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedSafeMain' -Fallback 'Use Start Guide on the main screen when you want the first-run walkthrough.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedSafePreview' -Fallback 'Use Preview Run before applying anything so you can review the impact first.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedSafeHelp' -Fallback 'Use Help when you want reference material instead of the guided setup flow.')
+				)
+			}
+			'Expert' {
+				return @(
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedExpertMain' -Fallback 'Use Start Guide on the main screen if you want the guided setup workflow.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedExpertTabs' -Fallback 'Otherwise jump directly to the tab you need and review the selection there.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedExpertHelp' -Fallback 'Use Help for reference topics, logs, and recovery guidance.')
+				)
+			}
+			default {
+				return @(
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedStdMain' -Fallback 'Use Start Guide on the main screen for the guided onboarding flow.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedStdPreview' -Fallback 'Preview Run lets you review what will change before you apply it.')
+					(Get-UxLocalizedString -Key 'GuiHelpGettingStartedStdHelp' -Fallback 'Use Help later when you need to rediscover the available workflows.')
+				)
+			}
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxUndoAndRestoreLines
 	{
 		if ((Get-UxOnboardingMode) -eq 'Safe')
 		{
 			return @(
-				("{0} restores the last preset or imported selection change in the GUI." -f (Get-UxUndoSelectionActionLabel))
-				'Restore to Windows Defaults restores supported tweaks to their Windows defaults.'
-				("{0}, when it appears after a run, saves reversible-here undo commands for supported changes." -f (Get-UxUndoProfileActionLabel))
-				'Some destructive or one-way actions require manual recovery.'
+				(Get-UxLocalizedString -Key 'GuiUndoRestoreSafeUndo' -Fallback '{0} restores the last preset or imported selection change in the GUI.' -FormatArgs @((Get-UxUndoSelectionActionLabel)))
+				(Get-UxLocalizedString -Key 'GuiUndoRestoreSafeDefaultsRecorded' -Fallback 'Restore Defaults restores supported tweaks to recorded default values.')
+				(Get-UxLocalizedString -Key 'GuiUndoRestoreSafeRollback' -Fallback '{0}, when it appears after a run, saves reversible-here undo commands for supported changes.' -FormatArgs @((Get-UxUndoProfileActionLabel)))
+				(Get-UxLocalizedString -Key 'GuiUndoRestoreSafeManual' -Fallback 'Some destructive or one-way actions require manual recovery.')
 			)
 		}
 
 		return @(
-			'Restore Snapshot restores the last captured GUI state only. It does not execute tweaks.'
-			'Restore to Windows Defaults restores supported tweaks to their Windows defaults.'
-			'Export Rollback Profile, when it appears after a run, saves reversible-here undo commands only.'
-			'Some destructive or one-way actions require manual recovery.'
+			(Get-UxLocalizedString -Key 'GuiUndoRestoreStdSnapshot' -Fallback 'Restore Snapshot restores the last captured GUI state only. It does not execute tweaks.')
+			(Get-UxLocalizedString -Key 'GuiUndoRestoreStdDefaultsRecorded' -Fallback 'Restore Defaults restores supported tweaks to recorded default values.')
+			(Get-UxLocalizedString -Key 'GuiUndoRestoreStdRollback' -Fallback 'Export Rollback Profile, when it appears after a run, saves reversible-here undo commands only.')
+			(Get-UxLocalizedString -Key 'GuiUndoRestoreStdManual' -Fallback 'Some destructive or one-way actions require manual recovery.')
 		)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxImportExportLines
 	{
 		if ((Get-UxOnboardingMode) -eq 'Safe')
 		{
 			return @(
-				'Export Settings saves the current GUI selection to a file.'
-				'Import Settings restores a saved selection into the GUI for review before you apply it.'
+				(Get-UxLocalizedString -Key 'GuiImportExportSafeExport' -Fallback 'Export Settings saves the current GUI selection to a file.')
+				(Get-UxLocalizedString -Key 'GuiImportExportSafeImport' -Fallback 'Import Settings restores a saved selection into the GUI for review before you apply it.')
 			)
 		}
 
 		return @(
-			'Export Settings saves the current GUI selection to a file.'
-			'Import Settings restores a saved selection into the GUI for review before execution.'
+			(Get-UxLocalizedString -Key 'GuiImportExportStdExport' -Fallback 'Export Settings saves the current GUI selection to a file.')
+			(Get-UxLocalizedString -Key 'GuiImportExportStdImport' -Fallback 'Import Settings restores a saved selection into the GUI for review before execution.')
 		)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxFirstRunWelcomeMessage
 	{
@@ -502,31 +744,31 @@
 		{
 			if ($onboardingMode -eq 'Expert')
 			{
-				[void]$lines.Add('Expert Mode is active with Game Mode enabled.')
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModeIntro' -Fallback 'Expert Mode is active with Game Mode enabled.'))
 				[void]$lines.Add('')
-				[void]$lines.Add(("Game Mode is currently driving the {0} profile plan, so preset onboarding is skipped while it is active." -f $gameModeProfile))
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModePlan' -Fallback 'Game Mode is currently driving the {0} profile plan, so preset onboarding is skipped while it is active.' -FormatArgs @($gameModeProfile)))
 				[void]$lines.Add('')
-				[void]$lines.Add(([char]0x2022 + (" {0} to inspect gaming actions, risk, restart, and recovery guidance." -f $previewLabel)))
-				[void]$lines.Add(([char]0x2022 + ' Use the Gaming tab controls to refine the active game profile plan.'))
-				[void]$lines.Add(([char]0x2022 + ' Turn off Game Mode if you want to return to preset-based workflows.'))
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModePreview' -Fallback '{0} to inspect gaming actions, risk, restart, and recovery guidance.' -FormatArgs @($previewLabel))))
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModeRefine' -Fallback 'Use the Gaming tab controls to refine the active game profile plan.')))
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModeOff' -Fallback 'Turn off Game Mode if you want to return to preset-based workflows.')))
 				[void]$lines.Add('')
-				[void]$lines.Add('Quick Start:')
-				[void]$lines.Add(("1. Review the active {0} game profile plan" -f $gameModeProfile))
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeQuickStartLabel' -Fallback 'Quick Start:'))
+				[void]$lines.Add(("1. " + (Get-UxLocalizedString -Key 'GuiWelcomeExpertGameModeStep1' -Fallback 'Review the active {0} game profile plan' -FormatArgs @($gameModeProfile))))
 				[void]$lines.Add(("2. {0}" -f $previewLabel))
 				[void]$lines.Add(("3. {0}" -f $runLabel))
 			}
 			else
 			{
-				[void]$lines.Add('Baseline helps you safely optimize Windows settings.')
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeBaselineHelps' -Fallback 'Baseline helps you safely optimize Windows settings.'))
 				[void]$lines.Add('')
-				[void]$lines.Add(("Game Mode is active and using the {0} profile." -f $gameModeProfile))
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiQuickStepGameModeActive' -Fallback 'Game Mode is active and using the {0} profile.' -FormatArgs @($gameModeProfile)))
 				[void]$lines.Add('')
-				[void]$lines.Add(([char]0x2022 + " {0} shows what the game profile will change" -f $previewLabel))
-				[void]$lines.Add([char]0x2022 + ' Undo reverses your last changes')
-				[void]$lines.Add([char]0x2022 + ' Restore to Defaults resets supported settings')
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeGameModePreviewShows' -Fallback '{0} shows what the game profile will change' -FormatArgs @($previewLabel))))
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeUndoReverses' -Fallback 'Undo reverses your last changes')))
+				[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeRestoreDefaults' -Fallback 'Restore to Defaults resets supported settings')))
 				[void]$lines.Add('')
-				[void]$lines.Add('Start Guide:')
-				[void]$lines.Add(("1. Review the active {0} game profile" -f $gameModeProfile))
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeStartGuideLabel' -Fallback 'Start Guide:'))
+				[void]$lines.Add(("1. " + (Get-UxLocalizedString -Key 'GuiWelcomeGameModeStep1' -Fallback 'Review the active {0} game profile' -FormatArgs @($gameModeProfile))))
 				[void]$lines.Add(("2. {0}" -f $previewLabel))
 				[void]$lines.Add(("3. {0}" -f $runLabel))
 			}
@@ -536,35 +778,39 @@
 
 		if ($onboardingMode -eq 'Expert')
 		{
-			[void]$lines.Add('Expert Mode unlocks all presets, including advanced and high-risk tweaks.')
+			[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeExpertUnlocks' -Fallback 'Expert Mode unlocks all presets, including advanced and high-risk tweaks.'))
 			[void]$lines.Add('')
-			[void]$lines.Add(([char]0x2022 + ' Advanced is the recommended starting point and loads the broadest selection.'))
-			[void]$lines.Add(([char]0x2022 + " {0} shows the full execution plan, including risk, restart, and recovery guidance." -f $previewLabel))
-			[void]$lines.Add(([char]0x2022 + ' Undo reverses your last run. Restore to Defaults resets supported settings.'))
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertAdvanced' -Fallback 'Advanced is the recommended starting point and loads the broadest selection.')))
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertPreview' -Fallback '{0} shows the full execution plan, including risk, restart, and recovery guidance.' -FormatArgs @($previewLabel))))
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertUndoRestore' -Fallback 'Undo reverses your last run. Restore to Defaults resets supported settings.')))
 			[void]$lines.Add('')
-			[void]$lines.Add('Quick Start:')
-			[void]$lines.Add('1. Start with Advanced or customize individual tweaks')
-			[void]$lines.Add(('2. {0} to inspect the execution plan' -f $previewLabel))
+			[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeQuickStartLabel' -Fallback 'Quick Start:'))
+			[void]$lines.Add(('1. ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertStep1' -Fallback 'Start with Advanced or customize individual tweaks')))
+			[void]$lines.Add(('2. ' + (Get-UxLocalizedString -Key 'GuiWelcomeExpertStep2' -Fallback '{0} to inspect the execution plan' -FormatArgs @($previewLabel))))
 			[void]$lines.Add(('3. {0}' -f $runLabel))
 		}
 		else
 		{
-			[void]$lines.Add('Baseline helps you safely optimize Windows settings.')
+			[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeBaselineHelps' -Fallback 'Baseline helps you safely optimize Windows settings.'))
 			[void]$lines.Add('')
-			[void]$lines.Add('You can safely explore Baseline before applying changes.')
+			[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeExplore' -Fallback 'You can safely explore Baseline before applying changes.'))
 			[void]$lines.Add('')
-			[void]$lines.Add(([char]0x2022 + " {0} shows what will change" -f $previewLabel))
-			[void]$lines.Add([char]0x2022 + ' Undo reverses your last changes')
-			[void]$lines.Add([char]0x2022 + ' Restore to Defaults resets supported settings')
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomePreviewShows' -Fallback '{0} shows what will change' -FormatArgs @($previewLabel))))
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeUndoReverses' -Fallback 'Undo reverses your last changes')))
+			[void]$lines.Add(([char]0x2022 + ' ' + (Get-UxLocalizedString -Key 'GuiWelcomeRestoreDefaults' -Fallback 'Restore to Defaults resets supported settings')))
 			[void]$lines.Add('')
-			[void]$lines.Add('Start Guide:')
-			[void]$lines.Add('1. Choose a preset')
+			[void]$lines.Add((Get-UxLocalizedString -Key 'GuiWelcomeStartGuideLabel' -Fallback 'Start Guide:'))
+			[void]$lines.Add(('1. ' + (Get-UxLocalizedString -Key 'GuiWelcomeDefaultStep1' -Fallback 'Choose a preset')))
 			[void]$lines.Add(('2. {0}' -f $previewLabel))
 			[void]$lines.Add(('3. {0}' -f $runLabel))
 		}
 
 		return ($lines -join [Environment]::NewLine)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxPresetDisplayName
 	{
@@ -574,13 +820,17 @@
 		{
 			switch ($PresetName)
 			{
-				'Minimal' { return 'Quick Start' }
-				'Basic'   { return 'Recommended' }
+				'Minimal' { return (Get-UxLocalizedString -Key 'GuiPresetQuickStart' -Fallback 'Quick Start') }
+				'Basic'   { return (Get-UxLocalizedString -Key 'GuiPresetRecommended' -Fallback 'Recommended') }
 			}
 		}
 
 		return $PresetName
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxPresetEmphasisText
 	{
@@ -588,16 +838,21 @@
 		{
 			'Safe'
 			{
-				return "Start here $([char]0x2014) Quick Start is recommended for your first run."
+				$qsLabel = Get-UxLocalizedString -Key 'GuiPresetQuickStart' -Fallback 'Quick Start'
+				return (Get-UxLocalizedString -Key 'GuiPresetStartHereEmphasis' -Fallback '{0} is recommended for your first run.' -FormatArgs @($qsLabel))
 			}
 			'Expert'
 			{
-				return 'Start with Advanced to load the full expert preset, or choose a narrower tier if you want less scope.'
+				return (Get-UxLocalizedString -Key 'GuiPresetEmphasisExpert' -Fallback 'Start with Advanced to load the full expert preset, or choose a narrower tier if you want less scope.')
 			}
 		}
 
-		return 'Use these shortcuts to start from a sensible baseline before fine-tuning individual tweaks.'
+		return (Get-UxLocalizedString -Key 'GuiPresetEmphasisDefault' -Fallback 'Use these shortcuts to start from a sensible baseline before fine-tuning individual tweaks.')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxPresetSummaryText
 	{
@@ -605,16 +860,20 @@
 		{
 			'Safe'
 			{
-				return 'Quick Start includes privacy essentials. Recommended adds broader privacy and performance tweaks. More presets are available when you turn off Safe Mode.'
+				return (Get-UxLocalizedString -Key 'GuiPresetSummarySafe' -Fallback 'Quick Start includes privacy essentials. Recommended adds broader privacy and performance tweaks. More presets are available when you turn off Safe Mode.')
 			}
 			'Expert'
 			{
-				return 'Advanced is the expert starting point in Expert Mode and loads the broadest preset selection. Balanced and Basic remain available if you want a narrower scope; review Advanced carefully before running.'
+				return (Get-UxLocalizedString -Key 'GuiPresetSummaryExpert' -Fallback 'Advanced is the expert starting point in Expert Mode and loads the broadest preset selection. Balanced and Basic remain available if you want a narrower scope; review Advanced carefully before running.')
 			}
 		}
 
-		return 'Minimal is the safest start. Basic is the recommended default. Balanced widens the selection. Advanced is the expert preset and should be reviewed carefully.'
+		return (Get-UxLocalizedString -Key 'GuiPresetSummaryDefault' -Fallback 'Minimal is the safest start. Basic is the recommended default. Balanced widens the selection. Advanced is the expert preset and should be reviewed carefully.')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxConfirmationMessage
 	{
@@ -637,40 +896,40 @@
 
 		if ($IsGameModeRun)
 		{
-			$messageParts += "Game Mode is preparing the $($Script:GameModeProfile) profile."
+			$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmGameModePreparing' -Fallback 'Game Mode is preparing the {0} profile.' -FormatArgs @($Script:GameModeProfile))
 			if (Test-IsSafeModeUX)
 			{
-				$messageParts += 'Review the grouped gaming actions before you continue. Restore point recommended if this is your first time.'
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmGameModeSafeReview' -Fallback 'Review the grouped gaming actions before you continue. Restore point recommended if this is your first time.')
 			}
 			else
 			{
-				$messageParts += 'Review the grouped gaming actions, restart notes, recovery guidance, and reversible-here coverage before you continue.'
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmGameModeExpertReview' -Fallback 'Review the grouped gaming actions, restart notes, recovery guidance, and reversible-here coverage before you continue.')
 			}
 		}
 		elseif ($Summary.RiskLevel -eq 'High')
 		{
 			if (Test-IsSafeModeUX)
 			{
-				$messageParts += 'This selection includes changes that may affect how some apps or features work.'
-				$messageParts += ("A restore point will be created automatically. You can also use {0} to see exactly what will happen." -f $previewLabel)
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmHighRiskSafe' -Fallback 'This selection includes changes that may affect how some apps or features work.')
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmHighRiskSafeRestore' -Fallback 'A restore point will be created automatically. You can also use {0} to see exactly what will happen.' -FormatArgs @($previewLabel))
 			}
 			else
 			{
-				$messageParts += 'This selection includes high-risk or manual recovery changes.'
-				$messageParts += 'They may remove Windows features, affect update, network, gaming, or compatibility behavior, and be difficult to undo.'
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmHighRiskExpert' -Fallback 'This selection includes high-risk or manual recovery changes.')
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmHighRiskExpertDetail' -Fallback 'They may remove Windows features, affect update, network, gaming, or compatibility behavior, and be difficult to undo.')
 			}
 		}
 		else
 		{
 			if (Test-IsSafeModeUX)
 			{
-				$messageParts += 'This selection includes some changes that may affect app compatibility.'
-				$messageParts += ("Use {0} to see exactly what will change." -f $previewLabel)
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmMediumRiskSafe' -Fallback 'This selection includes some changes that may affect app compatibility.')
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmMediumRiskSafePreview' -Fallback 'Use {0} to see exactly what will change.' -FormatArgs @($previewLabel))
 			}
 			else
 			{
-				$messageParts += 'This selection includes moderate-risk changes.'
-				$messageParts += 'They may affect compatibility, workflow behavior, or system defaults.'
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmMediumRiskExpert' -Fallback 'This selection includes moderate-risk changes.')
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmMediumRiskExpertDetail' -Fallback 'They may affect compatibility, workflow behavior, or system defaults.')
 			}
 		}
 
@@ -678,12 +937,12 @@
 		{
 			if (Test-IsExpertModeUX)
 			{
-				$messageParts += "$AdvancedTierCount Advanced-tier change$(if ($AdvancedTierCount -eq 1) { '' } else { 's' }) included."
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmAdvancedTierExpert' -Fallback '{0} Advanced-tier change{1} included.' -FormatArgs @($AdvancedTierCount, $(if ($AdvancedTierCount -eq 1) { '' } else { 's' })))
 			}
 			else
 			{
-				$messageParts += 'This selection includes Advanced-tier changes.'
-				$messageParts += 'Advanced is the expert preset and is intended for experienced users who are comfortable with the tradeoffs.'
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmAdvancedTierStd' -Fallback 'This selection includes Advanced-tier changes.')
+				$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmAdvancedTierStdDetail' -Fallback 'Advanced is the expert preset and is intended for experienced users who are comfortable with the tradeoffs.')
 			}
 		}
 
@@ -711,15 +970,19 @@
 
 		if (Test-IsSafeModeUX)
 		{
-			$messageParts += ("Tip: {0} lets you see every action before anything is applied." -f $previewLabel)
+			$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmTipSafe' -Fallback 'Tip: {0} lets you see every action before anything is applied.' -FormatArgs @($previewLabel))
 		}
 		else
 		{
-			$messageParts += ("{0} lets you review the exact actions before they apply." -f $previewLabel)
+			$messageParts += (Get-UxLocalizedString -Key 'GuiConfirmTipStd' -Fallback '{0} lets you review the exact actions before they apply.' -FormatArgs @($previewLabel))
 		}
 
 		return $messageParts
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxHumanReadableSummary
 	{
@@ -764,6 +1027,10 @@
 		return ($lines -join [Environment]::NewLine)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxPreviewSummaryParts
 	{
 		param (
@@ -780,6 +1047,50 @@
 		$noun = if ($IsGameModePreview) { 'gaming action' } else { 'tweak' }
 		$nounPlural = if ($IsGameModePreview) { 'gaming actions' } else { 'tweaks' }
 		$itemWord = if ($Summary.SelectedCount -eq 1) { $noun } else { $nounPlural }
+		$validationMatrix = $null
+		try
+		{
+			if (Get-Command -Name 'Get-BaselineValidationMatrixSummary' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				$validationMatrix = Get-BaselineValidationMatrixSummary
+			}
+		}
+		catch
+		{
+			Write-SwallowedException -ErrorRecord $_ -Source 'UxPolicy.GetUxExecutionSummary.LoadValidationMatrix'
+			$validationMatrix = $null
+		}
+		$currentOS = $null
+		try
+		{
+			if (Get-Command -Name 'Get-OSInfo' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				$currentOS = Get-OSInfo
+			}
+		}
+		catch
+		{
+			Write-SwallowedException -ErrorRecord $_ -Source 'UxPolicy.GetUxExecutionSummary.LoadOSInfo'
+			$currentOS = $null
+		}
+		$serverValidationWarning = $null
+		if ($currentOS -and $currentOS.IsWindowsServer)
+		{
+			if ($validationMatrix -and $validationMatrix.ServerValidationSummary)
+			{
+				$serverValidationWarning = if ([bool]$validationMatrix.ServerCIOnly) {
+					('Server validation outside CI remains CI only: {0}.' -f [string]$validationMatrix.ServerValidationSummary)
+				}
+				else
+				{
+					('Server validation outside CI is covered: {0}.' -f [string]$validationMatrix.ServerValidationSummary)
+				}
+			}
+			else
+			{
+				$serverValidationWarning = 'Server validation outside CI is not recorded in the current matrix.'
+			}
+		}
 
 		$summaryParts = @(
 			$(if ($IsGameModePreview) {
@@ -817,7 +1128,7 @@
 		}
 		elseif (Test-IsExpertModeUX)
 		{
-			# Expert Mode: full detail — always show all metrics for completeness
+			# Expert Mode: full detail - always show all metrics for completeness
 			if ($AlreadyDesiredCount -gt 0)
 			{
 				$summaryParts += "$AlreadyDesiredCount $(if ($AlreadyDesiredCount -eq 1) { $noun } else { $nounPlural }) already set."
@@ -861,7 +1172,7 @@
 		}
 		else
 		{
-			# Standard Mode: moderate detail — show nonzero metrics, skip zero-value recovery noise
+			# Standard Mode: moderate detail - show nonzero metrics, skip zero-value recovery noise
 			if ($AlreadyDesiredCount -gt 0)
 			{
 				$summaryParts += "$AlreadyDesiredCount $(if ($AlreadyDesiredCount -eq 1) { $noun } else { $nounPlural }) already set."
@@ -915,15 +1226,23 @@
 				$summaryParts += $restartSection
 			}
 		}
+		if ($serverValidationWarning)
+		{
+			$summaryParts += $serverValidationWarning
+		}
 
 		return $summaryParts
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxPreviewSummaryCards
 	{
 		# Safe Mode: compact set with friendly labels.
 		# Standard Mode: core cards + conditional extras (hide zero-value recovery noise).
-		# Expert Mode: full card set — always show all metrics for completeness.
+		# Expert Mode: full card set - always show all metrics for completeness.
 		param (
 			[object]$Summary,
 			[int]$AlreadyDesiredCount,
@@ -985,7 +1304,7 @@
 
 		if (Test-IsExpertModeUX)
 		{
-			# Expert Mode: full card set — always show all metrics for completeness
+			# Expert Mode: full card set - always show all metrics for completeness
 			$cards = @(
 				[pscustomobject]@{
 					Label = (Get-UxLocalizedString -Key 'GuiPreviewStatusSelected' -Fallback 'Selected')
@@ -1054,7 +1373,7 @@
 			return @($cards)
 		}
 
-		# Standard Mode: core cards + conditional extras — suppress zero-value recovery noise
+		# Standard Mode: core cards + conditional extras - suppress zero-value recovery noise
 		$cards = @(
 			[pscustomobject]@{
 				Label = (Get-UxLocalizedString -Key 'GuiPreviewStatusSelected' -Fallback 'Selected')
@@ -1129,33 +1448,44 @@
 		return @($cards)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxRestoreDefaultsConfirmation
 	{
+		$restoreTitle = Get-UxLocalizedString -Key 'GuiRestoreDefaultsTitleRecorded' -Fallback 'Restore Defaults'
+		$cancelLabel = Get-UxLocalizedString -Key 'GuiBtnCancel' -Fallback 'Cancel'
+		$restoreBtn = Get-UxLocalizedString -Key 'GuiRestoreDefaultsBtn' -Fallback 'Restore Defaults'
 		if (Test-IsSafeModeUX)
 		{
 			return [pscustomobject]@{
-				Title   = 'Restore to Windows Defaults'
-				Message = "This will undo supported tweaks and return them to their original Windows settings.`n`nSome changes (like removed apps or one-way security settings) require manual recovery.`n`nWould you like to continue?"
-				Buttons = @('Cancel', 'Restore Defaults')
-				DestructiveButton = 'Restore Defaults'
+				Title   = $restoreTitle
+				Message = (Get-UxLocalizedString -Key 'GuiRestoreDefaultsSafeMsgRecorded' -Fallback "This will undo supported tweaks and return them to recorded default values where supported.`n`nSome changes (like removed apps or one-way security settings) require manual recovery.`n`nWould you like to continue?")
+				Buttons = @($cancelLabel, $restoreBtn)
+				DestructiveButton = $restoreBtn
 			}
 		}
 		if (Test-IsExpertModeUX)
 		{
 			return [pscustomobject]@{
-				Title   = 'Restore to Windows Defaults'
-				Message = "Reset tweaks to Windows default values where supported.`n`nOS Hardening, permanent removals, and manual recovery actions will be skipped."
-				Buttons = @('Cancel', 'Restore Defaults')
-				DestructiveButton = 'Restore Defaults'
+				Title   = $restoreTitle
+				Message = (Get-UxLocalizedString -Key 'GuiRestoreDefaultsExpertMsgRecorded' -Fallback "Reset tweaks to recorded default values where supported.`n`nOS Hardening, permanent removals, and manual recovery actions will be skipped.")
+				Buttons = @($cancelLabel, $restoreBtn)
+				DestructiveButton = $restoreBtn
 			}
 		}
 		return [pscustomobject]@{
-			Title   = 'Restore to Windows Defaults'
-			Message = "This will reset tweaks to their Windows default values where possible.`n`nNote: OS Hardening tweaks and other permanent changes cannot be reversed and will be skipped.`n`nAre you sure you want to continue?"
-			Buttons = @('Cancel', 'Restore Defaults')
-			DestructiveButton = 'Restore Defaults'
+			Title   = $restoreTitle
+			Message = (Get-UxLocalizedString -Key 'GuiRestoreDefaultsStdMsgRecorded' -Fallback "This will reset tweaks to recorded default values where supported.`n`nNote: OS Hardening tweaks and other permanent changes cannot be reversed and will be skipped.`n`nAre you sure you want to continue?")
+			Buttons = @($cancelLabel, $restoreBtn)
+			DestructiveButton = $restoreBtn
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-UxPostRunNextStepsText
 	{
@@ -1215,6 +1545,10 @@
 		return $result
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxPostRunCountsText
 	{
 		param (
@@ -1239,6 +1573,44 @@
 		return (($parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join '. ') + '.'
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-UxRemoteManagementHelpLines
+	{
+		param (
+			[ValidateSet('Safe', 'Standard', 'Expert')]
+			[string]$Mode = 'Standard'
+		)
+
+		$lines = [System.Collections.Generic.List[string]]::new()
+		[void]$lines.Add((Get-UxLocalizedString -Key 'GuiHelpRemoteCliPreview' -Fallback 'Remote management currently uses PowerShell Remoting through the CLI only. The GUI does not yet provide a remote connection or session workflow.'))
+
+		switch ($Mode)
+		{
+			'Safe'
+			{
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiHelpRemoteSafeSingleTarget' -Fallback 'Treat remote use as an admin-reviewed lab workflow: connect explicitly, validate one machine first, and prefer read-only compliance checks before apply runs.'))
+			}
+			'Expert'
+			{
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiHelpRemoteExpertRequirements' -Fallback 'Enterprise readiness still requires an explicit connection layer, reusable session tracking, visible target context, per-machine execution reporting, and aggregated remote logs.'))
+			}
+			default
+			{
+				[void]$lines.Add((Get-UxLocalizedString -Key 'GuiHelpRemoteStandardRequirements' -Fallback 'Before using remote targeting, verify WinRM, firewall access, credentials, and managed-device policy constraints.'))
+			}
+		}
+
+		[void]$lines.Add((Get-UxLocalizedString -Key 'GuiHelpRemoteManagedDevices' -Fallback 'Managed, work, school, or domain-enrolled devices should be reviewed with the appropriate admin team before remote runs.'))
+		return @($lines)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-UxHelpSections
 	{
 		$recommendedPreset = Get-UxRecommendedPresetName
@@ -1255,62 +1627,63 @@
 			$gameModeProfile = if ([string]::IsNullOrWhiteSpace([string]$Script:GameModeProfile)) { 'Gaming' } else { [string]$Script:GameModeProfile }
 
 			$sections = [ordered]@{
-				'Welcome - First Steps' = @(
-					'You are running in Safe Mode, which hides advanced and risky tweaks so you can explore conservatively.'
-					("$recommendedPreset is the recommended preset for most users and keeps the first run conservative.")
-					("Use {0} to see exactly what will happen before anything is applied." -f $previewLabel)
-					("$undoSelectionLabel lets you reverse the last preset or imported selection change if you change your mind.")
+				(Get-UxLocalizedString -Key 'GuiHelpSectionWelcome' -Fallback 'Welcome - First Steps') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpSafeRunningInSafeMode' -Fallback 'You are running in Safe Mode, which hides advanced and risky tweaks so you can explore conservatively.')
+					(Get-UxLocalizedString -Key 'GuiHelpSafeRecommendedPreset' -Fallback '{0} is the recommended preset for most users and keeps the first run conservative.' -FormatArgs @($recommendedPreset))
+					(Get-UxLocalizedString -Key 'GuiHelpSafeUsePreview' -Fallback 'Use {0} to see exactly what will happen before anything is applied.' -FormatArgs @($previewLabel))
+					(Get-UxLocalizedString -Key 'GuiHelpSafeUndoSelection' -Fallback '{0} lets you reverse the last preset or imported selection change if you change your mind.' -FormatArgs @($undoSelectionLabel))
 				)
-				'Start Guide' = $quickStartSteps
-				'Presets' = @(
-					'Minimal is the recommended preset for most users and is the easiest place to begin.'
-					'Basic adds a broader low-risk mix of cleanup, privacy, and usability changes after you review Minimal.'
-					'Balanced and Advanced are for experienced users and become visible when Safe Mode is turned off.'
-					'Clicking a preset replaces any previously loaded selection.'
-					'Presets only update the GUI selection. They do not execute changes.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionStartGuide' -Fallback 'Start Guide') = @(Get-UxHelpGettingStartedLines -Mode 'Safe')
+				(Get-UxLocalizedString -Key 'GuiHelpSectionPresets' -Fallback 'Presets') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpSafePresetMinimal' -Fallback 'Minimal is the recommended preset for most users and is the easiest place to begin.')
+					(Get-UxLocalizedString -Key 'GuiHelpSafePresetBasic' -Fallback 'Basic adds a broader low-risk mix of cleanup, privacy, and usability changes after you review Minimal.')
+					(Get-UxLocalizedString -Key 'GuiHelpSafePresetAdvanced' -Fallback 'Balanced and Advanced are for experienced users and become visible when Safe Mode is turned off.')
+					(Get-UxLocalizedString -Key 'GuiHelpPresetReplace' -Fallback 'Clicking a preset replaces any previously loaded selection.')
+					(Get-UxLocalizedString -Key 'GuiHelpPresetNoExec' -Fallback 'Presets only update the GUI selection. They do not execute changes.')
 				)
 				$previewLabel = @(
-					("{0} shows what would happen without applying any changes." -f $previewLabel)
-					'Use it to check your selection before committing.'
+					(Get-UxLocalizedString -Key 'GuiHelpPreviewShows' -Fallback '{0} shows what would happen without applying any changes.' -FormatArgs @($previewLabel))
+					(Get-UxLocalizedString -Key 'GuiHelpPreviewCheck' -Fallback 'Use it to check your selection before committing.')
 				)
-				'Apply Tweaks' = @(
-					("$applyLabel applies the current GUI selection to your system.")
-					'Expected results per tweak: Success, Failed, Skipped, Already Applied.'
-					'Restart if prompted after the run completes.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionApply' -Fallback 'Apply Tweaks') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpApplyAction' -Fallback '{0} applies the current GUI selection to your system.' -FormatArgs @($applyLabel))
+					(Get-UxLocalizedString -Key 'GuiHelpApplyResults' -Fallback 'Expected results per tweak: Success, Failed, Skipped, Already Applied.')
+					(Get-UxLocalizedString -Key 'GuiHelpApplyRestart' -Fallback 'Restart if prompted after the run completes.')
 				)
-				'Risk Levels' = @(
-					'Low Risk: safe usability and quality-of-life changes.'
-					'Medium Risk: may affect behavior or compatibility.'
-					'High Risk: may be difficult to reverse - hidden while Safe Mode is on.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionRiskLevels' -Fallback 'Risk Levels') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpRiskLow' -Fallback 'Low Risk: safe usability and quality-of-life changes.')
+					(Get-UxLocalizedString -Key 'GuiHelpRiskMedium' -Fallback 'Medium Risk: may affect behavior or compatibility.')
+					(Get-UxLocalizedString -Key 'GuiHelpRiskHigh' -Fallback 'High Risk: may be difficult to reverse - hidden while Safe Mode is on.')
 				)
-				'Undo and Restore' = $undoAndRestoreLines
-				'Import / Export' = $importExportLines
-				'Safe Mode' = @(
-					'Safe Mode hides dangerous, hard-to-reverse, and removal-style tweaks.'
-					'It is enabled by default on a fresh launch.'
-					'Turning Safe Mode on clears any selections that would otherwise be hidden.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionUndoRestore' -Fallback 'Undo and Restore') = $undoAndRestoreLines
+				(Get-UxLocalizedString -Key 'GuiHelpSectionImportExport' -Fallback 'Import / Export') = $importExportLines
+				(Get-UxLocalizedString -Key 'GuiHelpSectionSafeMode' -Fallback 'Safe Mode') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpSafeModeHides' -Fallback 'Safe Mode hides dangerous, hard-to-reverse, and removal-style tweaks.')
+					(Get-UxLocalizedString -Key 'GuiHelpSafeModeDefault' -Fallback 'It is enabled by default on a fresh launch.')
+					(Get-UxLocalizedString -Key 'GuiHelpSafeModeClears' -Fallback 'Turning Safe Mode on clears any selections that would otherwise be hidden.')
 				)
-				'Expert Mode' = @(
-					'Expert Mode reveals all tweaks including high-risk and advanced changes.'
-					'Use it only if you understand the impact of each setting.'
-					'Turning Expert Mode on disables Safe Mode.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionExpertMode' -Fallback 'Expert Mode') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertReveals' -Fallback 'Expert Mode reveals all tweaks including high-risk and advanced changes.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertUseOnly' -Fallback 'Use it only if you understand the impact of each setting.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertDisablesSafe' -Fallback 'Turning Expert Mode on disables Safe Mode.')
 				)
 			}
 
 			if ($isGameModeActive)
 			{
-				$sections['Game Mode'] = @(
-					("Game Mode is active and using the {0} profile." -f $gameModeProfile)
-					'While Game Mode is active, only the Gaming tab plan can be edited or run.'
-					'Choose a gaming profile to build a focused plan, then use Preview Run to inspect it.'
-					'Turn off Game Mode to return to preset-based workflows.'
+				$sections[(Get-UxLocalizedString -Key 'GuiHelpSectionGameMode' -Fallback 'Game Mode')] = @(
+					(Get-UxLocalizedString -Key 'GuiQuickStepGameModeActive' -Fallback 'Game Mode is active and using the {0} profile.' -FormatArgs @($gameModeProfile))
+					(Get-UxLocalizedString -Key 'GuiHelpGameModeOnlyGaming' -Fallback 'While Game Mode is active, only the Gaming tab plan can be edited or run.')
+					(Get-UxLocalizedString -Key 'GuiHelpGameModeChooseProfile' -Fallback 'Choose a gaming profile to build a focused plan, then use {0} to inspect it.' -FormatArgs @($previewLabel))
+					(Get-UxLocalizedString -Key 'GuiHelpGameModeTurnOff' -Fallback 'Turn off Game Mode to return to preset-based workflows.')
 				)
 			}
 
-			$sections['Logs and Troubleshooting'] = @(
-				'Open Log shows the session log for troubleshooting.'
-				'If something fails, the log and execution summary have details.'
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpSectionLogs' -Fallback 'Logs and Troubleshooting')] = @(
+				(Get-UxLocalizedString -Key 'GuiHelpLogOpen' -Fallback 'Open Log shows the session log for troubleshooting.')
+				(Get-UxLocalizedString -Key 'GuiHelpLogDetails' -Fallback 'If something fails, the log and execution summary have details.')
 			)
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpSectionRemoteManagement' -Fallback 'Remote Management')] = @(Get-UxRemoteManagementHelpLines -Mode 'Safe')
 
 			return $sections
 		}
@@ -1326,116 +1699,114 @@
 			}
 
 			$sections = [ordered]@{
-				'Getting Started' = @(
-					'All tweaks unselected on launch. Use presets or manual selection.'
-					'Expert Mode: all tiers and risk levels are visible.'
-					'Advanced is the recommended starting point when you want the broadest preset selection.'
-				)
-				'Presets' = @(
-					'Minimal, Basic, Balanced, Advanced load from preset files.'
-					'Advanced is the expert preset and should be reviewed with risk, restart, and recovery guidance in mind.'
-					'Presets replace the current selection - they do not stack.'
-					'Run Tweaks applies the current GUI selection.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertSectionGettingStarted' -Fallback 'Quick Start') = @(Get-UxHelpGettingStartedLines -Mode 'Expert')
+				(Get-UxLocalizedString -Key 'GuiHelpSectionPresets' -Fallback 'Presets') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertPresetList' -Fallback 'Minimal, Basic, Balanced, Advanced load from preset files.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertAdvancedReview' -Fallback 'Advanced is the expert preset and should be reviewed with risk, restart, and recovery guidance in mind.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertPresetReplace' -Fallback 'Presets replace the current selection - they do not stack.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRunApplies' -Fallback ('{0} applies the current GUI selection.' -f (Get-UxRunActionLabel)))
 				)
 				$previewLabel = @(
-					("{0} shows the execution plan for the current selection, including risk, restart required, restore, and category metadata." -f $previewLabel)
+					(Get-UxLocalizedString -Key 'GuiHelpExpertPreviewPlan' -Fallback '{0} shows the execution plan for the current selection, including risk, restart required, restore, and category metadata.' -FormatArgs @($previewLabel))
 				)
-				'Run Tweaks' = @(
-					'Executes selected items. Outcome states: Success, Failed, Skipped, Already Applied.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertSectionRunTweaks' -Fallback (Get-UxRunActionLabel)) = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRunOutcomes' -Fallback 'Executes selected items. Outcome states: Success, Failed, Skipped, Already Applied.')
 				)
-				'Risk Levels' = @(
-					'Low: safe QoL changes. Medium: behavioral/compatibility impact. High: hard to reverse.'
-					'Restart required: needs reboot to take full effect.'
+				(Get-UxLocalizedString -Key 'GuiHelpSectionRiskLevels' -Fallback 'Risk Levels') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRiskLow' -Fallback 'Low: safe QoL changes. Medium: behavioral/compatibility impact. High: hard to reverse.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRiskRestart' -Fallback 'Restart required: needs reboot to take full effect.')
 				)
-				'Restore to Windows Defaults' = @(
-					'Resets supported defaults. Manual recovery items and OS Hardening items are skipped.'
-					'Reversible here (post-run) is a separate recovery path.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertSectionRestoreDefaultsRecorded' -Fallback 'Restore Defaults') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRestoreResets' -Fallback 'Resets supported defaults. Manual recovery items and OS Hardening items are skipped.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertRestoreReversible' -Fallback 'Reversible here (post-run) is a separate recovery path.')
 				)
-				'Modes' = @(
-					'Safe Mode: conservative filter - hides high-risk, removal, and manual recovery tweaks.'
-					'Expert Mode: full visibility - all tweaks and metadata exposed.'
-					'Safe and Expert are mutually exclusive visibility switches.'
+				(Get-UxLocalizedString -Key 'GuiHelpExpertSectionModes' -Fallback 'Modes') = @(
+					(Get-UxLocalizedString -Key 'GuiHelpExpertModeSafe' -Fallback 'Safe Mode: conservative filter - hides high-risk, removal, and manual recovery tweaks.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertModeExpert' -Fallback 'Expert Mode: full visibility - all tweaks and metadata exposed.')
+					(Get-UxLocalizedString -Key 'GuiHelpExpertModeExclusive' -Fallback 'Safe and Expert are mutually exclusive visibility switches.')
 				)
 			}
 
-			$sections['System Scan'] = @(
-				'Refreshes current system state for supported tweaks.'
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpExpertSectionScan' -Fallback 'System Scan')] = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertScanRefresh' -Fallback 'Refreshes current system state for supported tweaks.')
 			)
-			$sections['Import / Export / Session Restore'] = @(
-				'Export/Import saves and restores GUI selections.'
-				'Restore Snapshot restores last captured GUI state (no execution).'
-				'Rollback Profile exports reversible-here undo commands only.'
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpExpertSectionImportExport' -Fallback 'Import / Export / Session Restore')] = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertIEExport' -Fallback 'Export/Import saves and restores GUI selections.')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertIESnapshot' -Fallback 'Restore Snapshot restores last captured GUI state (no execution).')
+				(Get-UxLocalizedString -Key 'GuiHelpExpertIERollback' -Fallback 'Rollback Profile exports reversible-here undo commands only.')
 			)
-			$sections['Logs'] = @(
-				'Open Log shows session output. Unmatched preset lines and failures are logged.'
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpExpertSectionLogs' -Fallback 'Logs')] = @(
+				(Get-UxLocalizedString -Key 'GuiHelpExpertLogShows' -Fallback 'Open Log shows session output. Unmatched preset lines and failures are logged.')
 			)
+			$sections[(Get-UxLocalizedString -Key 'GuiHelpSectionRemoteManagement' -Fallback 'Remote Management')] = @(Get-UxRemoteManagementHelpLines -Mode 'Expert')
 
 			return $sections
 		}
 
 		return [ordered]@{
-			'Getting Started' = @(
-				'The GUI opens with all tweaks unselected.'
-				'Select tweaks manually or click a preset button to populate the current selection.'
-				'Preset buttons do not run anything by themselves.'
-			)
-			'Presets' = @(
-				'Minimal, Basic, Balanced, and Advanced load selections from their matching preset files.'
-				'Basic is the recommended default for normal users.'
-				'Balanced is for enthusiasts who understand moderate tradeoffs.'
-				'Advanced is the expert preset for experienced users and recommends a restore point before continuing.'
-				'Clicking a preset replaces any previously loaded selection - selections do not stack.'
-				'Presets only update the GUI selection. They do not execute changes.'
-				'Run Tweaks applies the current GUI selection.'
+			(Get-UxLocalizedString -Key 'GuiHelpStdSectionGettingStarted' -Fallback 'Quick Start') = @(Get-UxHelpGettingStartedLines -Mode 'Standard')
+			(Get-UxLocalizedString -Key 'GuiHelpSectionPresets' -Fallback 'Presets') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetList' -Fallback 'Minimal, Basic, Balanced, and Advanced load selections from their matching preset files.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetBasicRec' -Fallback 'Basic is the recommended default for normal users.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetBalanced' -Fallback 'Balanced is for enthusiasts who understand moderate tradeoffs.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetAdvanced' -Fallback 'Advanced is the expert preset for experienced users and recommends a restore point before continuing.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetReplace' -Fallback 'Clicking a preset replaces any previously loaded selection - selections do not stack.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdPresetNoExec2' -Fallback 'Presets only update the GUI selection. They do not execute changes.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRunApplies' -Fallback ('{0} applies the current GUI selection.' -f (Get-UxRunActionLabel)))
 			)
 			$previewLabel = @(
-				("{0} shows what would execute from the current selection without applying any changes." -f $previewLabel)
-				'It also shows risk, restart, restore, and category summary information.'
+				(Get-UxLocalizedString -Key 'GuiHelpStdPreviewShows' -Fallback '{0} shows what would execute from the current selection without applying any changes.' -FormatArgs @($previewLabel))
+				(Get-UxLocalizedString -Key 'GuiHelpStdPreviewMeta' -Fallback 'It also shows risk, restart, restore, and category summary information.')
 			)
-			'Run Tweaks' = @(
-				'Run Tweaks executes only the items currently selected in the GUI.'
-				'Expected result states per tweak: Success, Failed, Skipped, Already Applied.'
+			(Get-UxLocalizedString -Key 'GuiHelpStdSectionRunTweaks' -Fallback (Get-UxRunActionLabel)) = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdRunExec' -Fallback ('{0} executes only the items currently selected in the GUI.' -f (Get-UxRunActionLabel)))
+				(Get-UxLocalizedString -Key 'GuiHelpStdRunOutcomes' -Fallback 'Expected result states per tweak: Success, Failed, Skipped, Already Applied.')
 			)
-			'Risk Levels' = @(
-				'Low Risk: generally safe usability and quality-of-life changes.'
-				'Medium Risk: may affect behavior, compatibility, networking, or security posture.'
-				'High Risk: may reduce compatibility, disable features, or be difficult to reverse.'
-				'Restart required badge: the tweak requires a system restart to take full effect.'
+			(Get-UxLocalizedString -Key 'GuiHelpSectionRiskLevels' -Fallback 'Risk Levels') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdRiskLow' -Fallback 'Low Risk: generally safe usability and quality-of-life changes.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRiskMedium' -Fallback 'Medium Risk: may affect behavior, compatibility, networking, or security posture.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRiskHigh' -Fallback 'High Risk: may reduce compatibility, disable features, or be difficult to reverse.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRiskRestart' -Fallback 'Restart required badge: the tweak requires a system restart to take full effect.')
 			)
-			'Restore to Windows Defaults' = @(
-				'Restores supported default values only.'
-				'Does not guarantee that every previous change can be undone.'
-				'Some destructive or one-way actions require manual recovery.'
-				'Reversible here, when available after a run, is a separate recovery path from restoring Windows defaults.'
+			(Get-UxLocalizedString -Key 'GuiHelpStdSectionRestoreDefaultsRecorded' -Fallback 'Restore Defaults') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdRestoreSupported' -Fallback 'Restores supported default values only.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRestoreNoGuarantee' -Fallback 'Does not guarantee that every previous change can be undone.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRestoreManual' -Fallback 'Some destructive or one-way actions require manual recovery.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdRestoreReversibleRecorded' -Fallback 'Reversible here, when available after a run, is a separate recovery path from restoring recorded default values.')
 			)
-			'Safe Mode' = @(
-				'Safe Mode hides dangerous, hard-to-reverse, and removal-style tweaks.'
-				'It is the conservative visibility switch for people who want the safest view of the GUI.'
-				'Safe Mode is enabled by default on a fresh launch.'
-				'Turning Safe Mode on clears selections that would otherwise be hidden.'
+			(Get-UxLocalizedString -Key 'GuiHelpSectionSafeMode' -Fallback 'Safe Mode') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdSafeModeHides' -Fallback 'Safe Mode hides dangerous, hard-to-reverse, and removal-style tweaks.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdSafeModeConservative' -Fallback 'It is the conservative visibility switch for people who want the safest view of the GUI.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdSafeModeDefault' -Fallback 'Safe Mode is enabled by default on a fresh launch.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdSafeModeClears' -Fallback 'Turning Safe Mode on clears selections that would otherwise be hidden.')
 			)
-			'Expert Mode' = @(
-				'Expert Mode reveals high-risk and advanced tweaks hidden by default.'
-				'Use it only if you understand the impact of the settings being changed.'
-				'Turning Expert Mode off clears hidden advanced selections from the current view.'
-				'Safe Mode is the opposite visibility switch and keeps dangerous tweaks hidden instead.'
+			(Get-UxLocalizedString -Key 'GuiHelpSectionExpertMode' -Fallback 'Expert Mode') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdExpertReveals' -Fallback 'Expert Mode reveals high-risk and advanced tweaks hidden by default.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdExpertUseOnly' -Fallback 'Use it only if you understand the impact of the settings being changed.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdExpertClears' -Fallback 'Turning Expert Mode off clears hidden advanced selections from the current view.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdExpertOpposite' -Fallback 'Safe Mode is the opposite visibility switch and keeps dangerous tweaks hidden instead.')
 			)
-			'System Scan' = @(
-				'System Scan checks the current system state and refreshes supported tweak states in the GUI.'
+			(Get-UxLocalizedString -Key 'GuiHelpStdSectionScan' -Fallback 'System Scan') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdScanChecks' -Fallback 'System Scan checks the current system state and refreshes supported tweak states in the GUI.')
 			)
-			'Import / Export / Session Restore' = @(
-				'Export Settings saves the current GUI selection to a file.'
-				'Import Settings restores a saved selection into the GUI for review before execution.'
-				'Restore Snapshot restores the last captured GUI state only. It does not execute tweaks.'
-				'Export Rollback Profile, when offered after a run, saves reversible-here undo commands only and is separate from Restore Snapshot or restoring Windows defaults.'
+			(Get-UxLocalizedString -Key 'GuiHelpStdSectionImportExport' -Fallback 'Import / Export / Session Restore') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdIEExport' -Fallback 'Export Settings saves the current GUI selection to a file.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdIEImport' -Fallback 'Import Settings restores a saved selection into the GUI for review before execution.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdIESnapshot' -Fallback 'Restore Snapshot restores the last captured GUI state only. It does not execute tweaks.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdIERollbackRecorded' -Fallback 'Export Rollback Profile, when offered after a run, saves reversible-here undo commands only and is separate from Restore Snapshot or restoring recorded defaults.')
 			)
-			'Logs and Troubleshooting' = @(
-				'Open Log opens the current session log for troubleshooting.'
-				'If a preset line cannot be matched to a tweak it will be reported in the log.'
-				'If a tweak fails, review the log and the execution summary for details.'
+			(Get-UxLocalizedString -Key 'GuiHelpSectionLogs' -Fallback 'Logs and Troubleshooting') = @(
+				(Get-UxLocalizedString -Key 'GuiHelpStdLogOpen' -Fallback 'Open Log opens the current session log for troubleshooting.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdLogPreset' -Fallback 'If a preset line cannot be matched to a tweak it will be reported in the log.')
+				(Get-UxLocalizedString -Key 'GuiHelpStdLogFail' -Fallback 'If a tweak fails, review the log and the execution summary for details.')
 			)
+			(Get-UxLocalizedString -Key 'GuiHelpSectionRemoteManagement' -Fallback 'Remote Management') = @(Get-UxRemoteManagementHelpLines -Mode 'Standard')
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Test-UxShouldSkipLowRiskConfirmation
 	{

@@ -1,0 +1,115 @@
+name: Bug report
+description: Report a problem with Baseline (a tweak misbehaved, the GUI crashed, an apply failed, etc.)
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        **Before you file:** if you have not already, please run
+        **Tools → Export Support Bundle...** in Baseline. The resulting `.zip`
+        contains the daily log, system info, classified errors, and the
+        execution summary maintainers need to replay the issue. Attach it
+        below alongside this report.
+
+        If you turn on **Settings → Logging → Debug Mode** *before* reproducing
+        the issue, the bundle will also include `Logs/perf.log` and DEBUG-level
+        log entries that make remote diagnosis far more accurate.
+  - type: input
+    id: baseline-version
+    attributes:
+      label: Baseline version
+      description: From the title bar, About dialog, or the launcher filename (e.g. 1.0.0).
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: windows-build
+    attributes:
+      label: Windows edition / build
+      description: Run `winver` and paste the version + OS build (e.g. Windows 11 Pro 24H2 26100.x).
+      placeholder: e.g. Windows 11 Pro 24H2 26100.4441
+    validations:
+      required: true
+  - type: dropdown
+    id: install-channel
+    attributes:
+      label: How did you launch Baseline?
+      options:
+        - Baseline.exe (released launcher)
+        - PowerShell script (irm | iex)
+        - Cloned repo + Bootstrap/Baseline.ps1
+        - Other (describe in steps below)
+    validations:
+      required: true
+  - type: textarea
+    id: applied-tweaks
+    attributes:
+      label: Applied preset / tweaks
+      description: |
+        Which preset or which specific tweaks were active when the bug hit?
+        Easiest answer: paste the exported config profile
+        (**File → Export Settings...** or **File → Export Config Profile...**)
+        or list the region IDs / tweak names you toggled.
+      placeholder: |
+        Preset: Balanced
+        + manually toggled: DisableTelemetry, BlockRtfDocuments
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Step-by-step walkthrough of what you did and what you expected vs. what happened.
+      placeholder: |
+        1. Launch Baseline.exe
+        2. Pick the Balanced preset
+        3. Click Run Tweaks
+        4. Expected: ...
+        5. Actual: ...
+    validations:
+      required: true
+  - type: textarea
+    id: log-path
+    attributes:
+      label: Log file location (and contents if not bundled)
+      description: |
+        Daily log lives at `%LOCALAPPDATA%\Baseline\UserState\Logs\<dd-MM-yyyy>\<timestamp> Baseline - Utility for <OS>.log`.
+        Paste the path or, ideally, attach the `.log` directly. If you exported a Support Bundle, you can ignore this field.
+      placeholder: e.g. C:\Users\me\AppData\Local\Baseline\UserState\Logs\26-04-2026\10-12-04 Baseline - Utility for Windows 11 Pro 24H2 26100.4441.log
+  - type: textarea
+    id: perf-log
+    attributes:
+      label: Perf trace (optional, only if Debug Mode was on)
+      description: |
+        When `BASELINE_PERF_LOG=1` or Debug Mode is enabled, perf data is
+        written to `%LOCALAPPDATA%\Baseline\perf.log`. Paste the path or
+        attach the file if a UI freeze / slow startup is part of the report.
+      placeholder: e.g. C:\Users\me\AppData\Local\Baseline\perf.log
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or screen recording
+      description: Drag-and-drop here. Particularly useful for GUI rendering, theming, or layout bugs.
+  - type: textarea
+    id: support-bundle
+    attributes:
+      label: Support bundle attachment
+      description: |
+        Drag the `Baseline-SupportBundle-<timestamp>.zip` produced by
+        **Tools → Export Support Bundle...** into this box. GitHub strips
+        executables but `.zip` attachments are preserved.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: I'm running an officially-released Baseline build (or noted my custom build above).
+          required: true
+        - label: I've removed any sensitive paths, hostnames, or credentials from the attachments before uploading.
+          required: true

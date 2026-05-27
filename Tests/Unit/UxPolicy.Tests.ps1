@@ -1,6 +1,34 @@
 Set-StrictMode -Version Latest
 
 BeforeAll {
+    $sourceContentHelperPath = Join-Path $PSScriptRoot 'Support/SourceContent.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $sourceContentHelperPath)) { $sourceContentHelperPath = Join-Path $PSScriptRoot '../Support/SourceContent.Helpers.ps1' }
+    . $sourceContentHelperPath
+
+
+    function Get-OSInfo {
+        [pscustomobject]@{
+            IsWindowsServer = $true
+            OSName = 'Windows Server 2022'
+        }
+    }
+
+    function Get-BaselineValidationMatrixSummary {
+        [pscustomobject]@{
+            ServerValidationSummary = 'CI only: Windows Server 2022 (CI only)'
+            ServerCIOnly = $true
+            HasServerCoverage = $true
+        }
+    }
+
+    function script:Test-IsSafeModeUX {
+        return ([bool]$script:SafeMode)
+    }
+
+    function script:Test-IsExpertModeUX {
+        return ([bool]$script:AdvancedMode)
+    }
+
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/UxPolicy.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
     $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
@@ -9,6 +37,7 @@ BeforeAll {
     }
 
     $script:Localization = $null
+    $Global:Localization = $null
 }
 
 Describe 'UxPolicy' {
@@ -17,9 +46,39 @@ Describe 'UxPolicy' {
         $script:AdvancedMode = $false
         $script:GameMode = $false
         $script:GameModeProfile = $null
+        $script:DesignMode = $false
+        $script:GuiDisplayVersion = $null
+        $Global:Localization = $null
+    }
+
+    It 'routes OS-info and validation-matrix lookup failures through Write-SwallowedException' {
+        $script:GuiContent = $null
+        $content = Get-BaselineTestSourceText -Path $filePath
+        $content | Should -Match "Source 'UxPolicy\.GetUxMainWindowTitleText\.LoadOSInfo'"
+        $content | Should -Match "Source 'UxPolicy\.GetUxExecutionSummary\.LoadValidationMatrix'"
+        $content | Should -Match "Source 'UxPolicy\.GetUxExecutionSummary\.LoadOSInfo'"
     }
 
     Describe 'Beginner UX helpers' {
+        It 'allows empty fallback strings in localized string helpers' {
+            $result = Get-UxLocalizedString -Key 'Missing_Key' -Fallback ''
+
+            $result | Should -Be ''
+        }
+
+        It 'uses non-empty fallback text when a non-English locale is missing a GUI key' {
+            $previousLanguage = [System.Environment]::GetEnvironmentVariable('BASELINE_LANGUAGE', 'Process')
+            try {
+                [System.Environment]::SetEnvironmentVariable('BASELINE_LANGUAGE', 'sq', 'Process')
+                $Global:Localization = @{}
+
+                Get-UxLocalizedString -Key 'Missing_Gui_Key' -Fallback 'Required label' | Should -Be 'Required label'
+            }
+            finally {
+                [System.Environment]::SetEnvironmentVariable('BASELINE_LANGUAGE', $previousLanguage, 'Process')
+            }
+        }
+
         It 'recommends the Basic preset outside Safe Mode' {
             Get-UxRecommendedPresetName | Should -Be 'Basic'
         }
@@ -34,6 +93,14 @@ Describe 'UxPolicy' {
             Get-UxRunActionLabel | Should -Be 'Run Tweaks'
             Get-UxUndoSelectionActionLabel | Should -Be 'Restore Snapshot'
             Get-UxUndoProfileActionLabel | Should -Be 'Export Rollback Profile'
+        }
+
+        It 'switches to Save Config in Design Mode' {
+            $script:DesignMode = $true
+
+            Get-UxRunActionLabel | Should -Match '^Save Config'
+            (Get-UxMainWindowTitleText) | Should -Match 'Design Mode'
+            (Get-UxMainWindowTitleText) | Should -Match 'Windows Server 2022'
         }
 
         It 'uses Undo Selection Change in Expert Mode' {
@@ -68,7 +135,7 @@ Describe 'UxPolicy' {
             $lines = @(Get-UxUndoAndRestoreLines)
 
             ($lines -join ' ') | Should -Match 'Undo Selection Change'
-            ($lines -join ' ') | Should -Match 'Restore to Windows Defaults'
+            ($lines -join ' ') | Should -Match 'Restore Defaults'
             ($lines -join ' ') | Should -Match 'Export Undo Profile'
         }
 
@@ -116,6 +183,18 @@ Describe 'UxPolicy' {
 
             Get-UxPresetEmphasisText | Should -Match 'Quick Start is recommended'
             Get-UxPresetEmphasisText | Should -Match 'your first run'
+            Get-UxPresetEmphasisText | Should -Not -Match '\{0\}'
+            Get-UxPresetEmphasisText | Should -Not -Match '^Start here'
+        }
+
+        It 'formats the localized Safe Mode preset emphasis instead of exposing placeholders' {
+            $script:SafeMode = $true
+            $Global:Localization = @{
+                GuiPresetQuickStart = 'Quick Start'
+                GuiPresetStartHereEmphasis = '{0} is recommended for your first run.'
+            }
+
+            Get-UxPresetEmphasisText | Should -Be 'Quick Start is recommended for your first run.'
         }
 
         It 'keeps the original non-Safe preset emphasis' {
@@ -134,9 +213,12 @@ Describe 'UxPolicy' {
         It 'keeps the original non-Safe help content outside Safe Mode' {
             $sections = Get-UxHelpSections
 
-            $sections.Keys | Should -Contain 'Getting Started'
+            $sections.Keys | Should -Contain 'Quick Start'
             $sections.Keys | Should -Contain 'Import / Export / Session Restore'
+            $sections.Keys | Should -Contain 'Remote Management'
             ($sections['Presets'] -join ' ') | Should -Match 'Basic is the recommended default for normal users'
+            ($sections['Remote Management'] -join ' ') | Should -Match 'CLI only'
+            ($sections['Remote Management'] -join ' ') | Should -Match 'WinRM'
         }
 
         It 'keeps Safe Mode help aligned with the Minimal recommendation' {
@@ -144,7 +226,11 @@ Describe 'UxPolicy' {
             $sections = Get-UxHelpSections
 
             ($sections['Presets'] -join ' ') | Should -Match 'Minimal is the recommended preset for most users'
+            ($sections['Start Guide'] -join ' ') | Should -Match 'reference material'
+            ($sections['Start Guide'] -join ' ') | Should -Not -Match 'Choose a preset'
             $sections.Keys | Should -Contain 'Import / Export'
+            $sections.Keys | Should -Contain 'Remote Management'
+            ($sections['Remote Management'] -join ' ') | Should -Match 'one machine first'
         }
 
         It 'keeps Expert Mode on the original full-detail copy' {
@@ -154,26 +240,48 @@ Describe 'UxPolicy' {
             $sections.Keys | Should -Contain 'Run Tweaks'
             $sections.Keys | Should -Contain 'Import / Export / Session Restore'
             ($sections['Presets'] -join ' ') | Should -Match 'Minimal, Basic, Balanced, Advanced load from preset files'
+            $sections.Keys | Should -Contain 'Remote Management'
+            ($sections['Remote Management'] -join ' ') | Should -Match 'connection layer'
+            ($sections['Remote Management'] -join ' ') | Should -Match 'per-machine execution reporting'
         }
 
         It 'switches Expert Mode help to Game Mode workflow content when Game Mode is active' {
             $script:AdvancedMode = $true
             $script:GameMode = $true
             $script:GameModeProfile = 'Competitive'
+            $script:GuiDisplayVersion = 'v1.0.0'
 
-            Get-UxHelpDialogSubtitle | Should -Be 'Game Mode workflow and execution help'
+            Get-UxHelpDialogSubtitle | Should -Be 'Game Mode workflow and execution help - v1.0.0'
 
             $sections = Get-UxHelpSections
 
             $sections.Keys | Should -Contain 'Game Mode Workflow'
             $sections.Keys | Should -Contain 'Profiles and Plan Building'
             $sections.Keys | Should -Contain 'Advanced Options'
-            $sections.Keys | Should -Not -Contain 'Getting Started'
+            $sections.Keys | Should -Not -Contain 'Quick Start'
             $sections.Keys | Should -Not -Contain 'Presets'
             ($sections['Game Mode Workflow'] -join ' ') | Should -Match 'Competitive'
             ($sections['Game Mode Workflow'] -join ' ') | Should -Match 'only the Gaming tab plan can be edited or run'
             ($sections['Preview Run'] -join ' ') | Should -Match 'active Game Mode plan'
             ($sections['Profiles and Plan Building'] -join ' ') | Should -Match 'Casual, Competitive, Streaming, and Troubleshooting'
+        }
+
+        It 'adds a server validation warning to preview summaries on Windows Server' {
+            $summary = [pscustomobject]@{
+                SelectedCount = 2
+                HighRiskCount = 0
+                MediumRiskCount = 0
+                ShouldRecommendRestorePoint = $false
+                RestoreRecommendation = $null
+                RestoreRecommendationSeverity = $null
+                DirectUndoEligibleCount = 0
+                Categories = @()
+                CategoryText = ''
+            }
+
+            $parts = @(Get-UxPreviewSummaryParts -Summary $summary -IsGameModePreview:$false -AlreadyDesiredCount 0 -WillChangeCount 1 -RequiresRestartCount 0 -NotFullyRestorablePreviewCount 0 -AdvancedTierCount 0)
+
+            ($parts -join ' ') | Should -Match 'Server validation outside CI remains CI only'
         }
     }
 }

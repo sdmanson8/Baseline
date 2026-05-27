@@ -1,7 +1,12 @@
 <#
     .SYNOPSIS
-    Share context menu item
+    Configures shell and context menu icon settings.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's shell and context menu icon settings in GUI and headless runs.
     .PARAMETER Enable
     Enable the Share context menu item (default value)
 
@@ -85,6 +90,11 @@ function ShareMenu
 .SYNOPSIS
 Enable or disable Sharing Wizard in Explorer
 
+
+
+.DESCRIPTION
+
+Enables or disables Sharing Wizard in Explorer in GUI and headless runs.
 .PARAMETER Enable
 Enable Sharing Wizard
 
@@ -145,7 +155,10 @@ function SharingWizard
 			LogInfo "Disabling the Sharing Wizard in Explorer"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "SharingWizardOn" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "SharingWizardOn" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -161,6 +174,11 @@ function SharingWizard
 	.SYNOPSIS
 	Controls the display of shortcut arrow overlay on icons
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for controls the display of shortcut arrow overlay on icons.
 	.PARAMETER Enable
 	Show shortcut arrow overlay on icons (default value)
 
@@ -224,7 +242,10 @@ function ShortcutArrow
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons" -Name "29" -Type String -Value "%SystemRoot%\System32\imageres.dll,-1015" -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons" `
+					-Name "29" `
+					-Value "%SystemRoot%\System32\imageres.dll,-1015" `
+					-Type String
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -240,6 +261,11 @@ function ShortcutArrow
 	.SYNOPSIS
 	The "- Shortcut" suffix adding to the name of the created shortcuts
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "- Shortcut" suffix adding to the name of the created shortcuts.
 	.PARAMETER Disable
 	Do not add the "- Shortcut" suffix to the file name of created shortcuts
 
@@ -274,7 +300,7 @@ function ShortcutsSuffix
 		$Enable
 	)
 
-	Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer -Name link -Force -ErrorAction Ignore | Out-Null
+	Remove-RegistryValueSafe -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer -Name link | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
@@ -288,7 +314,10 @@ function ShortcutsSuffix
 				{
 					New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates -Name ShortcutNameTemplate -PropertyType String -Value "%s.lnk" -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates" `
+					-Name "ShortcutNameTemplate" `
+					-Value "%s.lnk" `
+					-Type String
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -322,6 +351,11 @@ function ShortcutsSuffix
 	.SYNOPSIS
 	Windows snapping
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows snapping.
 	.PARAMETER Disable
 	When I snap a window, do not show what I can snap next to it
 
@@ -356,7 +390,10 @@ function SnapAssist
 		$Enable
 	)
 
-	New-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name WindowArrangementActive -PropertyType String -Value 1 -Force | Out-Null
+	Set-RegistryValueSafe -Path "HKCU:\Control Panel\Desktop" `
+		-Name "WindowArrangementActive" `
+		-Value 1 `
+		-Type String
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
@@ -366,7 +403,10 @@ function SnapAssist
 			LogInfo "Disabling 'show what I can snap next' When snapping windows"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "SnapAssist" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -381,7 +421,10 @@ function SnapAssist
 			LogInfo "Enabling 'show what I can snap next' When snapping windows"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'SnapAssist' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "SnapAssist" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -397,6 +440,11 @@ function SnapAssist
 .SYNOPSIS
 Enable or disable sync provider notifications in Explorer
 
+
+
+.DESCRIPTION
+
+Enables or disables sync provider notifications in Explorer in GUI and headless runs.
 .PARAMETER Enable
 Enable sync provider notifications
 
@@ -439,7 +487,10 @@ function SyncNotifications
 			LogInfo "Enabling sync provider notifications in Explorer"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "ShowSyncProviderNotifications" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -454,7 +505,10 @@ function SyncNotifications
 			LogInfo "Disabling sync provider notifications in Explorer"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSyncProviderNotifications" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "ShowSyncProviderNotifications" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -470,6 +524,11 @@ function SyncNotifications
 	.SYNOPSIS
 	The "This PC" icon on Desktop
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "This PC" icon on Desktop.
 	.PARAMETER Show
 	Show the "This PC" icon on Desktop
 
@@ -516,7 +575,10 @@ function ThisPC
 				{
 					New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel -Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" `
+					-Name "{20D04FE0-3AEA-1069-A2D8-08002B30309D}" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -550,6 +612,11 @@ function ThisPC
     .SYNOPSIS
     Creation of thumbnail cache files
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for creation of thumbnail cache files.
     .PARAMETER Enable
     Enable creation of thumbnail cache files
 
@@ -610,7 +677,10 @@ function ThumbnailCache
 			LogInfo "Disabling the creation of thumbnail cache files"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisableThumbnailCache" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "DisableThumbnailCache" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -626,6 +696,11 @@ function ThumbnailCache
     .SYNOPSIS
     Show thumbnails instead of file extension icons
 
+
+
+.DESCRIPTION
+
+Shows thumbnails instead of file extension icons from Baseline's GUI flow.
     .PARAMETER Enable
     Show thumbnails for files
 
@@ -668,7 +743,10 @@ function Thumbnails
 			LogInfo "Enabling 'Show thumbnails instead of icons' for file extensions"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "IconsOnly" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "IconsOnly" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -683,7 +761,10 @@ function Thumbnails
 			LogInfo "Disabling thumbnails, showing icons for file extensions instead"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "IconsOnly" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "IconsOnly" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -699,6 +780,11 @@ function Thumbnails
     .SYNOPSIS
     Creation of Thumbs.db thumbnail cache files on network folders
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for creation of Thumbs.db thumbnail cache files on network folders.
     .PARAMETER Enable
     Enable creation of Thumbs.db cache on network folders
 
@@ -759,7 +845,10 @@ function ThumbsDBOnNetwork
 			LogInfo "Disabling the creation of 'Thumbs.db' cache on network folders"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "DisableThumbsDBOnNetworkFolders" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" `
+					-Name "DisableThumbsDBOnNetworkFolders" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -775,6 +864,11 @@ function ThumbsDBOnNetwork
 	.SYNOPSIS
 	The default Windows mode
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the default Windows mode.
 	.PARAMETER Dark
 	Set the default Windows mode to dark
 
@@ -817,7 +911,10 @@ function WindowsColorMode
 			LogInfo "Setting Windows to use Dark Mode"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" `
+					-Name "SystemUsesLightTheme" `
+					-Value 0 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -832,7 +929,10 @@ function WindowsColorMode
 			LogInfo "Setting Windows to use Light Mode"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'SystemUsesLightTheme' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" `
+					-Name "SystemUsesLightTheme" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -848,6 +948,11 @@ function WindowsColorMode
 	.SYNOPSIS
 	The Meet Now icon in the notification area
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the Meet Now icon in the notification area.
 	.PARAMETER Hide
 	Hide the Meet Now icon in the notification area
 
@@ -855,15 +960,15 @@ function WindowsColorMode
 	Show the Meet Now icon in the notification area (default value)
 
 	.EXAMPLE
-	MeetNow -Hide
+	Set-UIPersonalizationMeetNowIcon -Hide
 
 	.EXAMPLE
-	MeetNow -Show
+	Set-UIPersonalizationMeetNowIcon -Show
 
 	.NOTES
 	Current user only
 #>
-function MeetNow
+function Set-UIPersonalizationMeetNowIcon
 {
 	param
 	(
@@ -883,7 +988,7 @@ function MeetNow
 	)
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name HideSCAMeetNow -Force -ErrorAction Ignore | Out-Null
+	Remove-RegistryValueSafe -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name HideSCAMeetNow | Out-Null
 	Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name HideSCAMeetNow -Type CLEAR | Out-Null
 	Set-Policy -Scope Computer -Path SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name HideSCAMeetNow -Type CLEAR | Out-Null
 
@@ -898,7 +1003,10 @@ function MeetNow
 				$Script:MeetNow = $false
 				$Settings = Get-ItemPropertyValue -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -ErrorAction Stop
 				$Settings[9] = 128
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3' -Name 'Settings' -Value $Settings -Type Binary | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3" `
+					-Name "Settings" `
+					-Value $Settings `
+					-Type Binary
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -916,7 +1024,10 @@ function MeetNow
 				$Script:MeetNow = $true
 				$Settings = Get-ItemPropertyValue -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3 -Name Settings -ErrorAction Stop
 				$Settings[9] = 0
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3' -Name 'Settings' -Value $Settings -Type Binary | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3" `
+					-Name "Settings" `
+					-Value $Settings `
+					-Type Binary
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -932,6 +1043,11 @@ function MeetNow
 	.SYNOPSIS
 	News and Interests
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for news and Interests.
 	.PARAMETER Disable
 	Disable "News and Interests" on the taskbar
 
@@ -939,10 +1055,10 @@ function MeetNow
 	Enable "News and Interests" on the taskbar (default value)
 
 	.EXAMPLE
-	NewsInterests -Disable
+	Set-UIPersonalizationNewsInterestsIcon -Disable
 
 	.EXAMPLE
-	NewsInterests -Enable
+	Set-UIPersonalizationNewsInterestsIcon -Enable
 
 	.NOTES
 	https://forums.mydigitallife.net/threads/taskbarda-widgets-registry-change-is-now-blocked.88547/#post-1848877
@@ -950,7 +1066,8 @@ function MeetNow
 	.NOTES
 	Current user
 #>
-function NewsInterests
+
+function Set-UIPersonalizationNewsInterestsIcon
 {
 	param
 	(
@@ -1020,10 +1137,14 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 						New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force -ErrorAction Stop | Out-Null
 					}
 
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "ShellFeedsTaskbarViewMode" -PropertyType DWord -Value 2 -Force -ErrorAction Stop | Out-Null
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "EnShellFeedsTaskbarViewMode" -PropertyType DWord -Value $DWordData -Force -ErrorAction Stop | Out-Null
+					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
+						-Name "ShellFeedsTaskbarViewMode" `
+						-Value 2 `
+						-Type DWord
+					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
+						-Name "EnShellFeedsTaskbarViewMode" `
+						-Value $DWordData `
+						-Type DWord
 				}.Invoke()
 
 				Write-ConsoleStatus -Status success
@@ -1058,10 +1179,14 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 						New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force -ErrorAction Stop | Out-Null
 					}
 
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "ShellFeedsTaskbarViewMode" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-					New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
-								 -Name "EnShellFeedsTaskbarViewMode" -PropertyType DWord -Value $DWordData -Force -ErrorAction Stop | Out-Null
+					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
+						-Name "ShellFeedsTaskbarViewMode" `
+						-Value 0 `
+						-Type DWord
+					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" `
+						-Name "EnShellFeedsTaskbarViewMode" `
+						-Value $DWordData `
+						-Type DWord
 				}.Invoke()
 
 				Write-ConsoleStatus -Status success
@@ -1075,5 +1200,19 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'Set-UIPersonalizationMeetNowIcon',
+    'Set-UIPersonalizationNewsInterestsIcon',
+    'ShareMenu',
+    'SharingWizard',
+    'ShortcutArrow',
+    'ShortcutsSuffix',
+    'SnapAssist',
+    'SyncNotifications',
+    'ThisPC',
+    'ThumbnailCache',
+    'Thumbnails',
+    'ThumbsDBOnNetwork',
+    'WindowsColorMode'
+)
+Export-ModuleMember -Function $ExportedFunctions

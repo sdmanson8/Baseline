@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>BaselineShortcutLauncher</AssemblyName>
+    <RootNamespace>Baseline.ShortcutLauncher</RootNamespace>
+    <Deterministic>true</Deterministic>
+    <AddAppConfigToBuildOutputs>false</AddAppConfigToBuildOutputs>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <ApplicationManifest>Baseline.manifest</ApplicationManifest>
+    <ApplicationIcon>../Assets/baseline.ico</ApplicationIcon>
+    <AssemblyTitle>Baseline Shortcut Launcher</AssemblyTitle>
+    <AssemblyProduct>Baseline</AssemblyProduct>
+    <AssemblyDescription>Baseline desktop shortcut relay</AssemblyDescription>
+    <!-- Maintainer note: keep this runnable from the repo root, but never shadow the real Baseline.exe launcher. -->
+    <OutputPath>../</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+  <Target Name="RemoveAppConfig" AfterTargets="Build">
+    <Delete Files="$(OutputPath)$(AssemblyName).exe.config" />
+  </Target>
+</Project>

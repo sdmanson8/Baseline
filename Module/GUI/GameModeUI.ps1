@@ -1,4 +1,8 @@
-﻿# Game Mode profile definitions, plan builders, and UI state management
+# Game Mode profile definitions, plan builders, and UI state management
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Update-GameModeStatusText
 	{
@@ -33,6 +37,10 @@
 		$ctl.Foreground = (& $Script:NewSafeBrushConverterScript -Context 'GameModeUI').ConvertFromString($color)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-GameModeManifestEntries
 	{
 		param (
@@ -58,6 +66,10 @@
 		)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-GamingPreviewGroupSortOrder
 	{
 		param ([string]$GroupName)
@@ -79,6 +91,10 @@
 			}
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GameModePreviewSectionInfo
 	{
@@ -109,7 +125,11 @@
 		}
 	}
 
-	function Get-GameModeToggleStateLabel
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GameModeActionStateLabel
 	{
 		param ([string]$ActionParam)
 
@@ -122,6 +142,10 @@
 			default { return [string]$ActionParam }
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GameModeProfileDefaultSelection
 	{
@@ -161,6 +185,10 @@
 		return $false
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function New-GameModePlanEntry
 	{
 		param (
@@ -176,8 +204,8 @@
 
 		$visual = Get-TweakVisualMetadata -Tweak $Tweak
 		$scenarioTags = if ((Test-GuiObjectField -Object $Tweak -FieldName 'ScenarioTags') -and $Tweak.ScenarioTags) { @($Tweak.ScenarioTags) } else { @($visual.ScenarioTags) }
-		$stateLabel = Get-GameModeToggleStateLabel -ActionParam $ToggleParam
-		$stateDetail = "Game Mode will run '$ToggleParam' for this setting."
+		$stateLabel = Get-GameModeActionStateLabel -ActionParam $ToggleParam
+		$stateDetail = (Get-UxLocalizedString -Key 'GuiGameModeStateDetail' -Fallback "Game Mode will run '{0}' for this setting.") -f $ToggleParam
 		$blastRadius = Get-TweakBlastRadiusText -Tweak $Tweak -TypeLabel $visual.TypeLabel -ScenarioTags $scenarioTags -MatchesDesired:$false
 		$previewGroup = if ([bool]$IsAdvanced -and -not [string]::IsNullOrWhiteSpace($AdvancedCategory))
 		{
@@ -220,7 +248,7 @@
 			StateDetail       = $stateDetail
 			MatchesDesired    = $false
 			ScenarioTags      = $scenarioTags
-			ReasonIncluded    = if ([string]::IsNullOrWhiteSpace($ReasonIncluded)) { "Included by Game Mode ($ProfileName)." } else { $ReasonIncluded }
+			ReasonIncluded    = if ([string]::IsNullOrWhiteSpace($ReasonIncluded)) { (Get-UxLocalizedString -Key 'GuiGameModeReasonDefault' -Fallback 'Included by Game Mode ({0}).') -f $ProfileName } else { $ReasonIncluded }
 			BlastRadius       = [string]$blastRadius
 			IsRemoval         = [bool]$visual.IsRemoval
 			ExtraArgs         = $null
@@ -233,6 +261,10 @@
 			GameModeOperation = [string]$Operation
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GameModeUndoRunList
 	{
@@ -256,11 +288,11 @@
 
 			$reasonIncluded = if (-not [string]::IsNullOrWhiteSpace([string]$result.Selection))
 			{
-				"Reversible here: undo requested after Game Mode applied '$([string]$result.Selection)'."
+				(Get-UxLocalizedString -Key 'GuiGameModeReasonUndoApplied' -Fallback "Reversible here: undo requested after Game Mode applied '{0}'.") -f ([string]$result.Selection)
 			}
 			else
 			{
-				'Reversible here: undo requested after the previous Game Mode run.'
+				Get-UxLocalizedString -Key 'GuiGameModeReasonUndoPrevious' -Fallback 'Reversible here: undo requested after the previous Game Mode run.'
 			}
 
 			[void]$undoList.Add((New-GameModePlanEntry -Tweak $manifestEntry -ProfileName $ProfileName -ToggleParam $undoParam -ReasonIncluded $reasonIncluded -Operation 'Undo'))
@@ -268,6 +300,10 @@
 
 		return @($undoList)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Build-GameModeAdvancedPlanEntries
 	{
@@ -307,13 +343,17 @@
 			if ([string]::IsNullOrWhiteSpace($toggleParam)) { continue }
 
 			$advCategory = if ((Test-GuiObjectField -Object $advEntry -FieldName 'Category')) { [string]$advEntry.Category } else { 'Advanced' }
-			$reasonIncluded = "Advanced option ($advCategory) added to the $ProfileName profile."
+			$reasonIncluded = (Get-UxLocalizedString -Key 'GuiGameModeReasonAdvanced' -Fallback 'Advanced option ({0}) added to the {1} profile.') -f $advCategory, $ProfileName
 
 			[void]$plan.Add((New-GameModePlanEntry -Tweak $manifestEntry -ProfileName $ProfileName -ToggleParam $toggleParam -ReasonIncluded $reasonIncluded -IsAdvanced -AdvancedCategory $advCategory))
 		}
 
 		return @($plan)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Build-GameModePlan
 	{
@@ -344,8 +384,8 @@
 			if ($buttonSet.Count -eq 0) { continue }
 
 			$selectedChoice = & $showThemedDialogScript `
-				-Title $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'Title')) { [string]$promptDefinition.Title } else { "Game Mode | $promptKey" }) `
-				-Message $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'Message')) { [string]$promptDefinition.Message } else { 'Choose how Game Mode should handle this gaming setting.' }) `
+				-Title $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'Title')) { [string]$promptDefinition.Title } else { (Get-UxLocalizedString -Key 'GuiGameModeDecisionFallbackTitle' -Fallback 'Game Mode | {0}') -f $promptKey }) `
+				-Message $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'Message')) { [string]$promptDefinition.Message } else { Get-UxLocalizedString -Key 'GuiGameModeDecisionFallbackMessage' -Fallback 'Choose how Game Mode should handle this gaming setting.' }) `
 				-Buttons $buttonSet `
 				-AccentButton $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'AccentButton')) { [string]$promptDefinition.AccentButton } else { $null }) `
 				-DestructiveButton $(if ((Test-GuiObjectField -Object $promptDefinition -FieldName 'DestructiveButton')) { [string]$promptDefinition.DestructiveButton } else { $null })
@@ -367,12 +407,12 @@
 			{
 				'DecisionOverride'
 				{
-					"Included by Game Mode ($ProfileName) after you chose the '$([string]$selection.DecisionChoice)' path."
+					(Get-UxLocalizedString -Key 'GuiGameModeReasonDecision' -Fallback "Included by Game Mode ({0}) after you chose the '{1}' path.") -f $ProfileName, ([string]$selection.DecisionChoice)
 					break
 				}
 				default
 				{
-					"Included by Game Mode ($ProfileName) as part of the profile default plan."
+					(Get-UxLocalizedString -Key 'GuiGameModeReasonProfileDefault' -Fallback 'Included by Game Mode ({0}) as part of the profile default plan.') -f $ProfileName
 					break
 				}
 			}
@@ -385,6 +425,10 @@
 
 		return @($plan)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Test-TweakEditableInGameModeTab
 	{
@@ -409,9 +453,11 @@
 			return $false
 		}
 
-		$primaryTab = if ($CategoryToPrimary -and $CategoryToPrimary.ContainsKey($categoryName))
+		$categoryMap = if ($Script:CategoryToPrimary -is [hashtable]) { $Script:CategoryToPrimary } else { $null }
+
+		$primaryTab = if ($categoryMap -and $categoryMap.ContainsKey($categoryName))
 		{
-			[string]$CategoryToPrimary[$categoryName]
+			[string]$categoryMap[$categoryName]
 		}
 		else
 		{
@@ -420,6 +466,10 @@
 
 		return ([string]$primaryTab -eq 'Gaming')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Sync-GameModePlanToGamingControls
 	{
@@ -564,6 +614,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Sync-GameModePlanFromGamingControls
 	{
 		# IMPORTANT: This function reads and writes WPF controls directly -
@@ -580,6 +634,11 @@
 		}
 		if (-not $Script:TweakManifest -or -not $Script:Controls)
 		{
+			return
+		}
+		if ([bool]$Script:GuiSelectionBulkUpdateInProgress)
+		{
+			$Script:GameModePlanSyncPending = $true
 			return
 		}
 
@@ -608,7 +667,7 @@
 			}
 			else
 			{
-				"Included by manual Gaming tab selection while Game Mode ($([string]$Script:GameModeProfile)) is active."
+				(Get-UxLocalizedString -Key 'GuiGameModeReasonManual' -Fallback 'Included by manual Gaming tab selection while Game Mode ({0}) is active.') -f ([string]$Script:GameModeProfile)
 			}
 
 			$planEntry = @{
@@ -721,14 +780,14 @@
 
 		$restartCount = @($Script:GameModePlan | Where-Object RequiresRestart).Count
 		$message = if ($Script:GameModePlan.Count -gt 0) {
-			"Game Mode profile ready: $($Script:GameModeProfile) ($($Script:GameModePlan.Count) action$(if ($Script:GameModePlan.Count -eq 1) { '' } else { 's' }) selected)."
+			(Get-UxLocalizedString -Key 'GuiGameModePlanReady' -Fallback 'Game Mode profile ready: {0} ({1} action(s) selected).') -f $Script:GameModeProfile, $Script:GameModePlan.Count
 		}
 		else {
-			"Game Mode profile selected: $($Script:GameModeProfile). No gaming changes were queued."
+			(Get-UxLocalizedString -Key 'GuiGameModePlanSelectedNoChanges' -Fallback 'Game Mode profile selected: {0}. No gaming changes were queued.') -f $Script:GameModeProfile
 		}
 		if ($restartCount -gt 0)
 		{
-			$message += " $restartCount change$(if ($restartCount -eq 1) { '' } else { 's' }) - restart required."
+			$message += ' ' + ((Get-UxLocalizedString -Key 'GuiGameModePlanRestartAppend' -Fallback '{0} change(s) - restart required.') -f $restartCount)
 		}
 
 		$Script:PresetStatusMessage = $message
@@ -739,6 +798,10 @@
 		Update-GameModeStatusText -Message $message -Tone 'Accent'
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Clear-GameModePlan
 	{
 		param ([switch]$Quiet)
@@ -748,7 +811,7 @@
 
 		if ($Quiet) { return }
 
-		$message = 'Game Mode plan cleared. Choose a profile to build a new gaming workflow.'
+		$message = Get-UxLocalizedString -Key 'GuiGameModePlanCleared' -Fallback 'Game Mode plan cleared. Choose a profile to build a new gaming workflow.'
 		$Script:PresetStatusMessage = $message
 		if ($Script:PresetStatusBadge -and $Script:PresetStatusBadge.Child -is [System.Windows.Controls.TextBlock])
 		{
@@ -756,6 +819,10 @@
 		}
 		& $Script:UpdateGameModeStatusTextScript -Message $message -Tone 'Muted'
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Set-GameModeProfile
 	{
@@ -770,19 +837,14 @@
 		$Script:GameModeCorePlan = $plan
 		$Script:GameModePlan = $plan
 
-		# Initialize advanced selections: only Troubleshooting pre-checks items from DefaultCheckedByProfile.
+		# Initialize advanced selections from the per-profile defaults in GameModeAdvanced.json.
 		$Script:GameModeAdvancedSelections = @{}
 		$advancedEntries = @(Import-GameModeAdvancedData)
 		foreach ($advEntry in $advancedEntries)
 		{
 			$fn = [string]$advEntry.Function
 			if ([string]::IsNullOrWhiteSpace($fn)) { continue }
-			$isPreChecked = $false
-			if ($ProfileName -eq 'Troubleshooting' -and (Test-GuiObjectField -Object $advEntry -FieldName 'DefaultCheckedByProfile') -and $advEntry.DefaultCheckedByProfile.PSObject.Properties[$ProfileName])
-			{
-				$isPreChecked = [bool]$advEntry.DefaultCheckedByProfile.$ProfileName
-			}
-			$Script:GameModeAdvancedSelections[$fn] = $isPreChecked
+			$Script:GameModeAdvancedSelections[$fn] = [bool](Test-GameModeAdvancedProfileDefaultSelection -Entry $advEntry -ProfileName $ProfileName)
 		}
 
 		# Add pre-checked advanced items to the plan, replacing any core entries they override.
@@ -807,14 +869,14 @@
 
 		$restartCount = @($Script:GameModePlan | Where-Object RequiresRestart).Count
 		$message = if ($Script:GameModePlan.Count -gt 0) {
-			"Game Mode profile ready: $ProfileName ($($Script:GameModePlan.Count) action$(if ($Script:GameModePlan.Count -eq 1) { '' } else { 's' }) selected)."
+			(Get-UxLocalizedString -Key 'GuiGameModePlanReady' -Fallback 'Game Mode profile ready: {0} ({1} action(s) selected).') -f $ProfileName, $Script:GameModePlan.Count
 		}
 		else {
-			"Game Mode profile selected: $ProfileName. No gaming changes were queued."
+			(Get-UxLocalizedString -Key 'GuiGameModePlanSelectedNoChanges' -Fallback 'Game Mode profile selected: {0}. No gaming changes were queued.') -f $ProfileName
 		}
 		if ($restartCount -gt 0)
 		{
-			$message += " $restartCount change$(if ($restartCount -eq 1) { '' } else { 's' }) - restart required."
+			$message += ' ' + ((Get-UxLocalizedString -Key 'GuiGameModePlanRestartAppend' -Fallback '{0} change(s) - restart required.') -f $restartCount)
 		}
 
 		LogInfo ("Game Mode plan built: Profile={0}, Actions={1}, AdvancedActive={2}, Decisions={3}" -f $ProfileName, $Script:GameModePlan.Count, @($Script:GameModeAdvancedSelections.Values | Where-Object { $_ }).Count, (Get-GameModeDecisionOverridesText -Overrides $Script:GameModeDecisionOverrides))
@@ -834,6 +896,10 @@
 		& $Script:UpdateRunPathContextLabelScript
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Set-GameModeState
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
@@ -852,10 +918,6 @@
 			Update-SessionStatistics -Values @{
 				GameModeActive  = [bool]$Enabled
 				GameModeProfile = if ($Enabled -and -not [string]::IsNullOrWhiteSpace([string]$Script:GameModeProfile)) { [string]$Script:GameModeProfile } else { $null }
-			}
-			if ($ChkGameMode)
-			{
-				$ChkGameMode.IsChecked = $Enabled
 			}
 		}
 		finally
@@ -878,25 +940,32 @@
 				$Script:GameModePreviousPrimaryTab = [string]$PrimaryTabs.SelectedItem.Tag
 			}
 
-			$gamingTab = & $Script:GetPrimaryTabItemScript -Tag 'Gaming'
-			if ($gamingTab)
+			if ([bool]$Script:GamingModeActive)
 			{
-				if ($PrimaryTabs.SelectedItem -ne $gamingTab)
+				& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
+			}
+			else
+			{
+				$gamingTab = & $Script:GetPrimaryTabItemScript -Tag 'Gaming'
+				if ($gamingTab)
 				{
-					$Script:SkipIdlePrebuildOnNextPrimaryTabSelection = $true
-					$PrimaryTabs.SelectedItem = $gamingTab
+					if ($PrimaryTabs.SelectedItem -ne $gamingTab)
+					{
+						$Script:SkipIdlePrebuildOnNextPrimaryTabSelection = $true
+						$PrimaryTabs.SelectedItem = $gamingTab
+					}
+					else
+					{
+						& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
+					}
 				}
 				else
 				{
 					& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
 				}
 			}
-			else
-			{
-				& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
-			}
 
-			if ($PrimaryTabs)
+			if ($PrimaryTabs -and -not [bool]$Script:GamingModeActive)
 			{
 				foreach ($tab in $PrimaryTabs.Items)
 				{
@@ -907,7 +976,7 @@
 				}
 			}
 
-			$message = "$([char]0x25C9) GAME MODE ACTIVE $([char]0x2014) only the Gaming plan can be edited or run. Turn off Game Mode to use other tabs."
+			$message = "$([char]0x25C9) $(Get-UxLocalizedString -Key 'GuiGameModeActiveStatus' -Fallback 'GAME MODE ACTIVE - the Gaming workflow is ready. Switch modes from the top navigation when needed.')"
 		}
 		else
 		{
@@ -924,7 +993,12 @@
 
 			& $Script:ClearGameModePlanScript -Quiet
 			$restoreTab = if ($Script:GameModePreviousPrimaryTab) { & $Script:GetPrimaryTabItemScript -Tag $Script:GameModePreviousPrimaryTab } else { $null }
-			if ($restoreTab -and $PrimaryTabs.SelectedItem -and [string]$PrimaryTabs.SelectedItem.Tag -eq 'Gaming')
+			if ([bool]$Script:GamingModeActive)
+			{
+				& $Script:ClearTabContentCacheScript
+				& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
+			}
+			elseif ($restoreTab -and $PrimaryTabs.SelectedItem -and [string]$PrimaryTabs.SelectedItem.Tag -eq 'Gaming')
 			{
 				$Script:SkipIdlePrebuildOnNextPrimaryTabSelection = $true
 				$PrimaryTabs.SelectedItem = $restoreTab
@@ -935,7 +1009,7 @@
 				& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
 			}
 
-			$message = 'Game Mode disabled. Standard tweak selection restored.'
+			$message = Get-UxLocalizedString -Key 'GuiGameModeDisabled' -Fallback 'Game Mode disabled. Standard tweak selection restored.'
 		}
 
 		$Script:PresetStatusMessage = $message
@@ -955,6 +1029,10 @@
 		}
 		& $Script:UpdateRunPathContextLabelScript
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function New-GameModeAdvancedPanel
 	{
@@ -1040,7 +1118,7 @@
 		[System.Windows.Controls.Grid]::SetColumn($headerStack, 0)
 
 		$header = New-Object System.Windows.Controls.TextBlock
-		$header.Text = 'ADVANCED GAME MODE OPTIONS'
+		$header.Text = Get-UxLocalizedString -Key 'GuiGameModeAdvancedHeader' -Fallback 'ADVANCED GAME MODE OPTIONS'
 		$header.FontSize = $Script:GuiLayout.FontSizeLabel
 		$header.FontWeight = [System.Windows.FontWeights]::Bold
 		$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
@@ -1048,7 +1126,7 @@
 
 		$activeCount = @($Script:GameModeAdvancedSelections.Values | Where-Object { $_ }).Count
 		$summaryLine = New-Object System.Windows.Controls.TextBlock
-		$summaryLine.Text = "$($visibleEntries.Count) advanced option$(if ($visibleEntries.Count -eq 1) { '' } else { 's' }) available$(if ($activeCount -gt 0) { ", $activeCount active" } else { '' })."
+		$summaryLine.Text = if ($activeCount -gt 0) { (Get-UxLocalizedString -Key 'GuiGameModeAdvancedCountActive' -Fallback '{0} advanced option(s) available, {1} active.') -f $visibleEntries.Count, $activeCount } else { (Get-UxLocalizedString -Key 'GuiGameModeAdvancedCount' -Fallback '{0} advanced option(s) available.') -f $visibleEntries.Count }
 		$summaryLine.FontSize = $Script:GuiLayout.FontSizeSmall
 		$summaryLine.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
 		$summaryLine.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
@@ -1073,7 +1151,7 @@
 		$detailsPanel.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
 
 		$noteText = New-Object System.Windows.Controls.TextBlock
-		$noteText.Text = 'These options are not part of the standard profile plan. Check the ones you want to include.'
+		$noteText.Text = Get-UxLocalizedString -Key 'GuiGameModeAdvancedNote' -Fallback 'These options are not part of the standard profile plan. Check the ones you want to include.'
 		$noteText.TextWrapping = 'Wrap'
 		$noteText.FontSize = $Script:GuiLayout.FontSizeSmall
 		$noteText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
@@ -1102,10 +1180,28 @@
 		$syncGameModePlanToGamingControlsScript = $Script:SyncGameModePlanToGamingControlsScript
 		$gameModeAdvancedSelectionsRef = $Script:GameModeAdvancedSelections
 		$gameModeCorePlanRef = $Script:GameModeCorePlan
-		# Getter/setter bound to module scope — .GetNewClosure() closures can't
+		# Getter/setter bound to module scope - .GetNewClosure() closures can't
 		# access $Script:GameModePlan directly because $Script: targets the dynamic module.
 		$getGameModePlanScript = { @($Script:GameModePlan) }
 		$setGameModePlanScript = { param($NewPlan) $Script:GameModePlan = $NewPlan }
+		$hasField = {
+			param (
+				[object]$Object,
+				[string]$FieldName
+			)
+
+			if ($null -eq $Object)
+			{
+				return $false
+			}
+
+			if ($Object -is [System.Collections.IDictionary])
+			{
+				return $Object.Contains($FieldName)
+			}
+
+			return ($null -ne $Object.PSObject.Properties[$FieldName])
+		}.GetNewClosure()
 
 		foreach ($cat in $categoryOrder)
 		{
@@ -1132,21 +1228,17 @@
 
 				# Build label with optional recommended indicator.
 				$isChecked = if ($Script:GameModeAdvancedSelections.ContainsKey($fn)) { [bool]$Script:GameModeAdvancedSelections[$fn] } else { $false }
-				$isRecommended = $false
-				if ((Test-GuiObjectField -Object $advEntry -FieldName 'DefaultCheckedByProfile') -and $advEntry.DefaultCheckedByProfile.PSObject.Properties[$ProfileName])
-				{
-					$isRecommended = [bool]$advEntry.DefaultCheckedByProfile.$ProfileName
-				}
+				$isRecommended = [bool](Test-GameModeAdvancedProfileDefaultSelection -Entry $advEntry -ProfileName $ProfileName)
 
 				$label = [string]$advEntry.Label
 				$isOverride = $corePlanActionLookup.ContainsKey($fn)
 				if ($isOverride)
 				{
-					$label += '  (overrides profile default)'
+					$label += '  ' + (Get-UxLocalizedString -Key 'GuiGameModeOverridesDefault' -Fallback '(overrides profile default)')
 				}
 				elseif ($isRecommended -and -not $isChecked)
 				{
-					$label += '  (recommended)'
+					$label += '  ' + (Get-UxLocalizedString -Key 'GuiGameModeRecommendedLabel' -Fallback '(recommended)')
 				}
 				$chk.Content = $label
 				$chk.IsChecked = $isChecked
@@ -1154,7 +1246,7 @@
 				$risk = if ((Test-GuiObjectField -Object $advEntry -FieldName 'Risk')) { [string]$advEntry.Risk } else { 'Low' }
 				if ($risk -eq 'High')
 				{
-					$chk.ToolTip = "[High risk] $([string]$advEntry.Description)"
+					$chk.ToolTip = (Get-UxLocalizedString -Key 'GuiGameModeHighRiskTooltip' -Fallback '[High risk] {0}') -f ([string]$advEntry.Description)
 				}
 				else
 				{
@@ -1181,9 +1273,9 @@
 								if (-not $cp) { continue }
 								# Drop old advanced entries (they'll be rebuilt) and entries
 								# whose function is being overridden by a new advanced entry.
-								$isOldAdvanced = (Test-GuiObjectField -Object $cp -FieldName 'IsAdvanced') -and [bool]$cp.IsAdvanced
+								$isOldAdvanced = (& $hasField -Object $cp -FieldName 'IsAdvanced') -and [bool]$cp.IsAdvanced
 								if ($isOldAdvanced) { continue }
-								$cpFn = if ((Test-GuiObjectField -Object $cp -FieldName 'Function')) { [string]$cp.Function } else { $null }
+								$cpFn = if ((& $hasField -Object $cp -FieldName 'Function')) { [string]$cp.Function } else { $null }
 								if (-not [string]::IsNullOrWhiteSpace($cpFn) -and $advFnLookup.ContainsKey($cpFn)) { continue }
 								[void]$merged.Add($cp)
 							}
@@ -1197,6 +1289,8 @@
 					}
 					catch
 					{
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'GameModeUI.New-GameModeAdvancedPanel:catch1280' -Severity Debug }
+
 						if ($showGuiRuntimeFailureScript) { & $showGuiRuntimeFailureScript -Context 'AdvancedPanel/Checked' -Exception $_.Exception }
 					}
 				}.GetNewClosure())
@@ -1219,9 +1313,9 @@
 								if (-not $cp) { continue }
 								# Drop old advanced entries (they'll be rebuilt) and entries
 								# whose function is being overridden by a new advanced entry.
-								$isOldAdvanced = (Test-GuiObjectField -Object $cp -FieldName 'IsAdvanced') -and [bool]$cp.IsAdvanced
+								$isOldAdvanced = (& $hasField -Object $cp -FieldName 'IsAdvanced') -and [bool]$cp.IsAdvanced
 								if ($isOldAdvanced) { continue }
-								$cpFn = if ((Test-GuiObjectField -Object $cp -FieldName 'Function')) { [string]$cp.Function } else { $null }
+								$cpFn = if ((& $hasField -Object $cp -FieldName 'Function')) { [string]$cp.Function } else { $null }
 								if (-not [string]::IsNullOrWhiteSpace($cpFn) -and $advFnLookup.ContainsKey($cpFn)) { continue }
 								[void]$merged.Add($cp)
 							}
@@ -1230,13 +1324,13 @@
 							foreach ($corePlanEntry in @($gameModeCorePlanRef))
 							{
 								if (-not $corePlanEntry) { continue }
-								$coreFn = if ((Test-GuiObjectField -Object $corePlanEntry -FieldName 'Function')) { [string]$corePlanEntry.Function } else { $null }
+								$coreFn = if ((& $hasField -Object $corePlanEntry -FieldName 'Function')) { [string]$corePlanEntry.Function } else { $null }
 								if ([string]::IsNullOrWhiteSpace($coreFn)) { continue }
 								# Only restore if this function was removed (was overridden by the advanced entry being unchecked)
 								# and is not already present in the merged plan.
 								$alreadyInMerged = $false
 								foreach ($m in $merged) {
-									if ($m -and (Test-GuiObjectField -Object $m -FieldName 'Function') -and [string]$m.Function -eq $coreFn) { $alreadyInMerged = $true; break }
+									if ($m -and (& $hasField -Object $m -FieldName 'Function') -and [string]$m.Function -eq $coreFn) { $alreadyInMerged = $true; break }
 								}
 								if (-not $alreadyInMerged -and -not $advFnLookup.ContainsKey($coreFn))
 								{
@@ -1253,6 +1347,8 @@
 					}
 					catch
 					{
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'GameModeUI.New-GameModeAdvancedPanel:catch1336' -Severity Debug }
+
 						if ($showGuiRuntimeFailureScript) { & $showGuiRuntimeFailureScript -Context 'AdvancedPanel/Unchecked' -Exception $_.Exception }
 					}
 				}.GetNewClosure())
@@ -1270,7 +1366,7 @@
 				if ((Test-GuiObjectField -Object $advEntry -FieldName 'TroubleshootingOnly') -and [bool]$advEntry.TroubleshootingOnly)
 				{
 					$troubleLabel = New-Object System.Windows.Controls.TextBlock
-					$troubleLabel.Text = 'Troubleshooting only'
+					$troubleLabel.Text = Get-UxLocalizedString -Key 'GuiTroubleshootingOnly' -Fallback 'Troubleshooting only'
 					$troubleLabel.FontSize = $Script:GuiLayout.FontSizeTiny
 					$troubleLabel.FontStyle = [System.Windows.FontStyles]::Italic
 					$troubleLabel.Foreground = $bc.ConvertFromString($Script:CurrentTheme.CautionText)
@@ -1294,16 +1390,15 @@
 		return $border
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function New-GameModeLandingPanel
 	{
 		$bc = & $Script:NewSafeBrushConverterScript -Context 'New-GameModeLandingPanel'
-		$panel = New-Object System.Windows.Controls.Border
-		$panel.Background = $bc.ConvertFromString($Script:CurrentTheme.PresetPanelBg)
-		$panel.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.PresetPanelBorder)
-		$panel.BorderThickness = [System.Windows.Thickness]::new(1)
-		$panel.CornerRadius = [System.Windows.CornerRadius]::new(10)
-		$panel.Margin = [System.Windows.Thickness]::new(8, 12, 8, 8)
-		$panel.Padding = [System.Windows.Thickness]::new(14, 12, 14, 12)
+		$rootStack = New-Object System.Windows.Controls.StackPanel
+		$rootStack.Orientation = 'Vertical'
 
 		$stack = New-Object System.Windows.Controls.StackPanel
 		$stack.Orientation = 'Vertical'
@@ -1315,21 +1410,21 @@
 		$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 		[void]($stack.Children.Add($header))
 		$subheader = New-Object System.Windows.Controls.TextBlock
-		$subheader.Text = 'Choose a gaming profile, answer a few focused prompts, then preview a manifest-backed gaming plan before you run anything.'
+		$subheader.Text = (Get-UxLocalizedString -Key 'GuiGameModeIntro' -Fallback 'Choose a gaming profile, answer a few focused prompts, then preview a manifest-backed gaming plan before you run anything.')
 		$subheader.FontSize = $Script:GuiLayout.FontSizeLabel
 		$subheader.TextWrapping = 'Wrap'
 		$subheader.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
 		$subheader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
 		[void]($stack.Children.Add($subheader))
 		$scopeNote = New-Object System.Windows.Controls.TextBlock
-		$scopeNote.Text = 'Profiles build a focused plan from core gaming items plus reviewed cross-category entries. Advanced options are available in a separate expander for experienced users.'
+		$scopeNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeProfilesNote' -Fallback 'Profiles build a focused plan from core gaming items plus reviewed cross-category entries. Advanced options are available in a separate expander for experienced users.')
 		$scopeNote.FontSize = $Script:GuiLayout.FontSizeSmall
 		$scopeNote.TextWrapping = 'Wrap'
 		$scopeNote.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
 		$scopeNote.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
 		[void]($stack.Children.Add($scopeNote))
 		$recommendationNote = New-Object System.Windows.Controls.TextBlock
-		$recommendationNote.Text = 'System Scan can highlight Game Mode when it sees gaming-related hardware or software, but those detections only adjust recommendation copy in v1 and never change profile defaults automatically.'
+		$recommendationNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeScanNote' -Fallback 'System Scan can highlight Game Mode when it sees gaming-related hardware or software, but those detections only adjust recommendation copy in v1 and never change profile defaults automatically.')
 		$recommendationNote.FontSize = $Script:GuiLayout.FontSizeSmall
 		$recommendationNote.TextWrapping = 'Wrap'
 		$recommendationNote.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
@@ -1357,13 +1452,14 @@
 			$cardStack.Orientation = 'Vertical'
 
 			$title = New-Object System.Windows.Controls.TextBlock
-			$title.Text = [string]$profileDefinition.Label
+			$profileLocKeyBase = switch ([string]$profileDefinition.Name) { 'Casual' { 'GuiProfileCasualGaming' } 'Competitive' { 'GuiProfileCompetitiveGaming' } 'Streaming' { 'GuiProfileStreamingContent' } 'Troubleshooting' { 'GuiProfileTroubleshooting' } default { $null } }
+			$title.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key $profileLocKeyBase -Fallback ([string]$profileDefinition.Label) } else { [string]$profileDefinition.Label }
 			$title.FontSize = $Script:GuiLayout.FontSizeSubheading
 			$title.FontWeight = [System.Windows.FontWeights]::SemiBold
 			$title.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
 			[void]($cardStack.Children.Add($title))
 			$summary = New-Object System.Windows.Controls.TextBlock
-			$summary.Text = [string]$profileDefinition.Summary
+			$summary.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key "${profileLocKeyBase}Desc" -Fallback ([string]$profileDefinition.Summary) } else { [string]$profileDefinition.Summary }
 			$summary.TextWrapping = 'Wrap'
 			$summary.FontSize = $Script:GuiLayout.FontSizeSmall
 			$summary.Margin = [System.Windows.Thickness]::new(0, 6, 0, 10)
@@ -1398,19 +1494,34 @@
 		}
 
 		[void]($stack.Children.Add($profileCards))
+		$profileDisclosure = New-GuiRecommendationDisclosurePanel `
+			-Scope 'GamingProfiles' `
+			-Title (Get-UxLocalizedString -Key 'GuiGameModeProfilesHeading' -Fallback 'Gaming Profiles') `
+			-Body $stack `
+			-BrushConverter $bc `
+			-PrimaryTab 'Gaming' `
+			-InstanceKey 'GamingProfiles' `
+			-DefaultCollapsed $true `
+			-BorderThickness 1 `
+			-CornerRadius 10 `
+			-Margin ([System.Windows.Thickness]::new(8, 6, 8, 6)) `
+			-Padding ([System.Windows.Thickness]::new(10, 7, 10, 7)) `
+			-Compact
+		[void]($rootStack.Children.Add($profileDisclosure))
+
 		$planBorder = New-Object System.Windows.Controls.Border
 		$planBorder.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
 		$planBorder.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.CardBorder)
 		$planBorder.BorderThickness = [System.Windows.Thickness]::new(1)
 		$planBorder.CornerRadius = [System.Windows.CornerRadius]::new(8)
 		$planBorder.Padding = [System.Windows.Thickness]::new(12, 12, 12, 12)
-		$planBorder.Margin = [System.Windows.Thickness]::new(0, 2, 0, 0)
+		$planBorder.Margin = [System.Windows.Thickness]::new(8, 2, 8, 0)
 
 		$planStack = New-Object System.Windows.Controls.StackPanel
 		$planStack.Orientation = 'Vertical'
 
 		$planHeader = New-Object System.Windows.Controls.TextBlock
-		$planHeader.Text = 'Current Game Mode Plan'
+		$planHeader.Text = Get-UxLocalizedString -Key 'GuiCurrentGameModePlan' -Fallback 'Current Game Mode Plan'
 		$planHeader.FontSize = $Script:GuiLayout.FontSizeSubheading
 		$planHeader.FontWeight = [System.Windows.FontWeights]::SemiBold
 		$planHeader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
@@ -1419,7 +1530,7 @@
 		{
 			$planSummary = Get-TweakSelectionSummary -SelectedTweaks @($Script:GameModePlan)
 			$summaryText = New-Object System.Windows.Controls.TextBlock
-			$summaryText.Text = "Profile: $($Script:GameModeProfile). $(@($Script:GameModePlan).Count) action$(if (@($Script:GameModePlan).Count -eq 1) { '' } else { 's' }) queued."
+			$summaryText.Text = (Get-UxLocalizedString -Key 'GuiGameModePlanSummary' -Fallback 'Profile: {0}. {1} action(s) queued.') -f $Script:GameModeProfile, @($Script:GameModePlan).Count
 			$summaryText.TextWrapping = 'Wrap'
 			$summaryText.FontSize = $Script:GuiLayout.FontSizeSmall
 			$summaryText.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
@@ -1427,29 +1538,29 @@
 			[void]($planStack.Children.Add($summaryText))
 			$impactItems = New-Object System.Collections.Generic.List[object]
 			[void]$impactItems.Add([pscustomobject]@{
-				Label = "Selected: $($planSummary.SelectedCount)"
+				Label = (Get-UxLocalizedString -Key 'GuiGameModePillSelected' -Fallback 'Selected: {0}') -f $planSummary.SelectedCount
 				Tone = 'Primary'
-				ToolTip = 'Actions in the current Game Mode plan'
+				ToolTip = Get-UxLocalizedString -Key 'GuiGameModePillTooltipSelected' -Fallback 'Actions in the current Game Mode plan'
 			})
 			[void]$impactItems.Add([pscustomobject]@{
-				Label = "Restart required: $($planSummary.RestartRequiredCount)"
+				Label = (Get-UxLocalizedString -Key 'GuiGameModePillRestartRequired' -Fallback 'Restart required: {0}') -f $planSummary.RestartRequiredCount
 				Tone = 'Caution'
-				ToolTip = 'Changes that need a reboot'
+				ToolTip = Get-UxLocalizedString -Key 'GuiGameModePillTooltipRestart' -Fallback 'Changes that need a reboot'
 			})
 			[void]$impactItems.Add([pscustomobject]@{
-				Label = "High risk: $($planSummary.HighRiskCount)"
+				Label = (Get-UxLocalizedString -Key 'GuiGameModePillHighRisk' -Fallback 'High risk: {0}') -f $planSummary.HighRiskCount
 				Tone = $(if ($planSummary.HighRiskCount -gt 0) { 'Danger' } else { 'Muted' })
-				ToolTip = 'High-risk changes in this profile'
+				ToolTip = Get-UxLocalizedString -Key 'GuiGameModePillTooltipHighRisk' -Fallback 'High-risk changes in this profile'
 			})
 			[void]$impactItems.Add([pscustomobject]@{
-				Label = "Reversible here: $($planSummary.DirectUndoEligibleCount)"
+				Label = (Get-UxLocalizedString -Key 'GuiGameModePillReversible' -Fallback 'Reversible here: {0}') -f $planSummary.DirectUndoEligibleCount
 				Tone = 'Success'
-				ToolTip = 'Changes that are reversible here in Baseline'
+				ToolTip = Get-UxLocalizedString -Key 'GuiGameModePillTooltipReversible' -Fallback 'Changes that are reversible here in Baseline'
 			})
 			[void]$impactItems.Add([pscustomobject]@{
-				Label = "Restore point: $(if ($planSummary.ShouldRecommendRestorePoint) { 'Yes' } else { 'No' })"
+				Label = (Get-UxLocalizedString -Key 'GuiGameModePillRestorePoint' -Fallback 'Restore point: {0}') -f $(if ($planSummary.ShouldRecommendRestorePoint) { (Get-UxLocalizedString -Key 'GuiPreviewYes' -Fallback 'Yes') } else { (Get-UxLocalizedString -Key 'GuiPreviewNo' -Fallback 'No') })
 				Tone = $(if ($planSummary.ShouldRecommendRestorePoint) { if ($planSummary.RestoreRecommendationSeverity -eq 'StronglyRecommended') { 'Danger' } else { 'Caution' } } else { 'Muted' })
-				ToolTip = $(if ($planSummary.ShouldRecommendRestorePoint) { [string]$planSummary.RestoreRecommendation } else { 'Not recommended for this plan.' })
+				ToolTip = $(if ($planSummary.ShouldRecommendRestorePoint) { [string]$planSummary.RestoreRecommendation } else { Get-UxLocalizedString -Key 'GuiGameModePillTooltipRestoreNotRecommended' -Fallback 'Not recommended for this plan.' })
 			})
 			$impactPanel = GUICommon\New-DialogMetadataPillPanel -Theme $Script:CurrentTheme -Items $impactItems
 			if ($impactPanel)
@@ -1483,7 +1594,7 @@
 				[void]$groupSummaryItems.Add([pscustomobject]@{
 					Label = ('{0}: {1}' -f [string]$planGroup.Name, [int]$planGroup.Count)
 					Tone = 'Primary'
-					ToolTip = 'Grouped preview count'
+					ToolTip = Get-UxLocalizedString -Key 'GuiGameModePillTooltipGroupCount' -Fallback 'Grouped preview count'
 				})
 			}
 			$groupSummaryPanel = GUICommon\New-DialogMetadataPillPanel -Theme $Script:CurrentTheme -Items $groupSummaryItems
@@ -1502,7 +1613,7 @@
 			$previewButton = New-PresetButton -Label (Get-UxLocalizedString -Key 'GuiPreviewGameMode' -Fallback 'Preview Game Mode') -Variant 'Primary' -Compact
 			if (Get-Command -Name 'Set-GuiButtonIconContent' -CommandType Function -ErrorAction SilentlyContinue)
 			{
-				Set-GuiButtonIconContent -Button $previewButton -IconName 'PreviewRun' -Text (Get-UxLocalizedString -Key 'GuiPreviewGameMode' -Fallback 'Preview Game Mode') -ToolTip 'Preview the current Game Mode plan.'
+				Set-GuiButtonIconContent -Button $previewButton -IconName 'PreviewRun' -Text (Get-UxLocalizedString -Key 'GuiPreviewGameMode' -Fallback 'Preview Game Mode') -ToolTip (Get-UxLocalizedString -Key 'GuiGameModePreviewTooltip' -Fallback 'Preview the current Game Mode plan.')
 			}
 			$null = Register-GuiEventHandler -Source $previewButton -EventName 'Click' -Handler ({
 				& $showSelectedTweakPreviewScript -SelectedTweaks (& $getGameModePlanScript)
@@ -1526,7 +1637,7 @@
 		else
 		{
 			$emptyText = New-Object System.Windows.Controls.TextBlock
-			$emptyText.Text = 'No gaming plan is active yet. Pick a profile above to answer the decision prompts and generate a preview-ready selection set.'
+			$emptyText.Text = Get-UxLocalizedString -Key 'GuiGameModePlanEmpty' -Fallback 'No gaming plan is active yet. Pick a profile above to answer the decision prompts and generate a preview-ready selection set.'
 			$emptyText.TextWrapping = 'Wrap'
 			$emptyText.FontSize = $Script:GuiLayout.FontSizeSmall
 			$emptyText.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
@@ -1535,7 +1646,7 @@
 		}
 
 		$planBorder.Child = $planStack
-		[void]($stack.Children.Add($planBorder))
+		[void]($rootStack.Children.Add($planBorder))
 
 		# Advanced Options expander - collapsed by default, shown when a profile is selected.
 		# Gated in Safe Mode: expert-only advanced options are hidden for beginners.
@@ -1544,7 +1655,8 @@
 			$advancedPanel = New-GameModeAdvancedPanel -ProfileName ([string]$Script:GameModeProfile)
 			if ($advancedPanel)
 			{
-				[void]($stack.Children.Add($advancedPanel))
+				$advancedPanel.Margin = [System.Windows.Thickness]::new(8, 12, 8, 0)
+				[void]($rootStack.Children.Add($advancedPanel))
 			}
 		}
 
@@ -1555,13 +1667,17 @@
 			$comparisonPanel = & $newGameModeComparisonPanelScript
 			if ($comparisonPanel)
 			{
-				[void]($stack.Children.Add($comparisonPanel))
+				$comparisonPanel.Margin = [System.Windows.Thickness]::new(8, 12, 8, 0)
+				[void]($rootStack.Children.Add($comparisonPanel))
 			}
 		}
 
-		$panel.Child = $stack
-		return $panel
+		return $rootStack
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function New-GameModeComparisonPanel
 	{
@@ -1590,7 +1706,7 @@
 		$headerRow.Cursor = [System.Windows.Input.Cursors]::Hand
 
 		$headerText = New-Object System.Windows.Controls.TextBlock
-		$headerText.Text = 'Compare Profiles'
+		$headerText.Text = Get-UxLocalizedString -Key 'GuiGameModeCompareProfiles' -Fallback 'Compare Profiles'
 		$headerText.FontSize = $Script:GuiLayout.FontSizeSubheading
 		$headerText.FontWeight = [System.Windows.FontWeights]::SemiBold
 		$headerText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
@@ -1598,7 +1714,7 @@
 		[void]($headerRow.Children.Add($headerText))
 
 		$toggleText = New-Object System.Windows.Controls.TextBlock
-		$toggleText.Text = 'Show'
+		$toggleText.Text = Get-UxLocalizedString -Key 'GuiGameModeCompareShow' -Fallback 'Show'
 		$toggleText.FontSize = $Script:GuiLayout.FontSizeSmall
 		$toggleText.Foreground = $bc.ConvertFromString($Script:CurrentTheme.AccentBlue)
 		$toggleText.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Right
@@ -1619,7 +1735,7 @@
 		$selectorRow.Margin = [System.Windows.Thickness]::new(0, 0, 0, 10)
 
 		$leftLabel = New-Object System.Windows.Controls.TextBlock
-		$leftLabel.Text = 'Profile A:'
+		$leftLabel.Text = Get-UxLocalizedString -Key 'GuiGameModeProfileA' -Fallback 'Profile A:'
 		$leftLabel.FontSize = $Script:GuiLayout.FontSizeLabel
 		$leftLabel.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
 		$leftLabel.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
@@ -1635,7 +1751,7 @@
 		[void]($selectorRow.Children.Add($leftCombo))
 
 		$vsLabel = New-Object System.Windows.Controls.TextBlock
-		$vsLabel.Text = 'vs.'
+		$vsLabel.Text = Get-UxLocalizedString -Key 'GuiGameModeCompareVs' -Fallback 'vs.'
 		$vsLabel.FontSize = $Script:GuiLayout.FontSizeLabel
 		$vsLabel.FontWeight = [System.Windows.FontWeights]::SemiBold
 		$vsLabel.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
@@ -1644,7 +1760,7 @@
 		[void]($selectorRow.Children.Add($vsLabel))
 
 		$rightLabel = New-Object System.Windows.Controls.TextBlock
-		$rightLabel.Text = 'Profile B:'
+		$rightLabel.Text = Get-UxLocalizedString -Key 'GuiGameModeProfileB' -Fallback 'Profile B:'
 		$rightLabel.FontSize = $Script:GuiLayout.FontSizeLabel
 		$rightLabel.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
 		$rightLabel.Margin = [System.Windows.Thickness]::new(0, 0, 6, 0)
@@ -1670,12 +1786,13 @@
 		$profileLookup = @{}
 		foreach ($p in $profiles) { $profileLookup[[string]$p.Label] = [string]$p.Name }
 
-		# Capture $Script: variables into locals before .GetNewClosure() — closures
+		# Capture $Script: variables into locals before .GetNewClosure() - closures
 		# create a dynamic module scope where $Script: no longer references GUI.psm1.
 		$newSafeBrushConverterCapture = $Script:NewSafeBrushConverterScript
 		$guiLayoutCapture = $Script:GuiLayout
 		$getGameModeProfileDefaultSelectionScript = $Script:GetGameModeProfileDefaultSelectionScript
 		$getGamingPreviewGroupSortOrderScript = $Script:GetGamingPreviewGroupSortOrderScript
+		$getUxLocalizedStringCapture = ${function:Get-UxLocalizedString}
 
 		$buildComparisonCards = {
 			param ($CardsContainer, $LeftCombo, $RightCombo, $ProfileLookup, $ManifestEntries, $AdvancedData, $Profiles, $Theme)
@@ -1690,7 +1807,7 @@
 			if ($leftProfile -eq $rightProfile)
 			{
 				$sameNote = New-Object System.Windows.Controls.TextBlock
-				$sameNote.Text = 'Select two different profiles to compare.'
+				$sameNote.Text = & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareSameNote' -Fallback 'Select two different profiles to compare.'
 				$sameNote.FontSize = $guiLayoutCapture.FontSizeSmall
 				$sameNote.Foreground = $bc2.ConvertFromString($Theme.TextMuted)
 				$sameNote.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
@@ -1709,8 +1826,8 @@
 				$rightIncluded = & $getGameModeProfileDefaultSelectionScript -Tweak $entry -ProfileName $rightProfile
 				$hasPrompt = (Test-GuiObjectField -Object $entry -FieldName 'DecisionPromptKey') -and -not [string]::IsNullOrWhiteSpace([string]$entry.DecisionPromptKey)
 
-				$leftAction = if ($leftIncluded) { if ($hasPrompt) { 'User decides' } else { 'Included' } } else { 'Not included' }
-				$rightAction = if ($rightIncluded) { if ($hasPrompt) { 'User decides' } else { 'Included' } } else { 'Not included' }
+				$leftAction = if ($leftIncluded) { if ($hasPrompt) { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareUserDecides' -Fallback 'User decides' } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareIncluded' -Fallback 'Included' } } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareNotIncluded' -Fallback 'Not included' }
+				$rightAction = if ($rightIncluded) { if ($hasPrompt) { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareUserDecides' -Fallback 'User decides' } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareIncluded' -Fallback 'Included' } } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareNotIncluded' -Fallback 'Not included' }
 
 				[void]$comparisonItems.Add([pscustomobject]@{
 					Name         = $name
@@ -1759,8 +1876,8 @@
 						Group        = $group
 						LeftIncluded = $leftChecked
 						RightIncluded = $rightChecked
-						LeftAction   = if ($leftChecked) { 'Pre-checked' } else { 'Not checked' }
-						RightAction  = if ($rightChecked) { 'Pre-checked' } else { 'Not checked' }
+						LeftAction   = if ($leftChecked) { & $getUxLocalizedStringCapture -Key 'GuiGameModeComparePreChecked' -Fallback 'Pre-checked' } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareNotChecked' -Fallback 'Not checked' }
+						RightAction  = if ($rightChecked) { & $getUxLocalizedStringCapture -Key 'GuiGameModeComparePreChecked' -Fallback 'Pre-checked' } else { & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareNotChecked' -Fallback 'Not checked' }
 						IsAdvanced   = $true
 					})
 				}
@@ -1774,7 +1891,7 @@
 			$summaryText.FontSize = $guiLayoutCapture.FontSizeSmall
 			$summaryText.Margin = [System.Windows.Thickness]::new(0, 0, 0, 8)
 			$summaryText.Foreground = $bc2.ConvertFromString($Theme.TextSecondary)
-			$summaryText.Text = "$sameCount item$(if ($sameCount -ne 1) { 's' }) shared, $differCount difference$(if ($differCount -ne 1) { 's' })."
+			$summaryText.Text = (& $getUxLocalizedStringCapture -Key 'GuiGameModeCompareSummary' -Fallback '{0} item(s) shared, {1} difference(s).') -f $sameCount, $differCount
 			[void]($CardsContainer.Children.Add($summaryText))
 
 			# Group and render
@@ -1879,7 +1996,7 @@
 		[void]($columnHeaderGrid.ColumnDefinitions.Add($chCol3))
 
 		$chItem = New-Object System.Windows.Controls.TextBlock
-		$chItem.Text = 'Item'
+		$chItem.Text = Get-UxLocalizedString -Key 'GuiGameModeCompareItemColumn' -Fallback 'Item'
 		$chItem.FontSize = $Script:GuiLayout.FontSizeSmall
 		$chItem.FontWeight = [System.Windows.FontWeights]::SemiBold
 		$chItem.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
@@ -1932,12 +2049,12 @@
 			if ($contentPanel.Visibility -eq [System.Windows.Visibility]::Collapsed)
 			{
 				$contentPanel.Visibility = [System.Windows.Visibility]::Visible
-				$toggleText.Text = 'Hide'
+				$toggleText.Text = & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareHide' -Fallback 'Hide'
 			}
 			else
 			{
 				$contentPanel.Visibility = [System.Windows.Visibility]::Collapsed
-				$toggleText.Text = 'Show'
+				$toggleText.Text = & $getUxLocalizedStringCapture -Key 'GuiGameModeCompareShow' -Fallback 'Show'
 			}
 		}.GetNewClosure())
 

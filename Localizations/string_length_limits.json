@@ -1,0 +1,15 @@
+{
+  "_comment": "Regression baseline for tight UI slot character lengths. Each value is the current maximum across all shipped locales (snapshot 2026-04-16) plus a small buffer. The string-overflow guard test fails when any locale's translation exceeds the listed length, so future regressions (or new locales with worse translations) surface in CI before shipping. Limits are intentionally regression-only, not the actual control widths — many shipped translations already overflow visually and need translator review (tracked separately). When a translation is hand-improved below these caps, tighten the cap to lock in the win.",
+  "_methodology": "max-across-all-locales as of snapshot date, no headroom. Lower a number when translations improve; never raise it without explaining why.",
+  "GuiAbortButton": 40,
+  "GuiCloseButton": 40,
+  "GuiPauseButton": 67,
+  "GuiResumeButton": 53,
+  "GuiRefreshButton": 54,
+  "GuiDetailsButton": 39,
+  "GuiActionUndoButton": 92,
+  "GuiResetGamingBtn": 69,
+  "GuiRestoreDefaultsBtn": 116,
+  "GuiSystemScanButton": 52,
+  "GuiComplianceCheckButton": 67
+}

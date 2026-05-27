@@ -1,0 +1,155 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 'Test category to run (All, Registry, Services, Packages, GroupPolicy, GameMode)'
+        required: false
+        default: 'All'
+      dry_run:
+        description: 'Run in dry-run mode (skips destructive package operations)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  WIN-QQMV7J892CO:
+    name: Windows Server 2019 (self-hosted)
+    runs-on: [self-hosted, windows, x64, server2019]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run integration suite (server SKU subset)
+        shell: 'powershell -ExecutionPolicy Bypass -Command ". ''{0}''"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $category = '${{ inputs.category }}'
+          if ([string]::IsNullOrWhiteSpace($category)) { $category = 'All' }
+          # Server SKUs in CI cannot create system restore points.
+          $suiteArgs = @{ Category = $category; SkipRestorePoint = $true }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $suiteArgs.DryRun = $true }
+          & .\Tests\Integration\IntegrationTest.ps1 @suiteArgs
+
+      - name: Upload integration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-server-2019
+          path: |
+            Tests/Integration/**/*.json
+            Tests/Integration/**/*.log
+          if-no-files-found: ignore
+
+  WIN-2394JEK2B79:
+    name: Windows Server 2022 (self-hosted)
+    runs-on: [self-hosted, windows, x64, server2022]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run integration suite (server SKU subset)
+        shell: 'powershell -ExecutionPolicy Bypass -Command ". ''{0}''"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $category = '${{ inputs.category }}'
+          if ([string]::IsNullOrWhiteSpace($category)) { $category = 'All' }
+          # Server SKUs in CI cannot create system restore points.
+          $suiteArgs = @{ Category = $category; SkipRestorePoint = $true }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $suiteArgs.DryRun = $true }
+          & .\Tests\Integration\IntegrationTest.ps1 @suiteArgs
+
+      - name: Upload integration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-server-2022
+          path: |
+            Tests/Integration/**/*.json
+            Tests/Integration/**/*.log
+          if-no-files-found: ignore
+
+  SHELDONSERVER:
+    name: Windows Server 2025 (self-hosted)
+    runs-on: [self-hosted, windows, x64, server2025]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run integration suite (server SKU subset)
+        shell: 'powershell -ExecutionPolicy Bypass -Command ". ''{0}''"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $category = '${{ inputs.category }}'
+          if ([string]::IsNullOrWhiteSpace($category)) { $category = 'All' }
+          # Server SKUs in CI cannot create system restore points.
+          $suiteArgs = @{ Category = $category; SkipRestorePoint = $true }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $suiteArgs.DryRun = $true }
+          & .\Tests\Integration\IntegrationTest.ps1 @suiteArgs
+
+      - name: Upload integration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-server-2025
+          path: |
+            Tests/Integration/**/*.json
+            Tests/Integration/**/*.log
+          if-no-files-found: ignore
+
+  DESKTOP-FODC0TC:
+    name: Windows 10 22H2 Desktop (self-hosted)
+    runs-on: [self-hosted, windows, x64, win10-22h2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run integration suite (desktop SKU)
+        shell: 'powershell -ExecutionPolicy Bypass -Command ". ''{0}''"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $category = '${{ inputs.category }}'
+          if ([string]::IsNullOrWhiteSpace($category)) { $category = 'All' }
+          $suiteArgs = @{ Category = $category }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $suiteArgs.DryRun = $true }
+          & .\Tests\Integration\IntegrationTest.ps1 @suiteArgs
+
+      - name: Upload integration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-win10-22h2
+          path: |
+            Tests/Integration/**/*.json
+            Tests/Integration/**/*.log
+          if-no-files-found: ignore
+
+  DESKTOP-24HDOB8:
+    name: Windows 11 24H2 Desktop (self-hosted)
+    runs-on: [self-hosted, windows, x64, win11-24h2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run integration suite (desktop SKU)
+        shell: 'powershell -ExecutionPolicy Bypass -Command ". ''{0}''"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $category = '${{ inputs.category }}'
+          if ([string]::IsNullOrWhiteSpace($category)) { $category = 'All' }
+          $suiteArgs = @{ Category = $category }
+          if ('${{ inputs.dry_run }}' -eq 'true') { $suiteArgs.DryRun = $true }
+          & .\Tests\Integration\IntegrationTest.ps1 @suiteArgs
+
+      - name: Upload integration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-win11-24h2
+          path: |
+            Tests/Integration/**/*.json
+            Tests/Integration/**/*.log
+          if-no-files-found: ignore

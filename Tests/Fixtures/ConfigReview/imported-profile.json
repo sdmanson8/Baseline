@@ -1,0 +1,12 @@
+{
+  "Schema": "Baseline.ConfigProfile",
+  "SchemaVersion": 1,
+  "SavedAt": "2026-04-27T08:30:00Z",
+  "Entries": [
+    { "Function": "DisableTelemetry",          "Type": "Toggle", "Param": "-Disable",   "Value": null   },
+    { "Function": "DefenderScanCPULimit",      "Type": "NumericRange", "Value": 25              },
+    { "Function": "PowerPlanTimeout",          "Type": "Choice", "ACValue": "30",   "DCValue": "10" },
+    { "Function": "BrowserEnterprisePolicies", "Type": "Toggle", "Param": "-Enable",    "Value": null   },
+    { "Function": "AuthHardeningRegistry",     "Type": "Toggle", "Param": "-Enable",    "Value": null   }
+  ]
+}

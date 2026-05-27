@@ -6,8 +6,9 @@ if (Test-Path $subModuleRoot)
 {
     foreach ($subModule in (Get-ChildItem -Path $subModuleRoot -Filter '*.psm1' -File))
     {
-        Import-Module $subModule.FullName -Force -Global
+        Import-Module $subModule.FullName -Force -Global -DisableNameChecking -WarningAction SilentlyContinue
     }
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+)
+Export-ModuleMember -Function $ExportedFunctions

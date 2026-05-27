@@ -1,9 +1,9 @@
-# Recovery helper slice for Baseline.
-# Extracted from Manifest.Helpers.ps1 - contains direct undo command resolution
-# and restore point recommendation logic.
-#
-# Dependencies (from Manifest.Helpers.ps1, loaded first):
-#   Get-TweakManifestEntryValue, Write-ManifestValidationWarning
+# Recovery helpers for Baseline.
+# Resolve undo commands and related restore recommendations for tweak definitions.
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-DirectUndoCommandForEntry
 {
@@ -21,6 +21,149 @@ function Get-DirectUndoCommandForEntry
 	}
 
 	$typeValue = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'Type')
+	if ($typeValue -eq 'Choice')
+	{
+		$restorableValue = Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Restorable'
+		if ($null -eq $restorableValue -or -not [bool]$restorableValue)
+		{
+			return $null
+		}
+
+		$recoveryLevel = [string](Get-TweakManifestEntryValue -Entry $Entry -FieldName 'RecoveryLevel')
+		if ([string]::IsNullOrWhiteSpace($recoveryLevel))
+		{
+			$recoveryLevel = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'RecoveryLevel')
+		}
+		if (-not [string]::IsNullOrWhiteSpace($recoveryLevel) -and $recoveryLevel -ne 'Direct')
+		{
+			return $null
+		}
+
+		$manifestDefaultChoice = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'WinDefault')
+		if ([string]::IsNullOrWhiteSpace($manifestDefaultChoice))
+		{
+			$manifestDefaultChoice = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'Default')
+		}
+
+		if ([string]::IsNullOrWhiteSpace($manifestDefaultChoice))
+		{
+			$fnName = if ($Entry.Function) { $Entry.Function } else { '(unknown)' }
+			Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - Choice entries must declare WinDefault or Default to support direct rollback."
+			return $null
+		}
+
+		$manifestOptions = @()
+		if (Test-TweakManifestEntryField -Entry $ManifestEntry -FieldName 'Options')
+		{
+			$manifestOptions = @(
+				@(Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'Options') |
+					ForEach-Object { [string]$_ } |
+					Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+			)
+		}
+
+		if ($manifestOptions.Count -gt 0 -and -not ($manifestOptions -contains $manifestDefaultChoice))
+		{
+			$fnName = if ($Entry.Function) { $Entry.Function } else { '(unknown)' }
+			Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - default choice '$manifestDefaultChoice' is not listed in Options."
+			return $null
+		}
+
+		return $manifestDefaultChoice
+	}
+
+	if ($typeValue -eq 'NumericRange')
+	{
+		$restorableValue = Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Restorable'
+		if ($null -eq $restorableValue -or -not [bool]$restorableValue)
+		{
+			return $null
+		}
+
+		$recoveryLevel = [string](Get-TweakManifestEntryValue -Entry $Entry -FieldName 'RecoveryLevel')
+		if ([string]::IsNullOrWhiteSpace($recoveryLevel))
+		{
+			$recoveryLevel = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'RecoveryLevel')
+		}
+		if (-not [string]::IsNullOrWhiteSpace($recoveryLevel) -and $recoveryLevel -ne 'Direct')
+		{
+			return $null
+		}
+
+		$winDefaultValue = Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'WinDefault'
+		if ($null -eq $winDefaultValue)
+		{
+			$fnName = if ($Entry.Function) { $Entry.Function } else { '(unknown)' }
+			Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - NumericRange entries must declare WinDefault to support direct rollback."
+			return $null
+		}
+
+		$acValue = $null
+		$dcValue = $null
+		if ($winDefaultValue -is [System.Collections.IDictionary])
+		{
+			if ($winDefaultValue.Contains('ACValue'))
+			{
+				$acValue = $winDefaultValue['ACValue']
+			}
+			elseif ($winDefaultValue.Contains('Value'))
+			{
+				$acValue = $winDefaultValue['Value']
+			}
+
+			if ($winDefaultValue.Contains('DCValue'))
+			{
+				$dcValue = $winDefaultValue['DCValue']
+			}
+			elseif ($null -ne $acValue)
+			{
+				$dcValue = $acValue
+			}
+		}
+		elseif ($winDefaultValue -is [pscustomobject])
+		{
+			if ($winDefaultValue.PSObject.Properties['ACValue'])
+			{
+				$acValue = $winDefaultValue.ACValue
+			}
+			elseif ($winDefaultValue.PSObject.Properties['Value'])
+			{
+				$acValue = $winDefaultValue.Value
+			}
+
+			if ($winDefaultValue.PSObject.Properties['DCValue'])
+			{
+				$dcValue = $winDefaultValue.DCValue
+			}
+			elseif ($null -ne $acValue)
+			{
+				$dcValue = $acValue
+			}
+		}
+		else
+		{
+			$acValue = Get-GuiNumericRangeValue -Value $winDefaultValue
+			$dcValue = $acValue
+		}
+
+		if ($null -ne $acValue -and $null -ne $dcValue)
+		{
+			if ([string]$acValue -eq [string]$dcValue)
+			{
+				return ('Value {0}' -f [string]$acValue)
+			}
+
+			return ('ACValue {0} -DCValue {1}' -f [string]$acValue, [string]$dcValue)
+		}
+
+		if ($null -ne $acValue)
+		{
+			return ('Value {0}' -f [string]$acValue)
+		}
+
+		return $null
+	}
+
 	if ($typeValue -ne 'Toggle')
 	{
 		return $null
@@ -76,6 +219,64 @@ function Get-DirectUndoCommandForEntry
 	Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - selected param did not match OnParam/OffParam and WinDefault is absent."
 	return $null
 }
+
+<#
+    .SYNOPSIS
+#>
+
+function Get-DirectUndoCommandLineForEntry
+{
+	<# .SYNOPSIS Resolves the full direct undo/recovery command line for a tweak execution result. #>
+	param (
+		[object]$Entry,
+		[object]$ManifestEntry,
+		[array]$Manifest
+	)
+
+	if ($null -eq $Entry -or $null -eq $ManifestEntry)
+	{
+		return $null
+	}
+
+	$counterpartFunction = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'CounterpartFunction')
+	if (-not [string]::IsNullOrWhiteSpace($counterpartFunction))
+	{
+		if (-not $Manifest -or $Manifest.Count -eq 0)
+		{
+			$fnName = if ($Entry.Function) { $Entry.Function } else { '(unknown)' }
+			Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - CounterpartFunction '$counterpartFunction' was declared but no manifest was supplied to resolve it."
+			return $null
+		}
+
+		$counterpartEntry = Get-ManifestEntryByFunction -Manifest $Manifest -Function $counterpartFunction
+		if (-not $counterpartEntry)
+		{
+			$fnName = if ($Entry.Function) { $Entry.Function } else { '(unknown)' }
+			Write-ManifestValidationWarning "No undo command could be determined for '$fnName' - CounterpartFunction '$counterpartFunction' was not found in the manifest."
+			return $null
+		}
+
+		return (Get-TweakManifestDefaultCommand -Entry $counterpartEntry)
+	}
+
+	$undoParam = Get-DirectUndoCommandForEntry -Entry $Entry -ManifestEntry $ManifestEntry
+	if ([string]::IsNullOrWhiteSpace([string]$undoParam))
+	{
+		return $null
+	}
+
+	$functionName = [string](Get-TweakManifestEntryValue -Entry $ManifestEntry -FieldName 'Function')
+	if ([string]::IsNullOrWhiteSpace($functionName))
+	{
+		return $null
+	}
+
+	return ('{0} -{1}' -f $functionName, [string]$undoParam)
+}
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-ShouldRecommendRestorePoint
 {

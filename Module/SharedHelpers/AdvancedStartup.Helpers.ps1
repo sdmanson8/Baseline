@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline -- Advanced Startup shortcut and recovery environment helpers.
+# Shared helpers for Baseline -- Advanced Startup shortcut and recovery environment helpers.
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-AdvancedStartupDesktopDirectory
 {
@@ -9,6 +13,8 @@ function Get-AdvancedStartupDesktopDirectory
 	}
 	catch
 	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'AdvancedStartup.Helpers.Get-AdvancedStartupDesktopDirectory:catch14' -Severity Debug }
+
 		return (Join-Path $env:USERPROFILE 'Desktop')
 	}
 }
@@ -28,9 +34,15 @@ function Get-AdvancedStartupDownloadsDirectory
 	}
 	catch
 	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'AdvancedStartup.Helpers.Get-AdvancedStartupDownloadsDirectory:catch33' -Severity Debug }
+
 		return (Join-Path $HOME 'Downloads')
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-AdvancedStartupAssetPath
 {
@@ -57,6 +69,10 @@ function Get-AdvancedStartupAssetPath
 
 	return $null
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-AdvancedStartupIconLocation
 {
@@ -108,6 +124,10 @@ function Get-AdvancedStartupIconLocation
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Enable-AdvancedStartupWindowsRecoveryEnvironment
 {
 	<# .SYNOPSIS Enables Windows Recovery Environment via reagentc.exe. #>
@@ -129,6 +149,10 @@ function Enable-AdvancedStartupWindowsRecoveryEnvironment
 
 	return $false
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-AdvancedStartupCommandPath
 {
@@ -159,6 +183,10 @@ function Get-AdvancedStartupCommandPath
 	return (Join-Path $commandDirectory 'AdvancedStartup.cmd')
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Set-AdvancedStartupCommandFile
 {
 	<# .SYNOPSIS Creates the AdvancedStartup.cmd file with recovery boot commands. #>
@@ -174,20 +202,31 @@ function Set-AdvancedStartupCommandFile
 	return $commandPath
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-AdvancedStartupShortcutArguments
 {
-	<# .SYNOPSIS Generates Base64-encoded PowerShell arguments for an elevated recovery shortcut. #>
+	<# .SYNOPSIS Generates PowerShell file arguments for an elevated recovery shortcut. #>
 	param(
 		[Parameter(Mandatory = $true)]
 		[string]$CommandPath
 	)
 
 	$safeCommandPath = $CommandPath.Replace("'", "''")
+	$launcherPath = [System.IO.Path]::ChangeExtension($CommandPath, '.ps1')
+	$launcherDirectory = Split-Path -Path $launcherPath -Parent
+	if (-not [string]::IsNullOrWhiteSpace($launcherDirectory) -and -not (Test-Path -LiteralPath $launcherDirectory))
+	{
+		New-Item -Path $launcherDirectory -ItemType Directory -Force -ErrorAction Stop | Out-Null
+	}
 	$launcherScript = @"
 `$shell = New-Object -ComObject Shell.Application
 `$shell.ShellExecute('$safeCommandPath', '', '', 'runas', 0)
 "@
 
-	$encodedLauncherScript = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($launcherScript))
-	return "-NoProfile -WindowStyle Hidden -EncodedCommand $encodedLauncherScript"
+	Set-Content -LiteralPath $launcherPath -Value $launcherScript -Encoding UTF8 -Force -ErrorAction Stop
+	return "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherPath`""
 }
+

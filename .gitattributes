@@ -1,0 +1,21 @@
+# Normalize line endings to LF on commit, check out as LF everywhere
+* text=auto eol=lf
+
+# Explicitly LF
+*.json      text eol=lf
+*.ps1       text eol=lf
+*.psm1      text eol=lf
+*.psd1      text eol=lf
+*.iss       text eol=lf
+*.md        text eol=lf
+*.xml       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.js        text eol=lf
+
+# Binary — no line ending treatment
+*.exe       binary
+*.zip       binary
+*.png       binary
+*.ico       binary
+*.dll       binary

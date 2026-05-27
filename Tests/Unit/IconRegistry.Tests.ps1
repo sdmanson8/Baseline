@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/IconRegistry.ps1'
@@ -22,7 +22,7 @@ Describe 'Get-GuiIconFontPath' {
         Get-GuiIconFontPath -ModuleRoot $moduleRoot | Should -Be $script:ExpectedFontPath
     }
 
-    It 'finds the icon font from the extracted GUI script root' {
+    It 'finds the icon font from the GUI module root' {
         $moduleRoot = Join-Path $script:RepoRoot 'Module/GUI'
 
         Get-GuiIconFontPath -ModuleRoot $moduleRoot | Should -Be $script:ExpectedFontPath

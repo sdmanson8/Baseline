@@ -2,8 +2,13 @@
 
 <#
     .SYNOPSIS
-    Activity History related notifications in Task View
+    Configures privacy and telemetry settings.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's privacy and telemetry settings in GUI and headless runs.
     .PARAMETER Hide
     Do not show Activity History-related notifications in Task View
 
@@ -63,9 +68,9 @@ function ActivityHistory
 			LogInfo "Disabling Activity History-related notifications in Task View"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -81,6 +86,11 @@ function ActivityHistory
 	.SYNOPSIS
 	The permission for apps to show me personalized ads by using my advertising ID
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the permission for apps to show me personalized ads by using my advertising ID.
 	.PARAMETER Disable
 	Do not let apps show me personalized ads by using my advertising ID
 
@@ -132,7 +142,7 @@ function AdvertisingID
 			LogInfo "Disabling apps showing personalized ads by using advertising ID"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Enabled' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -147,7 +157,7 @@ function AdvertisingID
 			LogInfo "Enabling apps showing personalized ads by using advertising ID"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Enabled' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name Enabled -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -163,6 +173,11 @@ function AdvertisingID
     .SYNOPSIS
     Automatic reboot on crash (BSOD) settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for automatic reboot on crash (BSOD) settings.
     .PARAMETER Enable
     Enable automatic reboot on crash
 
@@ -205,7 +220,7 @@ function AutoRebootOnCrash
 			LogInfo "Enabling Automatically reboot on BSOD"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name "AutoReboot" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name "AutoReboot" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -220,7 +235,7 @@ function AutoRebootOnCrash
 			LogInfo "Disabling Automatically reboot on BSOD"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name "AutoReboot" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl" -Name "AutoReboot" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -255,6 +270,7 @@ function AutoRebootOnCrash
     .NOTES
     Current user
 #>
+
 function UpdateRestart
 {
 	param
@@ -303,7 +319,7 @@ function UpdateRestart
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotification.exe")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotification.exe" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotification.exe" -Name "Debugger" -Type String -Value "cmd.exe" -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\MusNotification.exe" -Name "Debugger" -Type String -Value "cmd.exe" -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -316,9 +332,707 @@ function UpdateRestart
 }
 
 <#
+	.SYNOPSIS
+	Online speech recognition
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for online speech recognition.
+	.PARAMETER Enable
+	Enable online speech recognition
+
+	.PARAMETER Disable
+	Disable online speech recognition
+
+	.EXAMPLE
+	OnlineSpeechRecognition -Enable
+
+	.EXAMPLE
+	OnlineSpeechRecognition -Disable
+
+	.NOTES
+	Current user
+#>
+function OnlineSpeechRecognition
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$onlineSpeechPrivacyPath = 'HKCU:\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling online speech recognition"
+			LogInfo "Enabling online speech recognition"
+			try
+			{
+				if (-not (Test-Path -Path $onlineSpeechPrivacyPath))
+				{
+					New-Item -Path $onlineSpeechPrivacyPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $onlineSpeechPrivacyPath -Name HasAccepted -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable online speech recognition: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling online speech recognition"
+			LogInfo "Disabling online speech recognition"
+			try
+			{
+				if (-not (Test-Path -Path $onlineSpeechPrivacyPath))
+				{
+					New-Item -Path $onlineSpeechPrivacyPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $onlineSpeechPrivacyPath -Name HasAccepted -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable online speech recognition: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Narrator online services
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for narrator online services.
+	.PARAMETER Enable
+	Enable Narrator online services
+
+	.PARAMETER Disable
+	Disable Narrator online services
+
+	.EXAMPLE
+	NarratorOnlineServices -Enable
+
+	.EXAMPLE
+	NarratorOnlineServices -Disable
+
+	.NOTES
+	Current user
+#>
+function NarratorOnlineServices
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$narratorPath = 'HKCU:\Software\Microsoft\Narrator\NoRoam'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Narrator online services"
+			LogInfo "Enabling Narrator online services"
+			try
+			{
+				Remove-ItemProperty -Path $narratorPath -Name OnlineServicesEnabled -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Narrator online services: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Narrator online services"
+			LogInfo "Disabling Narrator online services"
+			try
+			{
+				if (-not (Test-Path -Path $narratorPath))
+				{
+					New-Item -Path $narratorPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $narratorPath -Name OnlineServicesEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Narrator online services: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Narrator scripting support
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for narrator scripting support.
+	.PARAMETER Enable
+	Enable Narrator scripting support
+
+	.PARAMETER Disable
+	Disable Narrator scripting support
+
+	.EXAMPLE
+	NarratorScriptingSupport -Enable
+
+	.EXAMPLE
+	NarratorScriptingSupport -Disable
+
+	.NOTES
+	Current user
+#>
+function NarratorScriptingSupport
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$narratorPath = 'HKCU:\Software\Microsoft\Narrator\NoRoam'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Narrator scripting support"
+			LogInfo "Enabling Narrator scripting support"
+			try
+			{
+				Remove-ItemProperty -Path $narratorPath -Name ScriptingEnabled -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Narrator scripting support: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Narrator scripting support"
+			LogInfo "Disabling Narrator scripting support"
+			try
+			{
+				if (-not (Test-Path -Path $narratorPath))
+				{
+					New-Item -Path $narratorPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $narratorPath -Name ScriptingEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Narrator scripting support: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Inking and typing personalization
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for inking and typing personalization.
+	.PARAMETER Enable
+	Enable inking and typing personalization
+
+	.PARAMETER Disable
+	Disable inking and typing personalization
+
+	.EXAMPLE
+	InkingAndTypingPersonalization -Enable
+
+	.EXAMPLE
+	InkingAndTypingPersonalization -Disable
+
+	.NOTES
+	Current user
+#>
+function InkingAndTypingPersonalization
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$inkingTypingPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CPSS\Store\InkingAndTypingPersonalization'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling inking and typing personalization"
+			LogInfo "Enabling inking and typing personalization"
+			try
+			{
+				if (-not (Test-Path -Path $inkingTypingPath))
+				{
+					New-Item -Path $inkingTypingPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $inkingTypingPath -Name Value -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable inking and typing personalization: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling inking and typing personalization"
+			LogInfo "Disabling inking and typing personalization"
+			try
+			{
+				if (-not (Test-Path -Path $inkingTypingPath))
+				{
+					New-Item -Path $inkingTypingPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $inkingTypingPath -Name Value -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable inking and typing personalization: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Search history on this device
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for search history on this device.
+	.PARAMETER Enable
+	Enable search history on this device
+
+	.PARAMETER Disable
+	Disable search history on this device
+
+	.EXAMPLE
+	DeviceSearchHistory -Enable
+
+	.EXAMPLE
+	DeviceSearchHistory -Disable
+
+	.NOTES
+	Current user
+#>
+function DeviceSearchHistory
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$searchSettingsPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling search history on this device"
+			LogInfo "Enabling search history on this device"
+			try
+			{
+				Remove-ItemProperty -Path $searchSettingsPath -Name IsDeviceSearchHistoryEnabled -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable search history on this device: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling search history on this device"
+			LogInfo "Disabling search history on this device"
+			try
+			{
+				if (-not (Test-Path -Path $searchSettingsPath))
+				{
+					New-Item -Path $searchSettingsPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $searchSettingsPath -Name IsDeviceSearchHistoryEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable search history on this device: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Cloud content search
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for cloud content search.
+	.PARAMETER Enable
+	Enable cloud content search for Microsoft and work/school accounts
+
+	.PARAMETER Disable
+	Disable cloud content search for Microsoft and work/school accounts
+
+	.EXAMPLE
+	CloudContentSearch -Enable
+
+	.EXAMPLE
+	CloudContentSearch -Disable
+
+	.NOTES
+	Current user
+#>
+function CloudContentSearch
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$searchSettingsPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling cloud content search"
+			LogInfo "Enabling cloud content search"
+			try
+			{
+				Remove-ItemProperty -Path $searchSettingsPath -Name IsMSACloudSearchEnabled -Force -ErrorAction SilentlyContinue | Out-Null
+				Remove-ItemProperty -Path $searchSettingsPath -Name IsAADCloudSearchEnabled -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable cloud content search: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling cloud content search"
+			LogInfo "Disabling cloud content search"
+			try
+			{
+				if (-not (Test-Path -Path $searchSettingsPath))
+				{
+					New-Item -Path $searchSettingsPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $searchSettingsPath -Name IsMSACloudSearchEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $searchSettingsPath -Name IsAADCloudSearchEnabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable cloud content search: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Block Workplace Join and AAD device join messages
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for block Workplace Join and AAD device join messages.
+	.PARAMETER Enable
+	Block Workplace Join and AAD device join messages
+
+	.PARAMETER Disable
+	Allow Workplace Join and AAD device join messages
+
+	.EXAMPLE
+	WorkplaceJoinMessages -Enable
+
+	.EXAMPLE
+	WorkplaceJoinMessages -Disable
+
+	.NOTES
+	Machine-wide and current user
+#>
+function WorkplaceJoinMessages
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$workplaceJoinMachinePath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WorkplaceJoin'
+	$workplaceJoinUserPath = 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\WorkplaceJoin'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Blocking Workplace Join messages"
+			LogInfo "Blocking Workplace Join messages"
+			try
+			{
+				if (-not (Test-Path -Path $workplaceJoinMachinePath))
+				{
+					New-Item -Path $workplaceJoinMachinePath -Force -ErrorAction Stop | Out-Null
+				}
+				if (-not (Test-Path -Path $workplaceJoinUserPath))
+				{
+					New-Item -Path $workplaceJoinUserPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $workplaceJoinMachinePath -Name BlockAADWorkplaceJoin -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				New-ItemProperty -Path $workplaceJoinUserPath -Name BlockAADWorkplaceJoin -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to block Workplace Join messages: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Unblocking Workplace Join messages"
+			LogInfo "Unblocking Workplace Join messages"
+			try
+			{
+				Remove-ItemProperty -Path $workplaceJoinMachinePath -Name BlockAADWorkplaceJoin -Force -ErrorAction SilentlyContinue | Out-Null
+				Remove-ItemProperty -Path $workplaceJoinUserPath -Name BlockAADWorkplaceJoin -Force -ErrorAction SilentlyContinue | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to unblock Workplace Join messages: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Prevent BitLocker auto encryption
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for prevent BitLocker auto encryption.
+	.PARAMETER Enable
+	Prevent BitLocker auto encryption
+
+	.PARAMETER Disable
+	Allow BitLocker auto encryption
+
+	.EXAMPLE
+	BitLockerAutoEncryption -Enable
+
+	.EXAMPLE
+	BitLockerAutoEncryption -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function BitLockerAutoEncryption
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	$bitLockerPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\BitLocker'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Preventing BitLocker auto encryption"
+			LogInfo "Preventing BitLocker auto encryption"
+			try
+			{
+				if (-not (Test-Path -Path $bitLockerPath))
+				{
+					New-Item -Path $bitLockerPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $bitLockerPath -Name PreventDeviceEncryption -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to prevent BitLocker auto encryption: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Allowing BitLocker auto encryption"
+			LogInfo "Allowing BitLocker auto encryption"
+			try
+			{
+				if (-not (Test-Path -Path $bitLockerPath))
+				{
+					New-Item -Path $bitLockerPath -Force -ErrorAction Stop | Out-Null
+				}
+				New-ItemProperty -Path $bitLockerPath -Name PreventDeviceEncryption -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to allow BitLocker auto encryption: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
     .SYNOPSIS
     Automatic Map Updates settings and scripting
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for automatic Map Updates settings and scripting.
     .PARAMETER Enable
     Enable automatic map updates
 
@@ -379,7 +1093,7 @@ function MapUpdates
 			LogInfo "Disabling automatic map updates for the current user"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\Maps" -Name "AutoUpdateEnabled" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\Maps" -Name "AutoUpdateEnabled" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -413,6 +1127,7 @@ function MapUpdates
     .NOTES
     Current user
 #>
+
 function Camera
 {
 	param
@@ -461,7 +1176,7 @@ function Camera
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCamera" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessCamera" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -477,6 +1192,11 @@ function Camera
     .SYNOPSIS
     Clipboard History feature settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for clipboard History feature settings.
     .PARAMETER Enable
     Enable the Clipboard History feature
 
@@ -511,6 +1231,22 @@ function ClipboardHistory
 		$Disable
 	)
 
+	$isServer = $false
+	if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -ErrorAction SilentlyContinue)
+	{
+		$isServer = [bool](Get-BaselineSystemPlatformInfo).IsServer
+	}
+	else
+	{
+		$isServer = ((Get-CimInstance Win32_OperatingSystem).ProductType -ne 1)
+	}
+
+	if ($isServer)
+	{
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+		return
+	}
+
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Enable"
@@ -524,7 +1260,7 @@ function ClipboardHistory
 				{
 					New-Item -Path $ClipboardPath -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path $ClipboardPath -Name "EnableClipboardHistory" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path $ClipboardPath -Name "EnableClipboardHistory" -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -563,6 +1299,11 @@ function ClipboardHistory
 	.SYNOPSIS
 	Controls sensor-related features, such as screen auto-rotation
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for controls sensor-related features, such as screen auto-rotation.
 	.PARAMETER Disable
 	Disable sensor-related features, such as screen auto-rotation
 
@@ -626,7 +1367,7 @@ function Sensors
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableSensors" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableSensors" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -643,6 +1384,11 @@ function Sensors
     .SYNOPSIS
     Display and sleep mode timeouts
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for display and sleep mode timeouts.
     .PARAMETER Enable
     Enable the display and sleep mode timeouts (default value)
 
@@ -754,6 +1500,7 @@ function SleepTimeout
     .NOTES
     Current user
 #>
+
 function UpdateDriver
 {
 	param
@@ -810,15 +1557,15 @@ function UpdateDriver
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Device Metadata")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Device Metadata" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Device Metadata" -Name "PreventDeviceMetadataFromNetwork" -Type DWord -Value 1 -ErrorAction Stop
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Device Metadata" -Name "PreventDeviceMetadataFromNetwork" -Type DWord -Value 1 -ErrorAction Stop
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DriverSearching")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DriverSearching" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 0 -ErrorAction Stop
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DriverSearching" -Name "SearchOrderConfig" -Type DWord -Value 0 -ErrorAction Stop
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -Name "ExcludeWUDriversInQualityUpdate" -Type DWord -Value 1 -ErrorAction Stop
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" -Name "ExcludeWUDriversInQualityUpdate" -Type DWord -Value 1 -ErrorAction Stop
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -834,6 +1581,11 @@ function UpdateDriver
     .SYNOPSIS
     Fast Startup feature settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for fast Startup feature settings.
     .PARAMETER Enable
     Enable the Fast Startup feature (default value)
 
@@ -876,7 +1628,7 @@ function FastStartup
 			LogInfo "Enabling Fast Startup"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -891,7 +1643,7 @@ function FastStartup
 			LogInfo "Disabling Fast Startup"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -907,6 +1659,11 @@ function FastStartup
 	.SYNOPSIS
 	The feedback frequency
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the feedback frequency.
 	.PARAMETER Never
 	Change the feedback frequency to "Never"
 
@@ -957,7 +1714,7 @@ function FeedbackFrequency
 				{
 					New-Item -Path HKCU:\Software\Microsoft\Siuf\Rules -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Siuf\Rules -Name NumberOfSIUFInPeriod -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Siuf\Rules" -Name NumberOfSIUFInPeriod -Type DWord -Value 0 | Out-Null
 				if ((Get-ItemProperty -Path HKCU:\Software\Microsoft\Siuf\Rules -Name PeriodInNanoSeconds -ErrorAction SilentlyContinue))
 				{
 					Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Siuf\Rules" -Name "PeriodInNanoSeconds" | Out-Null
@@ -976,7 +1733,8 @@ function FeedbackFrequency
 			LogInfo "Setting Feedback Frequency to Automatic"
 			try
 			{
-				Remove-ItemProperty -Path HKCU:\Software\Microsoft\Siuf\Rules -Name PeriodInNanoSeconds, NumberOfSIUFInPeriod -Force -ErrorAction Ignore | Out-Null
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Siuf\Rules" -Name "PeriodInNanoSeconds" | Out-Null
+				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Siuf\Rules" -Name "NumberOfSIUFInPeriod" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -992,6 +1750,11 @@ function FeedbackFrequency
 	.SYNOPSIS
 	The provision to websites a locally relevant content by accessing my language list
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the provision to websites a locally relevant content by accessing my language list.
 	.PARAMETER Disable
 	Do not let websites show me locally relevant content by accessing my language list
 
@@ -1034,7 +1797,7 @@ function LanguageListAccess
 			LogInfo "Disabling websites showing locally relevant content by accessing language list"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Control Panel\International\User Profile' -Name 'HttpAcceptLanguageOptOut' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Control Panel\International\User Profile" -Name HttpAcceptLanguageOptOut -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1068,6 +1831,11 @@ function LanguageListAccess
     .SYNOPSIS
     Location feature settings and scripting
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for location feature settings and scripting.
     .PARAMETER Enable
     Enable the location feature
 
@@ -1115,6 +1883,7 @@ function LocationService
 					Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocation" | Out-Null
 					Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocationScripting" | Out-Null
 				}
+				Set-Service -Name "lfsvc" -StartupType Manual -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1132,8 +1901,10 @@ function LocationService
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocation" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocationScripting" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocation" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocationScripting" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Stop-Service -Name "lfsvc" -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+				Set-Service -Name "lfsvc" -StartupType Disabled -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1149,6 +1920,11 @@ function LocationService
     .SYNOPSIS
     Enable or disable the Windows Web Experience Pack (used for widgets and lock screen features)
 
+
+
+.DESCRIPTION
+
+Enables or disables the Windows Web Experience Pack (used for widgets and lock screen features) in GUI and headless runs.
     .PARAMETER Enable
     Install or re-register the Windows Web Experience Pack
 
@@ -1204,5 +1980,113 @@ function LockWidgets {
     }
 }
 
+<#
+	.SYNOPSIS
+	Remote Assistance
 
-Export-ModuleMember -Function '*'
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for remote Assistance.
+	.PARAMETER Enable
+	Allow remote assistance connections
+
+	.PARAMETER Disable
+	Disable remote assistance connections
+
+	.EXAMPLE
+	Set-RemoteAssistance -Enable
+
+	.EXAMPLE
+	Set-RemoteAssistance -Disable
+
+	.NOTES
+	Computer policy. Controls the fAllowToGetHelp registry setting.
+#>
+function Set-RemoteAssistance
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Enabling Remote Assistance"
+			LogInfo "Enabling Remote Assistance connections"
+			try
+			{
+				Set-RegistryValueSafe -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance" `
+					-Name "fAllowToGetHelp" `
+					-Value 1 `
+					-Type DWord | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to enable Remote Assistance: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Disabling Remote Assistance"
+			LogInfo "Disabling Remote Assistance connections"
+			try
+			{
+				Set-RegistryValueSafe -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance" `
+					-Name "fAllowToGetHelp" `
+					-Value 0 `
+					-Type DWord | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to disable Remote Assistance: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+$ExportedFunctions = @(
+    'ActivityHistory',
+    'AdvertisingID',
+    'AutoRebootOnCrash',
+    'BitLockerAutoEncryption',
+    'Camera',
+    'ClipboardHistory',
+    'CloudContentSearch',
+    'DeviceSearchHistory',
+    'FastStartup',
+    'FeedbackFrequency',
+    'InkingAndTypingPersonalization',
+    'LanguageListAccess',
+    'LocationService',
+    'LockWidgets',
+    'MapUpdates',
+    'NarratorOnlineServices',
+    'NarratorScriptingSupport',
+    'OnlineSpeechRecognition',
+    'Sensors',
+    'Set-RemoteAssistance',
+    'SleepTimeout',
+    'UpdateDriver',
+    'UpdateRestart',
+    'WorkplaceJoinMessages'
+)
+Export-ModuleMember -Function $ExportedFunctions

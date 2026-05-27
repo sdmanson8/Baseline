@@ -1,6 +1,10 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
+    <#
+        .SYNOPSIS
+    #>
+
     function Test-GuiObjectField { param([object]$Object, [string]$FieldName) if ($null -eq $Object) { return $false }; if ($Object -is [System.Collections.IDictionary]) { return $Object.Contains($FieldName) }; return [bool]($Object.PSObject -and $Object.PSObject.Properties[$FieldName]) }
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/EventInfrastructure.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
@@ -11,12 +15,17 @@ BeforeAll {
         }
     }
 
+    <#
+        .SYNOPSIS
+    #>
     function Write-GuiRuntimeWarning {
         param(
             [string]$Context,
             [string]$Message
         )
     }
+
+    $script:EventAccessorCache = @{}
 
     Add-Type -TypeDefinition @'
 using System;
@@ -89,6 +98,7 @@ Describe 'Register-GuiEventHandler' {
         $script:GuiEventHandlerStore = $null
         $script:GuiRuntimeCommandCache = $null
         $script:GuiFunctionCaptureCache = $null
+        $script:EventAccessorCache = @{}
     }
 
     It 'registers custom focus handlers and stores them for cleanup' {
@@ -164,6 +174,10 @@ Describe 'Register-GuiEventHandler' {
     }
 
     It 'captures local functions for later invocation' {
+        <#
+            .SYNOPSIS
+        #>
+
         function Get-TestGuiGreeting {
             param(
                 [string]$Name
@@ -180,6 +194,10 @@ Describe 'Register-GuiEventHandler' {
     }
 
     It 'resolves local functions with sibling dependencies through runtime commands' {
+        <#
+            .SYNOPSIS
+        #>
+
         function Get-TestGuiInner {
             param(
                 [string]$Name
@@ -188,6 +206,9 @@ Describe 'Register-GuiEventHandler' {
             return "hello $Name"
         }
 
+        <#
+            .SYNOPSIS
+        #>
         function Invoke-TestGuiOuter {
             param(
                 [string]$Name

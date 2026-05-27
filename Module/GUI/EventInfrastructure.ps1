@@ -1,5 +1,9 @@
 # Event handler infrastructure: safe property setter, scoped error handling, event registration/cleanup, command caching
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Set-GuiControlProperty
 	{
 		param (
@@ -12,7 +16,9 @@
 		if (-not $Control -or [string]::IsNullOrWhiteSpace($PropertyName)) { return $false }
 
 		$property = $null
-		try { $property = $Control.PSObject.Properties[$PropertyName] } catch { $property = $null }
+		try { $property = $Control.PSObject.Properties[$PropertyName] } catch {
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Set-GuiControlProperty:catch19' -Severity Debug }
+		 $property = $null }
 		if (-not $property)
 		{
 			return $false
@@ -38,6 +44,8 @@
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Set-GuiControlProperty:catch43' -Severity Debug }
+
 				'unknown'
 			}
 			$valueType = if ($null -eq $Value)
@@ -46,20 +54,26 @@
 			}
 			else
 			{
-				try { [string]$Value.GetType().FullName } catch { 'unknown' }
+				try { [string]$Value.GetType().FullName } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Set-GuiControlProperty:catch53' -Severity Debug }
+				 'unknown' }
 			}
-			$warningMessage = "Failed to set property '{0}' on {1} (expected {2}, actual {3}): {4}" -f `
+			$warningPrefix = "Failed to set property '{0}' on {1} (expected {2}, actual {3})" -f `
 				$PropertyName, `
-				$(try { $Control.GetType().FullName } catch { 'unknown' }), `
+				$(try { $Control.GetType().FullName } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Set-GuiControlProperty:catch57' -Severity Debug }
+				 'unknown' }), `
 				$propertyType, `
-				$valueType, `
-				$_.Exception.Message
+				$valueType
+			$warningMessage = Format-BaselineErrorForLog -ErrorObject $_ -Prefix $warningPrefix
 
 			$warningKey = '{0}|{1}' -f $Context, $warningMessage
 			$shouldLog = $true
 			if ($Script:GuiRuntimeWarnings)
 			{
-				try { $shouldLog = $Script:GuiRuntimeWarnings.Add($warningKey) } catch { $shouldLog = $true }
+				try { $shouldLog = $Script:GuiRuntimeWarnings.Add($warningKey) } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Set-GuiControlProperty:catch66' -Severity Debug }
+				 $shouldLog = $true }
 			}
 			if ($shouldLog)
 			{
@@ -77,6 +91,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Show-ScopedGuiRuntimeFailure
 	{
 		param (
@@ -92,11 +110,31 @@
 		} else { @() }
 
 		$errorText = Get-GuiRuntimeFailureDetails -Context $Context -Exception $Exception -DebugTrail $debugTrail
-		if (Get-Command -Name 'LogError' -CommandType Function -ErrorAction SilentlyContinue)
+		$loggedViaCommand = $false
+		if (Get-Command -Name 'LogError' -ErrorAction SilentlyContinue)
 		{
-			LogError $errorText
+			try { LogError $errorText; $loggedViaCommand = $true } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Show-ScopedGuiRuntimeFailure:catch106' -Severity Debug }
+			 $loggedViaCommand = $false }
 		}
-		else
+		if (-not $loggedViaCommand -and $Global:LogFilePath)
+		{
+			# Last-resort direct append: the LogError alias may not be
+			# resolvable inside a WPF dispatcher closure, and Write-Warning
+			# vanishes when the console is hidden. Write straight to the file
+			# so GUI-GENERIC-001 reports always leave a trail.
+			try
+			{
+				$timestamp = Get-Date -Format 'dd-MM-yyyy HH:mm'
+				$line = "$timestamp ERROR: $errorText"
+				Add-Content -LiteralPath $Global:LogFilePath -Value $line -Encoding UTF8 -ErrorAction Stop
+			}
+			catch
+			{
+				Write-Warning $errorText
+			}
+		}
+		elseif (-not $loggedViaCommand)
 		{
 			Write-Warning $errorText
 		}
@@ -112,12 +150,33 @@
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Show-ScopedGuiRuntimeFailure:catch139' -Severity Debug }
+
 				$null = $_
 			}
 		}
 
 		return $errorText
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Invoke-GuiRuntimeFailureReport
+	{
+		param (
+			[string]$Context = 'GUI',
+			[System.Exception]$Exception,
+			[switch]$ShowDialog
+		)
+
+		return (Show-ScopedGuiRuntimeFailure -Context $Context -Exception $Exception -ShowDialog:$ShowDialog)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Invoke-GuiSafeAction
 	{
@@ -135,17 +194,13 @@
 		}
 		catch
 		{
-			$showGuiRuntimeFailureScript = $Script:ShowGuiRuntimeFailureScript
-			if ($showGuiRuntimeFailureScript)
-			{
-				$null = & $showGuiRuntimeFailureScript -Context $Context -Exception $_.Exception -ShowDialog:$ShowDialog
-			}
-			else
-			{
-				Write-Warning ("GUI event failed [{0}]: {1}" -f $(if ($Context) { $Context } else { 'GUI' }), $_.Exception.Message)
-			}
+			$null = Invoke-GuiRuntimeFailureReport -Context $Context -Exception $_.Exception -ShowDialog:$ShowDialog
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Ensure-GuiEventHandlerStore
 	{
@@ -178,6 +233,8 @@
 		}
 		catch
 		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Get-GuiEventAccessorMethod:catch220' -Severity Debug }
+
 			return $null
 		}
 
@@ -187,6 +244,10 @@
 	# Cache event reflection metadata per (Type, EventName) to avoid repeated
 	# GetEvent / PSObject.Methods.Match lookups on the same control types.
 	if (-not ($Script:EventAccessorCache -is [hashtable])) { $Script:EventAccessorCache = @{} }
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Register-GuiEventHandler
 	{
@@ -204,7 +265,9 @@
 		}
 
 		$sourceType = $null
-		try { $sourceType = $Source.GetType() } catch { $sourceType = $null }
+		try { $sourceType = $Source.GetType() } catch {
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Register-GuiEventHandler:catch252' -Severity Debug }
+		 $sourceType = $null }
 		if (-not $sourceType)
 		{
 			Write-GuiRuntimeWarning -Context 'Register-GuiEventHandler' -Message ("Could not resolve type for event '{0}'." -f $EventName)
@@ -230,6 +293,8 @@
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Register-GuiEventHandler:catch276' -Severity Debug }
+
 				$eventInfo = $null
 			}
 			if (-not $eventInfo)
@@ -274,7 +339,9 @@
 			}
 			else
 			{
-				try { $Script:GuiEventHandlerStore.GetType().FullName } catch { 'unknown' }
+				try { $Script:GuiEventHandlerStore.GetType().FullName } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Register-GuiEventHandler:catch322' -Severity Debug }
+				 'unknown' }
 			}
 				$sourceTypeName = if ($null -eq $Source)
 				{
@@ -282,13 +349,19 @@
 				}
 				else
 				{
-					try { $Source.GetType().FullName } catch { 'unknown' }
+					try { $Source.GetType().FullName } catch {
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Register-GuiEventHandler:catch330' -Severity Debug }
+					 'unknown' }
 				}
 				throw "Register-GuiEventHandler/StoreAppend failed for event '$EventName' on $sourceTypeName with store type ${storeType}: $($_.Exception.Message)"
 			}
 
 			return $Handler
 		}
+
+		<#
+		    .SYNOPSIS
+		#>
 
 		function Unregister-GuiEventHandler
 		{
@@ -309,7 +382,9 @@
 			$removeAccessor = Get-GuiEventAccessorMethod -Source $Source -AccessorName $removeAccessorName
 			if (-not $removeAccessor)
 			{
-				Write-GuiRuntimeWarning -Context 'Unregister-GuiEventHandler' -Message ("Could not access remove accessor '{0}' for event '{1}' on {2}." -f $removeAccessorName, $EventName, $(try { $Source.GetType().FullName } catch { 'unknown' }))
+				Write-GuiRuntimeWarning -Context 'Unregister-GuiEventHandler' -Message ("Could not access remove accessor '{0}' for event '{1}' on {2}." -f $removeAccessorName, $EventName, $(try { $Source.GetType().FullName } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Unregister-GuiEventHandler:catch361' -Severity Debug }
+				 'unknown' }))
 				return $false
 			}
 
@@ -320,9 +395,15 @@
 			}
 			catch
 			{
-				throw "Unregister-GuiEventHandler could not detach handler for event '$EventName' on $($(try { $Source.GetType().FullName } catch { 'unknown' })): $($_.Exception.Message)"
+				throw "Unregister-GuiEventHandler could not detach handler for event '$EventName' on $($(try { $Source.GetType().FullName } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'EventInfrastructure.Unregister-GuiEventHandler:catch372' -Severity Debug }
+				 'unknown' })): $($_.Exception.Message)"
 			}
 		}
+
+		<#
+		    .SYNOPSIS
+		#>
 
 		function Unregister-GuiEventHandlers
 		{
@@ -351,6 +432,10 @@
 
 		$Script:GuiEventHandlerStore.Clear()
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiRuntimeCommand
 	{
@@ -388,6 +473,10 @@
 
 		return $resolvedCommand
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiFunctionCapture
 	{
@@ -438,6 +527,10 @@
 		return $Script:GuiFunctionCaptureCache[$Name]
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Invoke-CapturedFunction
 	{
 		<#
@@ -483,6 +576,10 @@
 		return $null
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Clear-GuiWindowRuntimeState
 	{
 		if ($Script:GuiState -and $Script:GuiState.ContainsKey('Dispose'))
@@ -519,10 +616,15 @@
 
 		$Script:PresetStatusBadge = $null
 		$Script:ExecutionLogBox = $null
+		$Script:ExecutionProgressHost = $null
 		$Script:ExecutionProgressBar = $null
 		$Script:ExecutionProgressText = $null
 		$Script:ExecutionSubProgressBar = $null
 		$Script:ExecutionSubProgressText = $null
+		$Script:TxtAppsProgressText = $null
+		$Script:AppsProgressBar = $null
+		$Script:PresetProgressHost = $null
+		$Script:PresetProgressBar = $null
 		$Script:SecondaryActionGroupBorder = $null
 		$Script:AbortRunButton = $null
 		$Script:GuiRuntimeCommandCache = @{}

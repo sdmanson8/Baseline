@@ -3,8 +3,13 @@ using module ..\..\SharedHelpers.psm1
 
 <#
 	.SYNOPSIS
-	Enable or disable the Windows lock screen
+	Configures Windows lock screen settings.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's Windows lock screen settings in GUI and headless runs.
 	.PARAMETER Enable
 	Enable the Windows lock screen (default value)
 
@@ -39,9 +44,17 @@ function LockScreen
 		$Disable
 	)
 
-	$OS = (Get-CimInstance Win32_OperatingSystem).Caption
+	$isWindows11 = $false
+	if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -ErrorAction SilentlyContinue)
+	{
+		$isWindows11 = [bool](Get-BaselineSystemPlatformInfo).IsWindows11
+	}
+	else
+	{
+		$isWindows11 = (Get-CimInstance Win32_OperatingSystem).Caption -like "*Windows 11*"
+	}
 
-	if ($OS -notlike "*Windows 11*")
+	if (-not $isWindows11)
 	{
 		#LogInfo "LockScreen skipped - Not Windows 11"
 		return
@@ -79,7 +92,10 @@ function LockScreen
 				{
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" `
+					-Name "NoLockScreen" `
+					-Value 1 `
+					-Type DWord
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -114,6 +130,7 @@ function LockScreen
 	.NOTES
 	Machine-wide
 #>
+
 function LockScreenRS1
 {
 	param
@@ -125,9 +142,17 @@ function LockScreenRS1
 		[switch]$Disable
 	)
 
-	$OS = (Get-CimInstance Win32_OperatingSystem).Caption
+	$isWindows10 = $false
+	if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -ErrorAction SilentlyContinue)
+	{
+		$isWindows10 = [bool](Get-BaselineSystemPlatformInfo).IsWindows10
+	}
+	else
+	{
+		$isWindows10 = (Get-CimInstance Win32_OperatingSystem).Caption -like "*Windows 10*"
+	}
 
-	if ($OS -notlike "*Windows 10*")
+	if (-not $isWindows10)
 	{
 		#LogInfo "LockScreenRS1 skipped - Not Windows 10"
 		return
@@ -217,6 +242,11 @@ function LockScreenRS1
 #>
 # Lock screen Blur - Applicable since 1903
 
+<#
+    .SYNOPSIS
+    Runs lock screen blur.
+
+    #>
 function LockScreenBlur
 {
 	param
@@ -249,7 +279,10 @@ function LockScreenBlur
 		{
 			Write-ConsoleStatus -Action "Enabling blurring of the lockscreen"
 			LogInfo "Enabling blurring of the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DisableAcrylicBackgroundOnLogon" -Type DWord -Value 1 | Out-Null
+			Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" `
+				-Name "DisableAcrylicBackgroundOnLogon" `
+				-Value 1 `
+				-Type DWord
 			Write-ConsoleStatus -Status success
 		}
 	}
@@ -276,6 +309,11 @@ function LockScreenBlur
 #>
 # Network options from Lock Screen
 
+<#
+    .SYNOPSIS
+    Runs network from lock screen.
+
+    #>
 function NetworkFromLockScreen
 {
 	param
@@ -308,7 +346,10 @@ function NetworkFromLockScreen
 		{
 			Write-ConsoleStatus -Action "Disabling the Network options on the lockscreen"
 			LogInfo "Disabling the Network options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DontDisplayNetworkSelectionUI" -Type DWord -Value 1 | Out-Null
+			Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" `
+				-Name "DontDisplayNetworkSelectionUI" `
+				-Value 1 `
+				-Type DWord
 			Write-ConsoleStatus -Status success
 		}
 	}
@@ -335,6 +376,11 @@ function NetworkFromLockScreen
 #>
 # Shutdown options from Lock Screen
 
+<#
+    .SYNOPSIS
+    Runs shutdown from lock screen.
+
+    #>
 function ShutdownFromLockScreen
 {
 	param
@@ -360,17 +406,188 @@ function ShutdownFromLockScreen
 		{
 			Write-ConsoleStatus -Action "Enabling the shutdown options on the lockscreen"
 			LogInfo "Enabling the shutdown options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ShutdownWithoutLogon" -Type DWord -Value 1 | Out-Null
+			Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+				-Name "ShutdownWithoutLogon" `
+				-Value 1 `
+				-Type DWord
 			Write-ConsoleStatus -Status success
 		}
 		"Disable"
 		{
 			Write-ConsoleStatus -Action "Disabling the shutdown options on the lockscreen"
 			LogInfo "Disabling the shutdown options on the lockscreen"
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ShutdownWithoutLogon" -Type DWord -Value 0 | Out-Null
+			Set-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+				-Name "ShutdownWithoutLogon" `
+				-Value 0 `
+				-Type DWord
 			Write-ConsoleStatus -Status success
 		}
 	}
 }
 
-Export-ModuleMember -Function '*'
+<#
+	.SYNOPSIS
+	Block the camera shortcut on the Windows lock screen.
+
+	.DESCRIPTION
+	Sets HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization\NoLockScreenCamera = 1
+	when -Enable is passed (i.e. enable the policy that blocks the lock-screen
+	camera). -Disable removes the policy value.
+
+	.PARAMETER Enable
+	Block the lock-screen camera shortcut.
+
+	.PARAMETER Disable
+	Restore Windows default behaviour (camera shortcut allowed).
+
+	.EXAMPLE
+	LockScreenCamera -Enable
+
+	.EXAMPLE
+	LockScreenCamera -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function LockScreenCamera
+{
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+		[switch]
+		$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+		[switch]
+		$Disable
+	)
+
+	$policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		'Enable'
+		{
+			Write-ConsoleStatus -Action 'Blocking the lock-screen camera shortcut'
+			LogInfo 'Blocking the lock-screen camera shortcut'
+			try
+			{
+				if (-not (Test-Path -Path $policyPath))
+				{
+					New-Item -Path $policyPath -Force -ErrorAction Stop | Out-Null
+				}
+				Set-RegistryValueSafe -Path $policyPath -Name 'NoLockScreenCamera' -Value 1 -Type DWord
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to block the lock-screen camera: $($_.Exception.Message)"
+			}
+		}
+		'Disable'
+		{
+			Write-ConsoleStatus -Action 'Restoring lock-screen camera default'
+			LogInfo 'Restoring lock-screen camera default'
+			try
+			{
+				Remove-RegistryValueSafe -Path $policyPath -Name 'NoLockScreenCamera'
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to restore lock-screen camera default: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+<#
+	.SYNOPSIS
+	Block convenience-PIN logon for domain accounts.
+
+	.DESCRIPTION
+	Sets HKLM:\SOFTWARE\Policies\Microsoft\Windows\System\AllowDomainPINLogon = 0
+	(disable convenience PIN sign-in for domain users) when -Enable is passed.
+	-Disable removes the policy value, restoring the Windows default of allowing
+	the policy state to be controlled by Group Policy / Hello-for-Business.
+
+	.PARAMETER Enable
+	Block convenience-PIN logon for domain users.
+
+	.PARAMETER Disable
+	Remove the policy value.
+
+	.EXAMPLE
+	BlockDomainPINLogon -Enable
+
+	.EXAMPLE
+	BlockDomainPINLogon -Disable
+
+	.NOTES
+	Machine-wide
+#>
+function BlockDomainPINLogon
+{
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+		[switch]
+		$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+		[switch]
+		$Disable
+	)
+
+	$policyPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		'Enable'
+		{
+			Write-ConsoleStatus -Action 'Blocking convenience-PIN logon for domain accounts'
+			LogInfo 'Blocking convenience-PIN logon for domain accounts'
+			try
+			{
+				if (-not (Test-Path -Path $policyPath))
+				{
+					New-Item -Path $policyPath -Force -ErrorAction Stop | Out-Null
+				}
+				Set-RegistryValueSafe -Path $policyPath -Name 'AllowDomainPINLogon' -Value 0 -Type DWord
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to block domain PIN logon: $($_.Exception.Message)"
+			}
+		}
+		'Disable'
+		{
+			Write-ConsoleStatus -Action 'Restoring domain PIN logon default'
+			LogInfo 'Restoring domain PIN logon default'
+			try
+			{
+				Remove-RegistryValueSafe -Path $policyPath -Name 'AllowDomainPINLogon'
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to restore domain PIN logon default: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+$ExportedFunctions = @(
+    'BlockDomainPINLogon',
+    'LockScreen',
+    'LockScreenBlur',
+    'LockScreenCamera',
+    'LockScreenRS1',
+    'NetworkFromLockScreen',
+    'ShutdownFromLockScreen'
+)
+Export-ModuleMember -Function $ExportedFunctions

@@ -1,22 +1,96 @@
 # Pure logic functions for tweak analysis: removal detection, scenario signals, selection state
 
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-TweakAnalysisFieldValue
+	{
+		param(
+			[object]$Tweak,
+			[string]$FieldName
+		)
+
+		if ($null -eq $Tweak) { return $null }
+		if ($Tweak -is [System.Collections.IDictionary])
+		{
+			if ($Tweak.Contains($FieldName)) { return $Tweak[$FieldName] }
+			return $null
+		}
+
+		$property = $Tweak.PSObject.Properties[$FieldName]
+		if ($property) { return $property.Value }
+		return $null
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-TweakAnalysisRuntimeCommand
+	{
+		param (
+			[Parameter(Mandatory = $true)]
+			[string]$Name
+		)
+
+		$cacheVariable = Get-Variable -Name 'TweakAnalysisRuntimeCommandCache' -Scope Script -ErrorAction SilentlyContinue
+		if (-not $cacheVariable -or -not ($cacheVariable.Value -is [hashtable]))
+		{
+			$Script:TweakAnalysisRuntimeCommandCache = @{}
+		}
+
+		if (-not $Script:TweakAnalysisRuntimeCommandCache.ContainsKey($Name))
+		{
+			$command = @(
+				Get-Command -Name $Name -CommandType Function -ErrorAction SilentlyContinue
+			) | Select-Object -First 1
+
+			$Script:TweakAnalysisRuntimeCommandCache[$Name] = $command
+		}
+
+		return $Script:TweakAnalysisRuntimeCommandCache[$Name]
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Test-TweakAnalysisTweakAvailable
+	{
+		param ([object]$Tweak)
+
+		$availabilityTest = Get-TweakAnalysisRuntimeCommand -Name 'Test-GuiTweakAvailableOnCurrentSystem'
+		if (-not $availabilityTest)
+		{
+			return $true
+		}
+
+		return [bool](& $availabilityTest -Tweak $Tweak)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakRemovalOperation
 	{
 		param ([object]$Tweak)
 
 		if (-not $Tweak) { return $false }
 
+		$tagValues = @((Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Tags') | ForEach-Object { [string]$_ })
 		$searchParts = @(
-			[string]$Tweak.Name,
-			[string]$Tweak.Description,
-			[string]$Tweak.Detail,
-			[string]$Tweak.WhyThisMatters,
-			([string[]]@($Tweak.Tags | ForEach-Object { [string]$_ }) -join ' ')
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Name'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Description'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Detail'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'WhyThisMatters'),
+			($tagValues -join ' ')
 		) -join ' '
 
-		if ($Tweak.Type -eq 'Choice')
+		if ([string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Type') -eq 'Choice')
 		{
-			$optionValues = @($Tweak.Options | ForEach-Object { [string]$_ })
+			$optionValues = @((Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Options') | ForEach-Object { [string]$_ })
 			if ($optionValues | Where-Object { $_ -match '^(?i)(uninstall|remove|delete)$' })
 			{
 				return $true
@@ -26,28 +100,32 @@
 		return ($searchParts -match '(?i)\b(uninstall|remove|delete)\b')
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakPackageOperation
 	{
 		param ([object]$Tweak)
 
 		if (-not $Tweak) { return $false }
 
-		$tagValues = @($Tweak.Tags | ForEach-Object { [string]$_ })
-		$optionValues = @($Tweak.Options | ForEach-Object { [string]$_ })
+		$tagValues = @((Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Tags') | ForEach-Object { [string]$_ })
+		$optionValues = @((Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Options') | ForEach-Object { [string]$_ })
 		$haystack = @(
-			[string]$Tweak.Name,
-			[string]$Tweak.Function,
-			[string]$Tweak.Description,
-			[string]$Tweak.Detail,
-			[string]$Tweak.WhyThisMatters,
-			[string]$Tweak.CautionReason,
-			[string]$Tweak.SubCategory,
-			[string]$Tweak.SourceRegion,
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Name'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Function'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Description'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Detail'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'WhyThisMatters'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'CautionReason'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SubCategory'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SourceRegion'),
 			($tagValues -join ' ')
 		) -join ' '
 
-		if ([string]$Tweak.SubCategory -eq 'App Management') { return $true }
-		if ([string]$Tweak.SourceRegion -eq 'OneDrive') { return $true }
+		if ([string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SubCategory') -eq 'App Management') { return $true }
+		if ([string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SourceRegion') -eq 'OneDrive') { return $true }
 		if ($tagValues -contains 'package-manager') { return $true }
 		if (@($optionValues | Where-Object { $_ -match '^(?i)(install|uninstall|update|restore)$' }).Count -gt 0)
 		{
@@ -57,9 +135,16 @@
 		return ($haystack -match '(?i)\b(package manager|winget|microsoft store|store app|appx|msix|powershell 7|onedrive|copilot)\b')
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-TweakScenarioSignals
 	{
-		param ([object]$Tweak)
+		param (
+			[object]$Tweak,
+			[object]$IsRemoval = $null
+		)
 
 		if (-not $Tweak) { return @() }
 
@@ -74,16 +159,16 @@
 			}
 		}.GetNewClosure()
 
-		$tagValues = @($Tweak.Tags | ForEach-Object { [string]$_ })
+		$tagValues = @((Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Tags') | ForEach-Object { [string]$_ })
 		$haystack = @(
-			[string]$Tweak.Name,
-			[string]$Tweak.Description,
-			[string]$Tweak.Detail,
-			[string]$Tweak.WhyThisMatters,
-			[string]$Tweak.CautionReason,
-			[string]$Tweak.Category,
-			[string]$Tweak.SubCategory,
-			[string]$Tweak.SourceRegion,
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Name'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Description'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Detail'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'WhyThisMatters'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'CautionReason'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Category'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SubCategory'),
+			[string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'SourceRegion'),
 			($tagValues -join ' ')
 		) -join ' '
 		$tagText = $tagValues -join ' '
@@ -100,7 +185,8 @@
 			& $addSignal 'Privacy'
 		}
 
-		if ((Test-TweakRemovalOperation -Tweak $Tweak) -or
+		$isRemovalOperation = if ($null -ne $IsRemoval) { [bool]$IsRemoval } else { Test-TweakRemovalOperation -Tweak $Tweak }
+		if ($isRemovalOperation -or
 			$haystack -match '(?i)\b(cleanup|debloat|uninstall|remove|delete|clear recent|recent files|recent shortcuts)\b' -or
 			$tagText -match '(?i)\b(cleanup|debloat|uninstall|remove|delete)\b')
 		{
@@ -134,6 +220,10 @@
 		return @($signals)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakIsSelected
 	{
 		param (
@@ -142,12 +232,60 @@
 		)
 
 		if (-not $Tweak) { return $false }
+		if (-not (Test-TweakAnalysisTweakAvailable -Tweak $Tweak)) { return $false }
 		$source = if ($StateSource) { $StateSource } else { $Tweak }
 		if (-not $source) { return $false }
 
 		switch ([string]$Tweak.Type)
 		{
 			'Choice' { return ((Test-GuiObjectField -Object $source -FieldName 'SelectedIndex') -and [int]$source.SelectedIndex -ge 0) }
+			'NumericRange'
+			{
+				$explicitSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$Tweak.Function)
+				if ($explicitSelection -and [string]$explicitSelection.Type -eq 'NumericRange')
+				{
+					if ((Test-GuiObjectField -Object $explicitSelection -FieldName 'ACValue') -or (Test-GuiObjectField -Object $explicitSelection -FieldName 'DCValue') -or (Test-GuiObjectField -Object $explicitSelection -FieldName 'NumericValue') -or (Test-GuiObjectField -Object $explicitSelection -FieldName 'Value'))
+					{
+						return $true
+					}
+				}
+
+				if ((Test-GuiObjectField -Object $source -FieldName 'IsChecked'))
+				{
+					return [bool]$source.IsChecked
+				}
+
+				if ((Test-GuiObjectField -Object $source -FieldName 'ACValue') -or (Test-GuiObjectField -Object $source -FieldName 'DCValue') -or (Test-GuiObjectField -Object $source -FieldName 'NumericValue') -or (Test-GuiObjectField -Object $source -FieldName 'Value'))
+				{
+					return $true
+				}
+
+				return $false
+			}
+			'Date'
+			{
+				$explicitSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$Tweak.Function)
+				if ($explicitSelection -and [string]$explicitSelection.Type -eq 'Date')
+				{
+					if (Test-GuiObjectField -Object $explicitSelection -FieldName 'Run')
+					{
+						return [bool]$explicitSelection.Run
+					}
+					if ((Test-GuiObjectField -Object $explicitSelection -FieldName 'SelectedDate') -and $explicitSelection.SelectedDate)
+					{
+						return $true
+					}
+					if ((Test-GuiObjectField -Object $explicitSelection -FieldName 'Value') -and -not [string]::IsNullOrWhiteSpace([string]$explicitSelection.Value))
+					{
+						return $true
+					}
+				}
+				if ((Test-GuiObjectField -Object $source -FieldName 'SelectedDate') -and $source.SelectedDate)
+				{
+					return $true
+				}
+				return ((Test-GuiObjectField -Object $source -FieldName 'IsChecked') -and [bool]$source.IsChecked)
+			}
 			'Toggle'
 			{
 				$explicitSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$Tweak.Function)
@@ -168,6 +306,144 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GuiToggleGoalState
+	{
+		param (
+			[object]$Tweak
+		)
+
+		if ($Tweak -and (Test-GuiObjectField -Object $Tweak -FieldName 'Default'))
+		{
+			return [bool](Get-GuiObjectField -Object $Tweak -FieldName 'Default')
+		}
+
+		return $false
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GuiToggleDetectedState
+	{
+		param (
+			[object]$Tweak
+		)
+
+		if (-not [bool]$Script:ScanEnabled -or -not $Tweak -or -not (Test-GuiObjectField -Object $Tweak -FieldName 'Detect') -or -not $Tweak.Detect)
+		{
+			return [pscustomobject]@{
+				Known = $false
+				Value = $null
+			}
+		}
+
+		$goalState = Get-GuiToggleGoalState -Tweak $Tweak
+		$functionName = if ((Test-GuiObjectField -Object $Tweak -FieldName 'Function') -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.Function)) { [string]$Tweak.Function } else { $null }
+
+		$appliedTweaksVariable = Get-Variable -Scope Script -Name 'AppliedTweaks' -ErrorAction SilentlyContinue
+		$appliedTweaks = if ($appliedTweaksVariable) { $appliedTweaksVariable.Value } else { $null }
+		if (-not [string]::IsNullOrWhiteSpace($functionName) -and $appliedTweaks -and $appliedTweaks.Contains($functionName))
+		{
+			if (Get-Command -Name 'Set-CachedDetection' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				try { Set-CachedDetection -Function $functionName -Value ([bool]$goalState) } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakAnalysis.GetGuiToggleDetectedState.SetAppliedCache' }
+			}
+			return [pscustomobject]@{
+				Known = $true
+				Value = [bool]$goalState
+			}
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($functionName) -and (Get-Command -Name 'Get-CachedDetection' -CommandType Function -ErrorAction SilentlyContinue))
+		{
+			try
+			{
+				$cachedValue = Get-CachedDetection -Function $functionName
+				if ($null -ne $cachedValue)
+				{
+					return [pscustomobject]@{
+						Known = $true
+						Value = [bool]$cachedValue
+					}
+				}
+			}
+			catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakAnalysis.GetGuiToggleDetectedState.GetCachedDetection' }
+		}
+
+		$detectedValue = [bool](Invoke-GuiDetectScriptblock -Detect $Tweak.Detect -DefaultValue $goalState)
+		if (-not [string]::IsNullOrWhiteSpace($functionName) -and (Get-Command -Name 'Set-CachedDetection' -CommandType Function -ErrorAction SilentlyContinue))
+		{
+			try { Set-CachedDetection -Function $functionName -Value $detectedValue } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakAnalysis.GetGuiToggleDetectedState.SetCachedDetection' }
+		}
+
+		return [pscustomobject]@{
+			Known = $true
+			Value = $detectedValue
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GuiToggleDisplayState
+	{
+		param (
+			[object]$Tweak,
+			[object]$StateSource = $null
+		)
+
+		$goalState = Get-GuiToggleGoalState -Tweak $Tweak
+		$detected = Get-GuiToggleDetectedState -Tweak $Tweak
+		$isSelected = Test-TweakIsSelected -Tweak $Tweak -StateSource $StateSource
+		$matchesDesired = ([bool]$detected.Known -and [bool]$detected.Value -eq [bool]$goalState)
+
+		if ($matchesDesired)
+		{
+			return [pscustomobject]@{
+				StateLabel = Get-UxLocalizedString -Key 'GuiTweakStateAlreadySet' -Fallback 'Already Set'
+				StateTone = 'Muted'
+				StateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailDetectedMatchesGoal' -Fallback 'Detected state matches the configured goal.'
+				MatchesDesired = $true
+				DetectedState = [bool]$detected.Value
+				GoalState = [bool]$goalState
+				IsSelected = [bool]$isSelected
+			}
+		}
+
+		if ($isSelected)
+		{
+			return [pscustomobject]@{
+				StateLabel = Get-UxLocalizedString -Key 'GuiTweakStateWillChange' -Fallback 'Will Change'
+				StateTone = 'Primary'
+				StateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailWillChange' -Fallback 'Selected and will change the system state when run.'
+				MatchesDesired = $false
+				DetectedState = if ([bool]$detected.Known) { [bool]$detected.Value } else { $null }
+				GoalState = [bool]$goalState
+				IsSelected = $true
+			}
+		}
+
+		return [pscustomobject]@{
+			StateLabel = Get-UxLocalizedString -Key 'GuiTweakStateNotApplied' -Fallback 'Not Applied'
+			StateTone = 'Muted'
+			StateDetail = Get-UxLocalizedString -Key 'GuiTweakStateDetailNotApplied' -Fallback 'Not selected for this run.'
+			MatchesDesired = $false
+			DetectedState = if ([bool]$detected.Known) { [bool]$detected.Value } else { $null }
+			GoalState = [bool]$goalState
+			IsSelected = $false
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakIsRestorable
 	{
 		param ([object]$Tweak)
@@ -187,6 +463,10 @@
 		if (-not $Tweak) { return $false }
 		return (@(Get-TweakScenarioSignals -Tweak $Tweak) -contains 'Gaming')
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-TweakFocusGroup
 	{
@@ -219,6 +499,10 @@
 		return 'General'
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-TweakInclusionReason
 	{
 		param (
@@ -229,7 +513,8 @@
 
 		if (-not $Tweak) { return $null }
 
-		$tier = if ([string]::IsNullOrWhiteSpace([string]$Tweak.PresetTier)) { 'Basic' } else { [string]$Tweak.PresetTier }
+		$presetTier = [string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'PresetTier')
+		$tier = if ([string]::IsNullOrWhiteSpace($presetTier)) { 'Basic' } else { $presetTier }
 		$tierText = switch ($tier)
 		{
 			'Minimal' { 'Included because it is a very small, low-risk change.'; break }
@@ -256,24 +541,33 @@
 		return ('{0} {1}' -f $tierText, $groupText).Trim()
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-TweakBlastRadiusText
 	{
 		param (
 			[object]$Tweak,
 			[string]$TypeLabel,
 			[string[]]$ScenarioTags,
-			[bool]$MatchesDesired = $false
+			[bool]$MatchesDesired = $false,
+			[object]$IsRemoval = $null,
+			[object]$IsPackageOperation = $null
 		)
 
 		if ($MatchesDesired)
 		{
-			return 'Already set. No change is expected from this selection.'
+			return (Get-UxLocalizedString -Key 'GuiTweakAlreadySetMessage' -Fallback 'Already set. No change is expected from this selection.')
 		}
 
-		$isPackageOperation = Test-TweakPackageOperation -Tweak $Tweak
-		$isRemovalOperation = Test-TweakRemovalOperation -Tweak $Tweak
-		$riskLevel = if ([string]::IsNullOrWhiteSpace([string]$Tweak.Risk)) { 'Low' } else { [string]$Tweak.Risk }
-		$impactLevel = if ((Test-GuiObjectField -Object $Tweak -FieldName 'Impact') -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.Impact)) { [string]$Tweak.Impact } else { $riskLevel }
+		$isPackageOperation = if ($null -ne $IsPackageOperation) { [bool]$IsPackageOperation } else { Test-TweakPackageOperation -Tweak $Tweak }
+		$isRemovalOperation = if ($null -ne $IsRemoval) { [bool]$IsRemoval } else { Test-TweakRemovalOperation -Tweak $Tweak }
+		$risk = [string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Risk')
+		$impact = [string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'Impact')
+		$cautionReason = [string](Get-TweakAnalysisFieldValue -Tweak $Tweak -FieldName 'CautionReason')
+		$riskLevel = if ([string]::IsNullOrWhiteSpace($risk)) { 'Low' } else { $risk }
+		$impactLevel = if (-not [string]::IsNullOrWhiteSpace($impact)) { $impact } else { $riskLevel }
 
 		$focusNotes = New-Object System.Collections.Generic.List[string]
 		foreach ($tag in @($ScenarioTags))
@@ -326,9 +620,9 @@
 		{
 			[void]$details.Add('Review the linked description before running.')
 		}
-		elseif (-not [string]::IsNullOrWhiteSpace([string]$Tweak.CautionReason))
+		elseif (-not [string]::IsNullOrWhiteSpace($cautionReason))
 		{
-			[void]$details.Add([string]$Tweak.CautionReason.Trim().TrimEnd('.') + '.')
+			[void]$details.Add($cautionReason.Trim().TrimEnd('.') + '.')
 		}
 		else
 		{
@@ -337,4 +631,3 @@
 
 		return ('Blast radius: {0}' -f ($details -join ' '))
 	}
-

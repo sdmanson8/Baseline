@@ -7,6 +7,11 @@ using module ..\SharedHelpers.psm1
 	.SYNOPSIS
 	Time in Notification Center
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for time in Notification Center.
 	.PARAMETER Show
 	Show time in Notification Center
 
@@ -49,7 +54,7 @@ function ClockInNotificationCenter
 			{
 				Write-ConsoleStatus -Action "Showing time in Notification Center"
 				LogInfo "Showing time in Notification Center"
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowClockInNotificationCenter' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowClockInNotificationCenter -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -64,7 +69,7 @@ function ClockInNotificationCenter
 			{
 				Write-ConsoleStatus -Action "Hiding time in Notification Center"
 				LogInfo "Hiding time in Notification Center"
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowClockInNotificationCenter' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowClockInNotificationCenter -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -80,6 +85,11 @@ function ClockInNotificationCenter
 	.SYNOPSIS
 	Seconds on the taskbar clock
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for seconds on the taskbar clock.
 	.PARAMETER Show
 	Show seconds on the taskbar clock
 
@@ -122,7 +132,7 @@ function SecondsInSystemClock
 			{
 				Write-ConsoleStatus -Action "Showing seconds on the taskbar clock"
 				LogInfo "Showing seconds on the taskbar clock"
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSecondsInSystemClock' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSecondsInSystemClock -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -137,7 +147,7 @@ function SecondsInSystemClock
 			{
 				Write-ConsoleStatus -Action "Hiding seconds on the taskbar clock"
 				LogInfo "Hiding seconds on the taskbar clock"
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSecondsInSystemClock' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ShowSecondsInSystemClock -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -150,5 +160,8 @@ function SecondsInSystemClock
 }
 
 #endregion Taskbar Clock
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'ClockInNotificationCenter',
+    'SecondsInSystemClock'
+)
+Export-ModuleMember -Function $ExportedFunctions

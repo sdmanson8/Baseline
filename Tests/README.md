@@ -40,6 +40,17 @@ Validates structural invariants: manifest integrity, preset ladder superset
 property, data file schema, and cross-module boundary contracts. Runs in CI
 on every push/PR.
 
+`Tools/Test-ReleaseSmoke.ps1` wraps the same suite with built-artifact checks
+enabled for release validation, including the expectation that `Baseline.exe`
+already exists at the repository root.
+
+## Documentation Consistency (`Tools/Test-DocumentationConsistency.ps1`)
+
+Checks that the enterprise surfaces described in the docs still have matching
+code and unit-test evidence. This guards against documentation drift on
+release-signing, support bundle, incident reproduction, and remote workflow
+claims.
+
 ## Preset Validation (`Tools/Test-PresetGeneration.ps1`)
 
 Regenerates the low-risk preset files (Minimal, Basic, Balanced) from manifest
@@ -56,10 +67,10 @@ privileges and should only run inside disposable VMs.
 
 ```powershell
 # All categories
-pwsh -File ./Tests/Integration/IntegrationTest.ps1
+powershell -File ./Tests/Integration/IntegrationTest.ps1
 
 # Single category, dry-run (skips destructive package operations)
-pwsh -File ./Tests/Integration/IntegrationTest.ps1 -Category Registry -DryRun
+powershell -File ./Tests/Integration/IntegrationTest.ps1 -Category Registry -DryRun
 ```
 
 **Focused registry test:** `Tests/Integration/Test-RegistryTweak.ps1`
@@ -81,14 +92,16 @@ and shields.io-compatible badge metadata.
 
 ```powershell
 # Generate report at the default path (Tests/TestReport.json)
-pwsh -File ./Tools/Export-TestReport.ps1
+powershell -File ./Tools/Export-TestReport.ps1
 
 # Custom output path
-pwsh -File ./Tools/Export-TestReport.ps1 -OutputPath ./artifacts/report.json
+powershell -File ./Tools/Export-TestReport.ps1 -OutputPath ./artifacts/report.json
 ```
 
 The report includes a `badge` object that can be consumed by CI to generate
-status badges (shields.io endpoint format).
+status badges (shields.io endpoint format). Any layer with result `Failed` or
+`Error` marks the overall report and badge as failed, even when that layer did
+not emit `[FAIL]` markers.
 
 ## Screenshot Drift Checks (`Tools/Test-ScreenshotDrift.ps1`)
 
@@ -98,13 +111,13 @@ screenshots based on age and source file modification dates.
 
 ```powershell
 # Check for drift
-pwsh -File ./Tools/Test-ScreenshotDrift.ps1
+powershell -File ./Tools/Test-ScreenshotDrift.ps1
 
 # Regenerate manifest after capturing fresh screenshots
-pwsh -File ./Tools/Test-ScreenshotDrift.ps1 -UpdateManifest
+powershell -File ./Tools/Test-ScreenshotDrift.ps1 -UpdateManifest
 
 # Use a shorter staleness threshold (30 days)
-pwsh -File ./Tools/Test-ScreenshotDrift.ps1 -StaleDays 30
+powershell -File ./Tools/Test-ScreenshotDrift.ps1 -StaleDays 30
 ```
 
 ## Desktop OS Matrix (`Tests/Integration/DesktopMatrixResults.json`)
@@ -121,7 +134,7 @@ Headless Pester tests that validate GUI contracts without rendering WPF windows:
 - **Dialog creation contracts** — verifies `Show-PlanSummaryDialog`, `Show-ThemedDialog`, `Show-ExecutionSummaryDialog` exist
 - **Icon fallback behavior** — validates text-only fallback when icon font is unavailable
 - **Preview count generation** — validates `Get-TweakVisualMetadata` returns MatchesDesired, StateLabel, StateTone
-- **Button chrome variants** — confirms all documented variants (Primary, Preview, Danger, DangerSubtle, Secondary, Subtle, Selection) are accepted
+- **Button chrome variants** — confirms all documented variants (Primary, Preview, Danger, DangerSubtle, Secondary, Subtle, Selection, SegmentNeutral) are accepted
 - **Theme management** — validates DarkTheme and LightTheme contain required color keys
 
 Run locally: `Invoke-Pester ./Tests/GUI.Composition.Tests.ps1 -Output Detailed`

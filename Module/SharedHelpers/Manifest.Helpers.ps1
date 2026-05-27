@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline.
+# Shared helpers for Baseline.
+
+<#
+    .SYNOPSIS
+#>
 
 function Convert-JsonManifestValue
 {
@@ -40,6 +44,9 @@ function Convert-JsonManifestValue
 
 	return $Value
 }
+<#
+    .SYNOPSIS
+#>
 
 function ConvertTo-NormalizedParameterName
 {
@@ -60,6 +67,10 @@ function ConvertTo-NormalizedParameterName
 	return $text.Trim().TrimStart('-')
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function ConvertTo-TweakRiskLevel
 {
 	<# .SYNOPSIS Normalizes risk level strings to Low, Medium, or High. #>
@@ -77,10 +88,13 @@ function ConvertTo-TweakRiskLevel
 		default          { return 'Low' }
 	}
 }
+<#
+    .SYNOPSIS
+#>
 
 function ConvertTo-TweakPresetTier
 {
-	<# .SYNOPSIS Normalizes preset tier strings to Minimal, Basic, Balanced, or Advanced. #>
+	<# .SYNOPSIS Normalizes preset tier strings to Minimal, Basic, Balanced, Standard, or Advanced. #>
 	param (
 		[object]$Value,
 		[string]$Risk = 'Low',
@@ -95,6 +109,7 @@ function ConvertTo-TweakPresetTier
 			'^\s*balanced\s*$'              { return 'Balanced' }
 			'^\s*minimal\s*$'               { return 'Minimal' }
 			'^\s*(basic|safe)\s*$'          { return 'Basic' }
+			'^\s*standard\s*$'              { return 'Standard' }
 			default                         { return 'Basic' }
 		}
 	}
@@ -110,6 +125,10 @@ function ConvertTo-TweakPresetTier
 
 	return 'Basic'
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function ConvertTo-TweakWorkflowSensitivity
 {
@@ -133,9 +152,13 @@ function ConvertTo-TweakWorkflowSensitivity
 	return 'Low'
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Convert-ToWhyThisMattersText
 {
-	<# .SYNOPSIS Extracts the first sentence and truncates to 180 characters. #>
+	<# .SYNOPSIS Reads the first sentence and truncates to 180 characters. #>
 	param ([string]$Text)
 
 	if ([string]::IsNullOrWhiteSpace($Text))
@@ -163,6 +186,55 @@ function Convert-ToWhyThisMattersText
 	return $firstSentence
 }
 
+<#
+    .SYNOPSIS
+#>
+
+function Get-BaselineManifestPlatformSupportHintTags
+{
+	<# .SYNOPSIS Returns manifest tags that imply platform-specific gating. #>
+	param([object]$Tags)
+
+	if ($null -eq $Tags)
+	{
+		return @()
+	}
+
+	$hintTags = [System.Collections.Generic.List[string]]::new()
+	$validHintTags = @(
+		'windows10only'
+		'win10only'
+		'windows11only'
+		'win11only'
+		'serveronly'
+		'clientonly'
+		'os-specific'
+	)
+
+	# Convert-JsonManifestValue already returns arrays via unary comma;
+	# wrapping in @() would double-nest and collapse to "A B" on [string] cast.
+	foreach ($tag in (Convert-JsonManifestValue $Tags))
+	{
+		$tagValue = [string]$tag
+		if ([string]::IsNullOrWhiteSpace($tagValue))
+		{
+			continue
+		}
+
+		$normalizedTag = $tagValue.Trim().ToLowerInvariant()
+		if ($validHintTags -contains $normalizedTag -and -not $hintTags.Contains($normalizedTag))
+		{
+			$hintTags.Add($normalizedTag)
+		}
+	}
+
+	return @($hintTags)
+}
+
+<#
+    .SYNOPSIS
+#>
+
 function Write-ManifestValidationWarning
 {
 	<# .SYNOPSIS Writes a manifest validation warning via LogWarning or Write-Warning. #>
@@ -182,6 +254,10 @@ function Write-ManifestValidationWarning
 
 	Write-Warning $Message
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Import-TweakManifestFromData
 {
@@ -208,6 +284,7 @@ function Import-TweakManifestFromData
 		'UI & Personalization' = 4
 		'OneDrive'             = 5
 		'System'               = 6
+		'Updates'              = 6
 		'UWP Apps'             = 7
 		'Gaming'               = 8
 		'Security'             = 9
@@ -226,7 +303,7 @@ function Import-TweakManifestFromData
 		$rawJson = Get-Content -LiteralPath $dataFile.FullName -Raw -ErrorAction Stop
 		if ([string]::IsNullOrWhiteSpace($rawJson)) { continue }
 
-		$payload = $rawJson | ConvertFrom-Json -ErrorAction Stop
+		$payload = $rawJson | ConvertFrom-BaselineJson -Depth 16 -ErrorAction Stop
 		$category = if ($payload.PSObject.Properties['Tab'] -and -not [string]::IsNullOrWhiteSpace($payload.Tab))
 		{
 			[string]$payload.Tab
@@ -236,6 +313,16 @@ function Import-TweakManifestFromData
 			[System.IO.Path]::GetFileNameWithoutExtension($dataFile.Name)
 		}
 		$priority = if ($categoryPriority.ContainsKey($category)) { $categoryPriority[$category] } else { 50 }
+
+		# File-level PlatformSupport default. Lets a manifest declare "every entry
+		# in this file is client-only / Win11-only / etc." once at the top instead
+		# of pasting the same block onto dozens of entries. Per-entry PlatformSupport
+		# always wins; entries that omit the field inherit the default.
+		$platformSupportDefault = $null
+		if ($payload.PSObject.Properties['PlatformSupportDefault'] -and $null -ne $payload.PlatformSupportDefault)
+		{
+			$platformSupportDefault = Convert-JsonManifestValue $payload.PlatformSupportDefault
+		}
 
 		foreach ($entry in @($payload.Entries))
 		{
@@ -248,13 +335,23 @@ function Import-TweakManifestFromData
 			$tagValues = @()
 			if ($entry.PSObject.Properties['Tags'] -and $null -ne $entry.Tags)
 			{
-				$tagValues = @(
-					@(Convert-JsonManifestValue $entry.Tags) |
-						ForEach-Object { [string]$_ } |
-						Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-						ForEach-Object { $_.Trim().ToLowerInvariant() } |
-						Select-Object -Unique
-				)
+				# Convert-JsonManifestValue already returns arrays via unary comma;
+				# wrapping in @() would double-nest and collapse to "A B" on [string] cast.
+				# Avoid Select-Object -Unique here: it wraps strings in PSObject, which
+				# trips Convert-JsonManifestValue's pscustomobject branch downstream.
+				$tagSeen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+				$tagList = [System.Collections.Generic.List[string]]::new()
+				foreach ($rawTag in (Convert-JsonManifestValue $entry.Tags))
+				{
+					$tagText = [string]$rawTag
+					if ([string]::IsNullOrWhiteSpace($tagText)) { continue }
+					$normalized = $tagText.Trim().ToLowerInvariant()
+					if ($tagSeen.Add($normalized))
+					{
+						$tagList.Add($normalized)
+					}
+				}
+				$tagValues = $tagList.ToArray()
 			}
 
 			$impactValue = if ($entry.PSObject.Properties['Impact']) { [bool]$entry.Impact } else { [bool]$entry.Caution }
@@ -262,6 +359,7 @@ function Import-TweakManifestFromData
 			$requiresRestartValue = if ($entry.PSObject.Properties['RequiresRestart']) { [bool]$entry.RequiresRestart } else { $false }
 			$presetTierValue = ConvertTo-TweakPresetTier -Value $(if ($entry.PSObject.Properties['PresetTier']) { $entry.PresetTier } else { $null }) -Risk $riskValue -Impact $impactValue
 			$workflowSensitivityValue = ConvertTo-TweakWorkflowSensitivity -Value $(if ($entry.PSObject.Properties['WorkflowSensitivity']) { $entry.WorkflowSensitivity } else { $null }) -Tags $tagValues
+			$maturityValue = ConvertTo-BaselineFeatureMaturityLevel -Value $(if ($entry.PSObject.Properties['Maturity']) { $entry.Maturity } else { $null })
 			if ($presetTierValue -eq 'Advanced' -and $tagValues -notcontains 'advanced')
 			{
 				$tagValues += 'advanced'
@@ -276,8 +374,20 @@ function Import-TweakManifestFromData
 				$null
 			})
 
+			# Build localization keys for this tweak
+			$tweakFuncClean = ([string]$entry.Function).Replace('-', '')
+			$tweakNameKey        = "Tweak_$tweakFuncClean"
+			$tweakDescKey        = "TweakDesc_$tweakFuncClean"
+			$tweakWhyKey         = "TweakWhy_$tweakFuncClean"
+			$tweakWinDefaultKey  = "TweakWinDefault_$tweakFuncClean"
+
 			$tweakEntry = [ordered]@{
 				Name            = [string]$entry.Name
+				NameKey         = $tweakNameKey
+				DescriptionKey  = $tweakDescKey
+				WhyKey          = $tweakWhyKey
+				DetailKey       = $tweakWhyKey
+				WinDefaultKey   = $tweakWinDefaultKey
 				Category        = $category
 				Function        = [string]$entry.Function
 				Type            = [string]$entry.Type
@@ -292,15 +402,21 @@ function Import-TweakManifestFromData
 				RequiresRestart = $requiresRestartValue
 				PresetTier      = $presetTierValue
 				WorkflowSensitivity = $workflowSensitivityValue
+				Maturity        = $maturityValue
 				WhyThisMatters  = $whyThisMattersValue
 			}
 
-			foreach ($propName in @('WinDefaultDesc', 'Detail', 'CautionReason', 'LinkedWith', 'Scannable', 'Restorable', 'RecoveryLevel', 'OnParam', 'OffParam', 'SubCategory', 'GamingPreviewGroup', 'GameModeDefault', 'TroubleshootingOnly', 'DecisionPromptKey'))
+			foreach ($propName in @('WinDefaultDesc', 'Detail', 'CautionReason', 'LinkedWith', 'Scannable', 'Restorable', 'RecoveryLevel', 'OnParam', 'OffParam', 'CounterpartFunction', 'DateParam', 'NumericRange', 'ActionPicker', 'SubCategory', 'GamingPreviewGroup', 'GameModeDefault', 'TroubleshootingOnly', 'DecisionPromptKey', 'PlatformSupport', 'SupportsExecution', 'TimeoutSeconds'))
 			{
 				if ($entry.PSObject.Properties[$propName] -and $null -ne $entry.$propName)
 				{
 					$tweakEntry[$propName] = Convert-JsonManifestValue $entry.$propName
 				}
+			}
+
+			if (-not $tweakEntry.Contains('PlatformSupport') -and $null -ne $platformSupportDefault)
+			{
+				$tweakEntry['PlatformSupport'] = $platformSupportDefault
 			}
 
 			foreach ($arrayProp in @('Options', 'DisplayOptions', 'ScenarioTags'))
@@ -355,6 +471,10 @@ function Import-TweakManifestFromData
 	return ,@($manifest)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-TweakManifestEntryField
 {
 	<# .SYNOPSIS Tests whether a manifest entry has a specific field. #>
@@ -381,6 +501,10 @@ function Test-TweakManifestEntryField
 	return $false
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-TweakManifestEntryValue
 {
 	<# .SYNOPSIS Retrieves a value from a manifest entry by field name. #>
@@ -401,6 +525,10 @@ function Get-TweakManifestEntryValue
 
 	return $Entry.$FieldName
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TweakManifestDefaultCommand
 {
@@ -448,6 +576,57 @@ function Get-TweakManifestDefaultCommand
 
 			return ('{0} -{1}' -f $functionName, $paramName)
 		}
+		'Date'
+		{
+			$defaultRun = $false
+			if ((Test-TweakManifestEntryField -Entry $Entry -FieldName 'Default') -and $null -ne (Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Default'))
+			{
+				$defaultRun = [bool](Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Default')
+			}
+
+			$dateParamName = ConvertTo-NormalizedParameterName -Value (Get-TweakManifestEntryValue -Entry $Entry -FieldName 'DateParam')
+			if ([string]::IsNullOrWhiteSpace($dateParamName))
+			{
+				$dateParamName = 'StartDate'
+			}
+
+			if (-not $defaultRun)
+			{
+				$offParamName = ConvertTo-NormalizedParameterName -Value (Get-TweakManifestEntryValue -Entry $Entry -FieldName 'OffParam')
+				if ([string]::IsNullOrWhiteSpace($offParamName))
+				{
+					$offParamName = 'Disable'
+				}
+				return ('{0} -{1}' -f $functionName, $offParamName)
+			}
+
+			$paramName = ConvertTo-NormalizedParameterName -Value (Get-TweakManifestEntryValue -Entry $Entry -FieldName 'OnParam')
+			if ([string]::IsNullOrWhiteSpace($paramName))
+			{
+				$paramName = 'Enable'
+			}
+
+			$dateValue = $null
+			foreach ($candidateField in @('DefaultDate', 'DefaultValue', 'Value'))
+			{
+				if (Test-TweakManifestEntryField -Entry $Entry -FieldName $candidateField)
+				{
+					$candidateValue = Get-TweakManifestEntryValue -Entry $Entry -FieldName $candidateField
+					if (-not [string]::IsNullOrWhiteSpace([string]$candidateValue))
+					{
+						$dateValue = [string]$candidateValue
+						break
+					}
+				}
+			}
+
+			if ([string]::IsNullOrWhiteSpace($dateValue))
+			{
+				return ('{0} -{1}' -f $functionName, $paramName)
+			}
+
+			return ('{0} -{1} -{2} {3}' -f $functionName, $paramName, $dateParamName, $dateValue)
+		}
 		'Choice'
 		{
 			$defaultChoice = Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Default'
@@ -464,12 +643,99 @@ function Get-TweakManifestDefaultCommand
 
 			return ('{0} -{1}' -f $functionName, $choiceValue)
 		}
+		'NumericRange'
+		{
+			$defaultValue = Get-TweakManifestEntryValue -Entry $Entry -FieldName 'Default'
+			if ($null -eq $defaultValue)
+			{
+				return $functionName
+			}
+
+			$numericRange = Get-TweakManifestEntryValue -Entry $Entry -FieldName 'NumericRange'
+			$defaultAC = $null
+			$defaultDC = $null
+			if ($defaultValue -is [System.Collections.IDictionary])
+			{
+				if ($defaultValue.Contains('ACValue'))
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['ACValue'] -NumericRange $numericRange
+				}
+				if ($defaultValue.Contains('DCValue'))
+				{
+					$defaultDC = Get-GuiNumericRangeValue -Value $defaultValue['DCValue'] -NumericRange $numericRange
+				}
+				elseif ($defaultValue.Contains('ACValue'))
+				{
+					$defaultDC = $defaultAC
+				}
+				elseif ($defaultValue.Contains('Value'))
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['Value'] -NumericRange $numericRange
+					$defaultDC = $defaultAC
+				}
+				elseif ($defaultValue.Contains('NumericValue'))
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['NumericValue'] -NumericRange $numericRange
+					$defaultDC = $defaultAC
+				}
+			}
+			elseif ($defaultValue -is [pscustomobject])
+			{
+				if ($defaultValue.PSObject.Properties['ACValue'])
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.ACValue -NumericRange $numericRange
+				}
+				if ($defaultValue.PSObject.Properties['DCValue'])
+				{
+					$defaultDC = Get-GuiNumericRangeValue -Value $defaultValue.DCValue -NumericRange $numericRange
+				}
+				elseif ($defaultValue.PSObject.Properties['ACValue'])
+				{
+					$defaultDC = $defaultAC
+				}
+				elseif ($defaultValue.PSObject.Properties['Value'])
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.Value -NumericRange $numericRange
+					$defaultDC = $defaultAC
+				}
+				elseif ($defaultValue.PSObject.Properties['NumericValue'])
+				{
+					$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.NumericValue -NumericRange $numericRange
+					$defaultDC = $defaultAC
+				}
+			}
+
+			if ($null -ne $defaultAC -and $null -ne $defaultDC)
+			{
+				$acText = [System.Convert]::ToString($defaultAC, [System.Globalization.CultureInfo]::InvariantCulture)
+				$dcText = [System.Convert]::ToString($defaultDC, [System.Globalization.CultureInfo]::InvariantCulture)
+				if ($acText -eq $dcText)
+				{
+					return ('{0} -Value {1}' -f $functionName, $acText)
+				}
+
+				return ('{0} -ACValue {1} -DCValue {2}' -f $functionName, $acText, $dcText)
+			}
+
+			$numericValue = Get-GuiNumericRangeValue -Value $defaultValue -NumericRange $numericRange
+			if ($null -eq $numericValue)
+			{
+				return $functionName
+			}
+
+			$numericText = [System.Convert]::ToString($numericValue, [System.Globalization.CultureInfo]::InvariantCulture)
+			return ('{0} -Value {1}' -f $functionName, $numericText)
+		}
 		default
 		{
 			return $functionName
 		}
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-ManifestEntryByFunction
 {
@@ -497,6 +763,10 @@ function Get-ManifestEntryByFunction
 
 	return $null
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-ValidScenarioTagCatalog
 {
@@ -545,6 +815,10 @@ function Get-ValidScenarioTagCatalog
 	return @($catalog | Sort-Object)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-ValidGamingPreviewGroups
 {
 	<# .SYNOPSIS Returns the array of valid Gaming preview group names. #>
@@ -559,6 +833,10 @@ function Get-ValidGamingPreviewGroups
 		'Advanced: Overlay'
 	)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-ValidGameModeProfileNames
 {
@@ -584,16 +862,42 @@ function Test-TweakManifestIntegrity
 	}
 
 	$requiredFields = @('Name', 'Function', 'Type', 'Category', 'Risk', 'PresetTier')
-	$validTypes = @('Toggle', 'Action', 'Choice')
+	$validTypes = @('Toggle', 'Action', 'Choice', 'Date', 'NumericRange')
 	$validRisks = @('Low', 'Medium', 'High')
-	# Safe remains as a legacy alias while the preset tier naming settles on Basic.
-	$validTiers = @('Minimal', 'Basic', 'Safe', 'Balanced', 'Advanced')
+	# Safe remains as a legacy alias while Standard marks curated entries that
+	# stay out of the low-risk preset ladder.
+	$validTiers = @('Minimal', 'Basic', 'Safe', 'Balanced', 'Standard', 'Advanced')
 	$validWorkflowSensitivities = @('Low', 'Moderate', 'High')
 	$validRecoveryLevels = @('Direct', 'DefaultsOnly', 'RestorePoint', 'Manual')
 	$validScenarioTags = @(Get-ValidScenarioTagCatalog)
 	$validGamingPreviewGroups = @(Get-ValidGamingPreviewGroups)
 	$validGameModeProfiles = @(Get-ValidGameModeProfileNames)
 	$validDecisionPromptKeys = @(Get-GameModeDecisionPromptKeyCatalog)
+	$manifestFunctionSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	foreach ($entry in @($Manifest))
+	{
+		$entryFunction = [string](Get-TweakManifestEntryValue -Entry $entry -FieldName 'Function')
+		if (-not [string]::IsNullOrWhiteSpace($entryFunction))
+		{
+			[void]$manifestFunctionSet.Add($entryFunction)
+		}
+	}
+	$gameModeAllowlistSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	foreach ($functionName in @(Get-GameModeAllowlist))
+	{
+		if (-not [string]::IsNullOrWhiteSpace([string]$functionName))
+		{
+			[void]$gameModeAllowlistSet.Add([string]$functionName)
+		}
+	}
+	$gameModeReviewedCrossCategorySet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	foreach ($functionName in @(Get-GameModeReviewedCrossCategoryAllowlist))
+	{
+		if (-not [string]::IsNullOrWhiteSpace([string]$functionName))
+		{
+			[void]$gameModeReviewedCrossCategorySet.Add([string]$functionName)
+		}
+	}
 	$issues = [System.Collections.ArrayList]::new()
 
 	foreach ($tweak in $Manifest)
@@ -661,7 +965,32 @@ function Test-TweakManifestIntegrity
 				[void]$issues.Add("$label : invalid RecoveryLevel '$recoveryLevelValue'")
 			}
 		}
+		if ((Test-TweakManifestEntryField -Entry $tweak -FieldName 'CounterpartFunction'))
+		{
+			$counterpartFunction = [string](Get-TweakManifestEntryValue -Entry $tweak -FieldName 'CounterpartFunction')
+			if ([string]::IsNullOrWhiteSpace($counterpartFunction))
+			{
+				[void]$issues.Add("$label : missing CounterpartFunction")
+			}
+			else
+			{
+				$functionName = [string](Get-TweakManifestEntryValue -Entry $tweak -FieldName 'Function')
+				if (-not [string]::IsNullOrWhiteSpace($functionName) -and $counterpartFunction.Equals($functionName, [System.StringComparison]::OrdinalIgnoreCase))
+				{
+					[void]$issues.Add("$label : CounterpartFunction cannot reference the entry itself")
+				}
+				elseif (-not $manifestFunctionSet.Contains($counterpartFunction))
+				{
+					[void]$issues.Add("$label : CounterpartFunction '$counterpartFunction' was not found in the manifest")
+				}
+			}
+		}
 		$scenarioTags = @(Get-TweakManifestEntryValue -Entry $tweak -FieldName 'ScenarioTags')
+		$platformSupportHintTags = @(Get-BaselineManifestPlatformSupportHintTags -Tags (Get-TweakManifestEntryValue -Entry $tweak -FieldName 'Tags'))
+		if ($platformSupportHintTags.Count -gt 0 -and (-not (Test-TweakManifestEntryField -Entry $tweak -FieldName 'PlatformSupport') -or $null -eq (Get-TweakManifestEntryValue -Entry $tweak -FieldName 'PlatformSupport')))
+		{
+			[void]$issues.Add("$label : OS-sensitive Tags ($($platformSupportHintTags -join ', ')) require PlatformSupport")
+		}
 		foreach ($scenarioTag in $scenarioTags)
 		{
 			$scenarioTagValue = [string]$scenarioTag
@@ -723,9 +1052,15 @@ function Test-TweakManifestIntegrity
 		{
 			[void]$issues.Add("$label : TroubleshootingOnly is true but no troubleshooting ScenarioTag is present")
 		}
-		if ((@(Get-GameModeAllowlist) -contains [string](Get-TweakManifestEntryValue -Entry $tweak -FieldName 'Function')) -and -not (Test-GameModeAllowlistEntryReviewed -Entry $tweak))
+		$gameModeFunctionName = [string](Get-TweakManifestEntryValue -Entry $tweak -FieldName 'Function')
+		if ($gameModeAllowlistSet.Contains($gameModeFunctionName))
 		{
-			[void]$issues.Add("$label : cross-category Game Mode allowlist entries must be added to the reviewed cross-category allowlist")
+			$scopeCategory = Get-GameModeEntryScopeCategory -Entry $tweak
+			$isReviewedGameModeEntry = ([string]::IsNullOrWhiteSpace($scopeCategory) -or $scopeCategory -eq 'Gaming' -or $gameModeReviewedCrossCategorySet.Contains($gameModeFunctionName))
+			if (-not $isReviewedGameModeEntry)
+			{
+				[void]$issues.Add("$label : cross-category Game Mode allowlist entries must be added to the reviewed cross-category allowlist")
+			}
 		}
 		if ((Test-GameModeManifestDefaultEnabled -Entry $tweak) -and -not (Test-GameModeProfileDefaultEligible -Entry $tweak))
 		{
@@ -735,9 +1070,133 @@ function Test-TweakManifestIntegrity
 		{
 			[void]$issues.Add("$label : Choice tweak missing Options")
 		}
+		if ($typeValue -eq 'NumericRange')
+		{
+			$numericRange = Get-TweakManifestEntryValue -Entry $tweak -FieldName 'NumericRange'
+			if ($null -eq $numericRange)
+			{
+				[void]$issues.Add("$label : NumericRange tweak missing NumericRange")
+			}
+			else
+			{
+				$rangeMin = $null
+				$rangeMax = $null
+				$rangeIncrement = $null
+				$rangeUnits = $null
+				if ($numericRange -is [System.Collections.IDictionary])
+				{
+					$rangeMin = if ($numericRange.Contains('MinValue')) { Get-GuiNumericRangeValue -Value $numericRange['MinValue'] } else { $null }
+					$rangeMax = if ($numericRange.Contains('MaxValue')) { Get-GuiNumericRangeValue -Value $numericRange['MaxValue'] } else { $null }
+					$rangeIncrement = if ($numericRange.Contains('Increment')) { Get-GuiNumericRangeValue -Value $numericRange['Increment'] } else { $null }
+					$rangeUnits = if ($numericRange.Contains('Units')) { [string]$numericRange['Units'] } else { $null }
+				}
+				elseif ($numericRange.PSObject)
+				{
+					$rangeMin = if ($numericRange.PSObject.Properties['MinValue']) { Get-GuiNumericRangeValue -Value $numericRange.MinValue } else { $null }
+					$rangeMax = if ($numericRange.PSObject.Properties['MaxValue']) { Get-GuiNumericRangeValue -Value $numericRange.MaxValue } else { $null }
+					$rangeIncrement = if ($numericRange.PSObject.Properties['Increment']) { Get-GuiNumericRangeValue -Value $numericRange.Increment } else { $null }
+					$rangeUnits = if ($numericRange.PSObject.Properties['Units']) { [string]$numericRange.Units } else { $null }
+				}
+
+				if ($null -eq $rangeMin -or $null -eq $rangeMax -or $null -eq $rangeIncrement -or [string]::IsNullOrWhiteSpace($rangeUnits))
+				{
+					[void]$issues.Add("$label : NumericRange must define MinValue, MaxValue, Increment, and Units")
+				}
+				else
+				{
+					if ([double]$rangeMin -gt [double]$rangeMax)
+					{
+						[void]$issues.Add("$label : NumericRange MinValue must be less than or equal to MaxValue")
+					}
+
+					$defaultValue = if (Test-TweakManifestEntryField -Entry $tweak -FieldName 'Default') { Get-TweakManifestEntryValue -Entry $tweak -FieldName 'Default' } else { $null }
+					$defaultAC = $null
+					$defaultDC = $null
+					if ($defaultValue -is [System.Collections.IDictionary])
+					{
+						if ($defaultValue.Contains('ACValue'))
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['ACValue'] -NumericRange $numericRange
+						}
+						if ($defaultValue.Contains('DCValue'))
+						{
+							$defaultDC = Get-GuiNumericRangeValue -Value $defaultValue['DCValue'] -NumericRange $numericRange
+						}
+						elseif ($defaultValue.Contains('ACValue'))
+						{
+							$defaultDC = $defaultAC
+						}
+						elseif ($defaultValue.Contains('Value'))
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['Value'] -NumericRange $numericRange
+							$defaultDC = $defaultAC
+						}
+						elseif ($defaultValue.Contains('NumericValue'))
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue['NumericValue'] -NumericRange $numericRange
+							$defaultDC = $defaultAC
+						}
+					}
+					elseif ($defaultValue -is [pscustomobject])
+					{
+						if ($defaultValue.PSObject.Properties['ACValue'])
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.ACValue -NumericRange $numericRange
+						}
+						if ($defaultValue.PSObject.Properties['DCValue'])
+						{
+							$defaultDC = Get-GuiNumericRangeValue -Value $defaultValue.DCValue -NumericRange $numericRange
+						}
+						elseif ($defaultValue.PSObject.Properties['ACValue'])
+						{
+							$defaultDC = $defaultAC
+						}
+						elseif ($defaultValue.PSObject.Properties['Value'])
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.Value -NumericRange $numericRange
+							$defaultDC = $defaultAC
+						}
+						elseif ($defaultValue.PSObject.Properties['NumericValue'])
+						{
+							$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue.NumericValue -NumericRange $numericRange
+							$defaultDC = $defaultAC
+						}
+					}
+					else
+					{
+						$defaultAC = Get-GuiNumericRangeValue -Value $defaultValue -NumericRange $numericRange
+						$defaultDC = $defaultAC
+					}
+
+					if ($null -eq $defaultAC -and $null -eq $defaultDC)
+					{
+						[void]$issues.Add("$label : NumericRange default value is missing or invalid")
+					}
+					else
+					{
+						if ($null -ne $defaultAC -and ([double]$defaultAC -lt [double]$rangeMin -or [double]$defaultAC -gt [double]$rangeMax))
+						{
+							[void]$issues.Add("$label : NumericRange default AC value is outside the defined range")
+						}
+						if ($null -ne $defaultDC -and ([double]$defaultDC -lt [double]$rangeMin -or [double]$defaultDC -gt [double]$rangeMax))
+						{
+							[void]$issues.Add("$label : NumericRange default DC value is outside the defined range")
+						}
+					}
+				}
+			}
+		}
+		if ($typeValue -eq 'Date' -and -not (Test-TweakManifestEntryField -Entry $tweak -FieldName 'DateParam'))
+		{
+			[void]$issues.Add("$label : Date tweak missing DateParam")
+		}
 		if ($typeValue -eq 'Toggle' -and -not (Test-TweakManifestEntryField -Entry $tweak -FieldName 'Default'))
 		{
 			[void]$issues.Add("$label : Toggle tweak missing Default")
+		}
+		if ($typeValue -eq 'NumericRange' -and -not (Test-TweakManifestEntryField -Entry $tweak -FieldName 'WinDefault'))
+		{
+			[void]$issues.Add("$label : NumericRange tweak missing WinDefault")
 		}
 	}
 
@@ -750,6 +1209,10 @@ function Test-TweakManifestIntegrity
 		}
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TweakRestartGroups
 {
@@ -789,6 +1252,10 @@ function Get-TweakRestartGroups
 		ByCategory      = $categoryGroups
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TweakDependencyInfo
 {

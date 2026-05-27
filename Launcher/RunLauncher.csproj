@@ -1,0 +1,136 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>Baseline</AssemblyName>
+    <RootNamespace>Baseline.RunLauncher</RootNamespace>
+    <AssemblyTitle>Baseline</AssemblyTitle>
+    <AssemblyDescription>Baseline launcher</AssemblyDescription>
+    <AssemblyProduct>Baseline</AssemblyProduct>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Maintainer note: keep the launcher architecture-neutral so it can run on x64 and ARM64. -->
+    <!-- Maintainer note: Windows PowerShell 5.1 is still loaded from the GAC_MSIL assembly path. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <LangVersion>12.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <AddAppConfigToBuildOutputs>false</AddAppConfigToBuildOutputs>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <UseWindowsForms>true</UseWindowsForms>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <ApplicationManifest>Baseline.manifest</ApplicationManifest>
+    <ApplicationIcon>../Assets/baseline.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Management.Automation">
+      <HintPath>$(windir)\Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../Bootstrap/*.ps1">
+      <LogicalName>BaselinePayload/Bootstrap/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Bootstrap/Helpers/*.ps1">
+      <LogicalName>BaselinePayload/Bootstrap/Helpers/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Baseline.psd1">
+      <LogicalName>BaselinePayload/Module/Baseline.psd1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Baseline.psm1">
+      <LogicalName>BaselinePayload/Module/Baseline.psm1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/integrity.manifest.json">
+      <LogicalName>BaselinePayload/Module/integrity.manifest.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Logging.psm1">
+      <LogicalName>BaselinePayload/Module/Logging.psm1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/SharedHelpers.psm1">
+      <LogicalName>BaselinePayload/Module/SharedHelpers.psm1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/GUICommon.psm1">
+      <LogicalName>BaselinePayload/Module/GUICommon.psm1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/GUICommon/**/*.ps1">
+      <LogicalName>BaselinePayload/Module/GUICommon/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/GUIExecution.psm1">
+      <LogicalName>BaselinePayload/Module/GUIExecution.psm1</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/GUIExecution/**/*.ps1">
+      <LogicalName>BaselinePayload/Module/GUIExecution/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/SharedHelpers/**/*.ps1">
+      <LogicalName>BaselinePayload/Module/SharedHelpers/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/SharedHelperModules/*.psm1">
+      <LogicalName>BaselinePayload/Module/SharedHelperModules/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <!-- GUI and region code lives in nested split files, so recurse to hydrate the full runtime tree. -->
+    <EmbeddedResource Include="../Module/GUI/**/*.ps1">
+      <LogicalName>BaselinePayload/Module/GUI/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/GUI/**/*.xaml">
+      <LogicalName>BaselinePayload/Module/GUI/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Regions/**/*.ps1">
+      <LogicalName>BaselinePayload/Module/Regions/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Regions/**/*.psm1">
+      <LogicalName>BaselinePayload/Module/Regions/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Data/**/*.json">
+      <LogicalName>BaselinePayload/Module/Data/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Module/Fonts/FluentSystemIcons.ttf">
+      <LogicalName>BaselinePayload/Module/Fonts/FluentSystemIcons.ttf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Localizations/**/*.json">
+      <LogicalName>BaselinePayload/Localizations/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Assets/**/*">
+      <LogicalName>BaselinePayload/Assets/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../Completion/Interactive.ps1" Condition="Exists('../Completion/Interactive.ps1')">
+      <LogicalName>BaselinePayload/Completion/Interactive.ps1</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.1.2" />
+    <PackageReference Include="Markdig.Wpf" Version="0.5.0.1" />
+  </ItemGroup>
+  <!-- Embed runtime libraries (Markdig etc.) into Baseline.exe so the PowerShell
+       runtime can Add-Type them from the hydrated payload. -->
+  <Target Name="EmbedRuntimeLibraries"
+          BeforeTargets="AssignTargetPaths;_GenerateCompileDependencyCache;CoreResGen"
+          DependsOnTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <EmbeddedResource Include="@(ReferenceCopyLocalPaths)"
+                        Condition="'%(Extension)' == '.dll'">
+        <LogicalName>BaselinePayload/Module/Libraries/%(Filename)%(Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveAppConfig" AfterTargets="Build">
+    <Delete Files="$(OutputPath)$(AssemblyName).exe.config" />
+  </Target>
+  <!-- Mirror the runtime libraries into Module/Libraries/ so dev-mode launches
+       (running the PowerShell module directly from the repo, without hydrating
+       the packaged Baseline.exe payload) can resolve Markdig at runtime. -->
+  <Target Name="SyncModuleLibraries"
+          AfterTargets="Build"
+          DependsOnTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_ModuleLibrarySync Include="@(ReferenceCopyLocalPaths)"
+                          Condition="'%(Extension)' == '.dll'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModuleLibrarySync)"
+          DestinationFolder="$(MSBuildProjectDirectory)/../Module/Libraries"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

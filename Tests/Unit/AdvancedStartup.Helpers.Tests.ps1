@@ -1,6 +1,11 @@
 Set-StrictMode -Version Latest
 
 BeforeAll {
+    $sourceContentHelperPath = Join-Path $PSScriptRoot 'Support/SourceContent.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $sourceContentHelperPath)) { $sourceContentHelperPath = Join-Path $PSScriptRoot '../Support/SourceContent.Helpers.ps1' }
+    . $sourceContentHelperPath
+
+
     $filePath = Join-Path $PSScriptRoot '../../Module/SharedHelpers/AdvancedStartup.Helpers.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
     $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
@@ -8,7 +13,14 @@ BeforeAll {
         Invoke-Expression $fn.Extent.Text
     }
 
+    <#
+        .SYNOPSIS
+    #>
+
     function LogInfo {}
+    <#
+        .SYNOPSIS
+    #>
     function LogWarning {}
 }
 
@@ -27,14 +39,16 @@ Describe 'Get-AdvancedStartupAssetPath' {
 }
 
 Describe 'Get-AdvancedStartupShortcutArguments' {
-    It 'encodes a ShellExecute launcher for the provided command path' {
-        $arguments = Get-AdvancedStartupShortcutArguments -CommandPath 'C:\ProgramData\Baseline\AdvancedStartup.cmd'
-        $encodedCommand = ($arguments -split 'EncodedCommand ', 2)[1]
-        $decoded = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encodedCommand))
+    It 'writes a ShellExecute launcher file for the provided command path' {
+        $commandPath = Join-Path $TestDrive 'Baseline\AdvancedStartup.cmd'
+        $arguments = Get-AdvancedStartupShortcutArguments -CommandPath $commandPath
+        $launcherPath = [System.IO.Path]::ChangeExtension($commandPath, '.ps1')
+        $launcherContent = Get-BaselineTestSourceText -Path $launcherPath
 
-        $arguments | Should -Match '^-NoProfile -WindowStyle Hidden -EncodedCommand '
-        $decoded | Should -Match 'ShellExecute'
-        $decoded | Should -Match 'AdvancedStartup\.cmd'
-        $decoded | Should -Match 'runas'
+        $arguments | Should -Match '^-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File '
+        $arguments | Should -Match ([regex]::Escape($launcherPath))
+        $launcherContent | Should -Match 'ShellExecute'
+        $launcherContent | Should -Match 'AdvancedStartup\.cmd'
+        $launcherContent | Should -Match 'runas'
     }
 }

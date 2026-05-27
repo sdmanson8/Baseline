@@ -1,0 +1,20 @@
+{
+  "Description": "Expected output of Compare-BaselineConfigForReview when current-profile.json is the Current and imported-profile.json is the Imported. Order: imported entries first (in declared order), then current-only entries appended.",
+  "Summary": {
+    "Total": 7,
+    "Add": 2,
+    "Remove": 2,
+    "Change": 2,
+    "Same": 1,
+    "Actionable": 6
+  },
+  "Rows": [
+    { "Id": "DisableTelemetry",          "Action": "Same",   "CurrentValue": "-Disable",   "ImportedValue": "-Disable"   },
+    { "Id": "DefenderScanCPULimit",      "Action": "Change", "CurrentValue": "50",         "ImportedValue": "25"         },
+    { "Id": "PowerPlanTimeout",          "Action": "Change", "CurrentValue": "60",         "ImportedValue": "AC:30;DC:10" },
+    { "Id": "BrowserEnterprisePolicies", "Action": "Add",    "CurrentValue": "",           "ImportedValue": "-Enable"    },
+    { "Id": "AuthHardeningRegistry",     "Action": "Add",    "CurrentValue": "",           "ImportedValue": "-Enable"    },
+    { "Id": "BatteryPercentage",         "Action": "Remove", "CurrentValue": "-Enable",    "ImportedValue": ""           },
+    { "Id": "LegacyTLSProtocols",        "Action": "Remove", "CurrentValue": "-Disable",   "ImportedValue": ""           }
+  ]
+}

@@ -6,11 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## 1.0.0 | 2026-05-25
+
+## Changed
+- Version set to 1.0.0 stable across module manifest, launcher metadata, entry scripts, installer metadata, and documents.
+- GUI navigation redesigned around workflow modes
+- Optimize, Gaming, Updates, Apps, and Setup Builder now use separated workflow surfaces
+- Preset onboarding moved into Initial Setup
+- Shared filter behavior unified across workflow modes
+- Apps catalog restructured into category-based manifests
+- Logging lifecycle simplified and recreated on startup
+- Deployment Media Builder progress reporting redesigned
+- Localization QA and visible copy polished across multiple languages
+
+## Added
+- Windows Setup Builder / Deployment Media Builder
+- Gaming profile workflows
+- Software & Apps queued-action system
+- ARM64 launcher support
+- Expanded Windows parity coverage
+- OS hardening GUI workflows
+- WSL install flow
+- Auto-update checks
+- 79 new languages
+- Full Apps localization coverage
+- Remote connectivity probes
+- Managed remote workflow hardening
+
+## Fixed
+- GUI mode transitions leaking unrelated UI surfaces
+- Multiple Deployment Media Builder worker and callback failures
+- Theme synchronization issues in popup windows
+- Incorrect GUI/headless exit-code reporting
+- Localization refresh inconsistencies
+- Various registry, helper, and startup initialization failures
+
+---
+
 ## 3.1.0-beta | 2026-04-26
 
 ### Changed
 
-- Version bumped from 3.0.0 to 3.1.0 across module manifest, entry scripts, and asset scripts.
+- Version bumped from 3.0.0-beta to 3.1.0-beta across module manifest, entry scripts, and asset scripts.
 
 ### Fixed
 
@@ -25,6 +62,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## 3.0.0-beta | 2026-04-06
 
+### Changed
+
+- Version bumped from 2.0.0-beta to 3.0.0-beta across module manifest, entry scripts, and asset scripts
+- Window sizing now clamps MinWidth, MinHeight, and dimensions to the available work area so the GUI fits on low-resolution screens (e.g. 1024x768)
+- GUI.psm1 further modularized: 35 scripts in Module/GUI/ (up from 14), core orchestrator at ~2,970 lines
+- Region modules split: System.psm1 (5 sub-modules), UIPersonalization.psm1 (3), PrivacyTelemetry.psm1 (2), SystemTweaks.psm1 (2), Defender.psm1 (2)
+- Tab content architecture: TabControl used as header-only strip with manual content management via single ScrollViewer
+- Button styling rebuilt with programmatic ControlTemplate via FrameworkElementFactory (7 variants)
+- CheckBox toggle-switch implemented as custom XAML ControlTemplate with animated thumb
+- Brush caching system with frozen SolidColorBrush instances for thread-safe WPF rendering
+- ObservableState pub/sub system dispatches to UI thread via Dispatcher.Invoke at DataBind priority
+- Filter cache invalidation consolidated to single FilterGeneration integer
+- Session state schema upgraded to version 9
+- Execution background runspace uses fresh module import with ConcurrentQueue-only communication
+- Localization strings corrected: "Windows 11 23H2" changed to "Windows 10 (1903 and later) and Windows 11" across 46 language files
+- Local launch promoted to primary path in README; remote bootstrap demoted to advanced section
+- Preview Run and execution summary dialog chrome now source their labels from the active localization set
+
+---
+
 ### Added
 
 - **State Tracking & Compliance**
@@ -34,7 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Audit trail: append-only JSON Lines log of every execution with timestamp, tweak, old/new values, user, and machine
   - Audit viewer: GUI timeline with filter-by-action, HTML/Markdown export, and clear-old-entries
   - Scheduled automation: register/unregister Baseline as a Windows Scheduled Task for recurring compliance checks
-  - Multi-machine targeting (CLI preview, untested on Server): deploy profiles or run compliance checks against remote machines via PowerShell Remoting
+  - Multi-machine targeting: deploy profiles or run compliance checks against remote machines via PowerShell Remoting
 
 - **UX Clarity & Flow Redesign**
   - Pre-flight checks: admin elevation, disk space, WMI health, VSS service, event log, system restore validation
@@ -98,60 +155,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Per-monitor DPI awareness via SetProcessDpiAwarenessContext P/Invoke (user32.dll) with SetProcessDpiAwareness fallback (shcore.dll)
   - SHA-256 checksum validation for all remote downloads (C++ Redistributables, .NET runtimes)
   - DWM window chrome interop for native dark/light title bar and Win11 rounded corners
-  - AST-based command parsing replacing all Invoke-Expression usage
+- AST-based command parsing replacing dynamic expression execution
 
 - **Testing & Validation**
   - Headless GUI composition/contract tests for dialog creation paths
   - Headless tests for Safe/Expert/Game Mode transitions
   - Headless tests for responsive tab/dropdown switching
-  - Headless tests for preview count generation
-  - Headless tests for restore/default wording paths
-  - Headless tests for icon/text fallback behavior
-  - Focused unit coverage for localization directory resolution and language selector icon family/glyph wiring
-  - Desktop integration matrix validated: Win10 + Win11
+- Headless tests for preview count generation
+- Headless tests for restore/default wording paths
+- Headless tests for icon/text fallback behavior
+- Focused unit coverage for localization directory resolution and language selector icon family/glyph wiring
+- Focused unit coverage for application execution routing, adapter dispatch, batch deduping, update-all handling, and GUI forwarding
+- Focused unit coverage for Delivery Optimization policy routing and cache cleanup behavior
+- Focused unit coverage for feature update deferral and quality update deferral routing
+- Focused unit coverage for metered-connection update handling and Microsoft Store app auto-download routing
+- Desktop integration matrix validated: Win10 + Win11
 
 - **Codebase Audit Remediation**
   - Resolved public positioning contradiction between README and release strategy
-  - Cleaned launch trust surface: local launch primary, iwr|iex demoted to advanced
+  - Cleaned launch trust surface: local launch primary, downloaded-file bootstrap documented as advanced
   - Added historical context note to changelog
   - Automated GUI test layer added: 6 test categories
   - Desktop integration matrix run and documented: Win10 + Win11 validated
   - GUI state surface reduction across top 5 files by $Script: references
-  - Large module extraction: 14 sub-modules extracted from System, UIPersonalization, PrivacyTelemetry, SystemTweaks, Defender
+  - Large module split: 14 sub-modules moved from System, UIPersonalization, PrivacyTelemetry, SystemTweaks, Defender
   - Runtime Write-Host audit across 10 files
   - ExecutionPolicy Bypass audit across 6 files with documentation
-  - Invoke-Expression/iex audit with safety comments
+  - Remote expression execution audit with safety comments
   - Quality & Validation section added to README
   - Release/documentation pack labeled and separated
 
-### Changed
-
-- Version bumped from 2.0.0 to 3.0.0 across module manifest, entry scripts, and asset scripts
-- Window sizing now clamps MinWidth, MinHeight, and dimensions to the available work area so the GUI fits on low-resolution screens (e.g. 1024x768)
-- GUI.psm1 further modularized: 35 extracted scripts in Module/GUI/ (up from 14), core orchestrator at ~2,970 lines
-- Region modules extracted: System.psm1 (5 sub-modules), UIPersonalization.psm1 (3), PrivacyTelemetry.psm1 (2), SystemTweaks.psm1 (2), Defender.psm1 (2)
-- Tab content architecture: TabControl used as header-only strip with manual content management via single ScrollViewer
-- Button styling rebuilt with programmatic ControlTemplate via FrameworkElementFactory (7 variants)
-- CheckBox toggle-switch implemented as custom XAML ControlTemplate with animated thumb
-- Brush caching system with frozen SolidColorBrush instances for thread-safe WPF rendering
-- ObservableState pub/sub system dispatches to UI thread via Dispatcher.Invoke at DataBind priority
-- Filter cache invalidation consolidated to single FilterGeneration integer
-- Session state schema upgraded to version 9
-- Execution background runspace uses fresh module import with ConcurrentQueue-only communication
-- Localization strings corrected: "Windows 11 23H2" changed to "Windows 10 (1903 and later) and Windows 11" across 46 language files
-- Local launch promoted to primary path in README; remote bootstrap demoted to advanced section
-- Preview Run and execution summary dialog chrome now source their labels from the active localization set
+---
 
 ### Fixed
 
 - GUI window no longer overflows screen on high-DPI displays due to missing DPI awareness
 - GUI now fits 1024x768 and other low-resolution screens by clamping to available work area
 - Header toolbar no longer clips the language button — dynamic MinWidth adjustment measures actual header width at render time
-- Language selector now resolves bundled localization files reliably across module and extracted GUI roots, restores saved language from the same resolved path, and keeps the header globe icon on the shared Fluent System Icons pipeline
+- Language selector now resolves bundled localization files reliably across module roots, restores saved language from the same resolved path, and keeps the header globe icon on the shared Fluent System Icons pipeline
 - GUI localization no longer falls back to English when a non-English language is selected; hashtable-backed localization lookups now resolve correctly across the live interface
 - Restored sessions and startup initialization now reapply the selected language to active controls instead of leaving existing GUI content in English
 - Light theme no longer makes the custom minimize, maximize, and close buttons effectively disappear; caption buttons now restyle with the active title-bar theme
-- Zero remaining Invoke-Expression usage in production code (AST-based parsing throughout)
+- Zero remaining dynamic expression execution in production code (AST-based parsing throughout)
 - Eliminated false `failed!` outcomes on edge cases where registry values were never created
 - Eliminated mid-run interactive dialogs blocking batch execution
 - Logging no longer silently broken after module force-import in background runspace
@@ -200,10 +245,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Limited retry to Direct-recovery, restorable, non-removal, non-action items only
 - Batch execution now runs fully headless with no mid-run interactive dialogs
 - Package/install/uninstall operations shown as a distinct summary category with heavier treatment than simple toggles
-- Extracted Game Mode logic from Manifest.Helpers into dedicated GameMode.Helpers module
-- Extracted Scenario Mode logic into dedicated ScenarioMode.Helpers module
-- Extracted preset resolution logic from entry script into Preset.Helpers module
-- Extracted recovery/undo logic into dedicated Recovery.Helpers module
+- Moved Game Mode logic from Manifest.Helpers into dedicated GameMode.Helpers module
+- Moved Scenario Mode logic into dedicated ScenarioMode.Helpers module
+- Moved preset resolution logic from entry script into Preset.Helpers module
+- Moved recovery/undo logic into dedicated Recovery.Helpers module
 - Moved Game Mode data files into organized Module/Data/GameMode/ subdirectory
 - Reduced Manifest.Helpers from 1,760 to 641 lines by splitting responsibilities
 - Reduced Baseline.ps1 from 548 to 443 lines — now purely a launcher/dispatcher
@@ -213,7 +258,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Added smoke-test script (Tools/Test-SmokeTest.ps1) for release validation
 - Added scenario expansion policy documentation in ScenarioMode.Helpers.ps1
 
-## 2.1.0-beta | 2026-03-21
+## 2.0.0-beta | 2026-03-21
 
 - Minor changes to the GUI
 

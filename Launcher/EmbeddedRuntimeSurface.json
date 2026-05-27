@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "description": "Source-of-truth file list for the runtime payload embedded by Baseline.exe.",
+  "includeGlobs": [
+    "Bootstrap/*.ps1",
+    "Bootstrap/Helpers/*.ps1",
+    "Module/Baseline.psd1",
+    "Module/Baseline.psm1",
+    "Module/integrity.manifest.json",
+    "Module/Logging.psm1",
+    "Module/SharedHelpers.psm1",
+    "Module/GUICommon.psm1",
+    "Module/GUICommon/**/*.ps1",
+    "Module/GUIExecution.psm1",
+    "Module/GUIExecution/**/*.ps1",
+    "Module/SharedHelpers/**/*.ps1",
+    "Module/SharedHelperModules/*.psm1",
+    "Module/GUI/**/*.ps1",
+    "Module/GUI/**/*.xaml",
+    "Module/Regions/**/*.ps1",
+    "Module/Regions/**/*.psm1",
+    "Module/Data/**/*.json",
+    "Module/Fonts/FluentSystemIcons.ttf",
+    "Localizations/**/*.json",
+    "Assets/**"
+  ],
+  "optionalIncludeGlobs": [
+    "Completion/Interactive.ps1"
+  ],
+  "excludeGlobs": [
+    "Tools/**",
+    "Tests/**",
+    "Launcher/**",
+    "docs/**",
+    ".git/**",
+    ".github/**",
+    "dist/**",
+    "**/bin/**",
+    "**/obj/**",
+    "CHANGELOG.md",
+    "README.md",
+    "todo.md",
+    "dev_docs/**"
+  ]
+}

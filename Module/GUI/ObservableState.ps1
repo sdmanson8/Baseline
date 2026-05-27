@@ -5,6 +5,10 @@
 #   & $state.Subscribe 'StatusText' { param($new, $old) $StatusText.Text = $new }
 #   & $state.Set 'StatusText' 'Hello'
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function New-ObservableState
 	{
 		param (
@@ -94,7 +98,9 @@
 			$notifyAction = {
 				foreach ($cb in $subs)
 				{
-					try { & $cb $Value $oldValue } catch { & $reportSubscriberError $Property $_.Exception }
+					try { & $cb $Value $oldValue } catch {
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ObservableState.New-ObservableState:catch101' -Severity Debug }
+					 & $reportSubscriberError $Property $_.Exception }
 				}
 			}.GetNewClosure()
 
@@ -157,7 +163,9 @@
 					{
 						foreach ($cb in $change.Subscribers)
 						{
-							try { & $cb $change.NewValue $change.OldValue } catch { & $reportSubscriberError ([string]$change.Property) $_.Exception }
+							try { & $cb $change.NewValue $change.OldValue } catch {
+								if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ObservableState.New-ObservableState:catch164' -Severity Debug }
+							 & $reportSubscriberError ([string]$change.Property) $_.Exception }
 						}
 					}
 				}

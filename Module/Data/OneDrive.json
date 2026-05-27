@@ -36,7 +36,13 @@
       "WhyThisMatters": "Installs the OneDrive desktop sync client, or removes the app and its Explorer integration. Uninstall is a package removal workflow, not a simple toggle, and bringing it back may require rerunning setup, signing in again, and waiting for sync to recover.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Manual",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "OneDrive is not available on Windows Server."
+      }
     }
   ]
 }

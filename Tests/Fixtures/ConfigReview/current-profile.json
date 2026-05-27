@@ -1,0 +1,12 @@
+{
+  "Schema": "Baseline.ConfigProfile",
+  "SchemaVersion": 1,
+  "SavedAt": "2026-04-26T12:00:00Z",
+  "Entries": [
+    { "Function": "DisableTelemetry",          "Type": "Toggle", "Param": "-Disable",   "Value": null   },
+    { "Function": "DefenderScanCPULimit",      "Type": "NumericRange", "Value": 50              },
+    { "Function": "PowerPlanTimeout",          "Type": "Choice", "ACValue": "60",   "DCValue": "60" },
+    { "Function": "BatteryPercentage",         "Type": "Toggle", "Param": "-Enable",    "Value": null   },
+    { "Function": "LegacyTLSProtocols",        "Type": "Toggle", "Param": "-Disable",   "Value": null   }
+  ]
+}

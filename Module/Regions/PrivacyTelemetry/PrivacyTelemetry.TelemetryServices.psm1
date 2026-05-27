@@ -1,10 +1,17 @@
-﻿using module ..\..\Logging.psm1
+using module ..\..\GUICommon.psm1
+using module ..\..\Logging.psm1
 using module ..\..\SharedHelpers.psm1
+
 
 <#
 	.SYNOPSIS
-	The Connected User Experiences and Telemetry (DiagTrack) service
+	Configures the Connected User Experiences and Telemetry (DiagTrack) service.
 
+
+
+.DESCRIPTION
+
+Applies the Connected User Experiences and Telemetry (DiagTrack) service in GUI and headless runs.
 	.PARAMETER Disable
 	Disable the Connected User Experiences and Telemetry (DiagTrack) service, and block connection for the Unified Telemetry Client Outbound Traffic
 
@@ -23,6 +30,7 @@ using module ..\..\SharedHelpers.psm1
 	.NOTES
 	Current user
 #>
+
 function DiagTrackService
 {
 	param
@@ -45,7 +53,7 @@ function DiagTrackService
 	# Checking whether "InitialActions" function was removed in preset file
 	if (-not ("WinAPI.GetStrings" -as [type]))
 	{
-		# Get the name of a preset (e.g Baseline.ps1) regardless if it was renamed
+		# Get the name of a preset (e.g Bootstrap/Baseline.ps1) regardless if it was renamed
 		# $_.File has no EndsWith() method
 		$PresetName = Split-Path -Path (((Get-PSCallStack).Position | Where-Object -FilterScript {$_.File}).File | Where-Object -FilterScript {$_.EndsWith(".ps1")}) -Leaf
 
@@ -82,6 +90,11 @@ function DiagTrackService
 	.SYNOPSIS
 	Diagnostic data
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for diagnostic data.
 	.PARAMETER Minimal
 	Set the diagnostic data collection to minimum
 
@@ -127,7 +140,17 @@ function DiagnosticDataLevel
 	}
 
     # Get Windows edition
-    $WindowsEdition = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+    $isEnterpriseOrEducation = $false
+    if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -ErrorAction SilentlyContinue)
+    {
+        $editionId = [string](Get-BaselineSystemPlatformInfo).EditionID
+        $isEnterpriseOrEducation = $editionId -match '(?i)Enterprise|Education'
+    }
+    else
+    {
+        $WindowsEdition = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+        $isEnterpriseOrEducation = ($WindowsEdition -match "Enterprise") -or ($WindowsEdition -match "Education")
+    }
 
     switch ($PSCmdlet.ParameterSetName) {
         "Minimal" {
@@ -135,14 +158,14 @@ function DiagnosticDataLevel
 			LogInfo "Setting Diagnostic Data Collection to Minimal"
 			try
 			{
-				if ($WindowsEdition -match "Enterprise" -or $WindowsEdition -match "Education") {
+				if ($isEnterpriseOrEducation) {
 					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				} else {
 					New-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				}
 
 				New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack' -Name 'ShowedToastAtLevel' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack" -Name ShowedToastAtLevel -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -158,7 +181,7 @@ function DiagnosticDataLevel
 			try
 			{
 				New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection -Name MaxTelemetryAllowed -PropertyType DWord -Value 3 -Force -ErrorAction Stop | Out-Null
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack' -Name 'ShowedToastAtLevel' -Value 3 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack" -Name ShowedToastAtLevel -Type DWord -Value 3 | Out-Null
 				if ((Get-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection -Name AllowTelemetry -ErrorAction SilentlyContinue))
 				{
 					Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" | Out-Null
@@ -178,6 +201,11 @@ function DiagnosticDataLevel
 	.SYNOPSIS
 	The diagnostics tracking scheduled tasks
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the diagnostics tracking scheduled tasks.
 	.PARAMETER Disable
 	Turn off the diagnostics tracking scheduled tasks
 
@@ -196,6 +224,7 @@ function DiagnosticDataLevel
 	.NOTES
 	Current user
 #>
+
 function Request-GuiScheduledTasksSelection
 {
 	param
@@ -249,6 +278,12 @@ function Request-GuiScheduledTasksSelection
 	return $responseState['Result']
 }
 
+<#
+    .SYNOPSIS
+    Runs scheduled tasks.
+
+    #>
+
 function ScheduledTasks
 {
 	[CmdletBinding(DefaultParameterSetName = "Disable")]
@@ -281,6 +316,8 @@ function ScheduledTasks
 		$NonInteractive
 	)
 
+		. (Join-Path $PSScriptRoot 'TelemetryServices\ScheduledTasks\ModulePathResolution.ps1')
+
 	#region Variables
 	# Initialize an array list to store the selected scheduled tasks
 	$SelectedTasks = New-Object -TypeName System.Collections.ArrayList($null)
@@ -291,108 +328,24 @@ function ScheduledTasks
 	$SelectedTaskNamesProvided = $PSBoundParameters.ContainsKey('SelectedTaskNames')
 
 	# The following tasks will have their checkboxes checked
-	[string[]]$CheckedScheduledTasks = @(
-		# Collects program telemetry information if opted-in to the Microsoft Customer Experience Improvement Program
-		"MareBackup",
+		. (Join-Path $PSScriptRoot 'TelemetryServices\ScheduledTasks\ScheduledTaskList.ps1')
 
-		# Collects program telemetry information if opted-in to the Microsoft Customer Experience Improvement Program
-		"Microsoft Compatibility Appraiser",
+	<#
+	    .SYNOPSIS
+	    Gets selected scheduled task list.
 
-		# Updates compatibility database
-		"StartupAppTask",
-
-		# This task collects and uploads autochk SQM data if opted-in to the Microsoft Customer Experience Improvement Program
-		"Proxy",
-
-		# If the user has consented to participate in the Windows Customer Experience Improvement Program, this job collects and sends usage data to Microsoft
-		"Consolidator",
-
-		# The USB CEIP (Customer Experience Improvement Program) task collects Universal Serial Bus related statistics and information about your machine and sends it to the Windows Device Connectivity engineering group at Microsoft
-		"UsbCeip",
-
-		# The Windows Disk Diagnostic reports general disk and system information to Microsoft for users participating in the Customer Experience Program
-		"Microsoft-Windows-DiskDiagnosticDataCollector",
-
-		# This task shows various Map related toasts
-		"MapsToastTask",
-
-		# This task checks for updates to maps which you have downloaded for offline use
-		"MapsUpdateTask",
-
-		# Initializes Family Safety monitoring and enforcement
-		"FamilySafetyMonitor",
-
-		# Synchronizes the latest settings with the Microsoft family features service
-		"FamilySafetyRefreshTask",
-
-		# XblGameSave Standby Task
-		"XblGameSaveTask"
-	)
-	#endregion Variables
-
-	#region Functions
-	function Get-CheckboxClicked
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$CheckBox
-		)
-
-		$Task = $Tasks | Where-Object -FilterScript {$_.TaskName -eq $CheckBox.Parent.Children[1].Text} | Select-Object -First 1
-
-		if ($CheckBox.IsChecked)
-		{
-			if ($null -ne $Task -and -not ($SelectedTasks | Where-Object -FilterScript {$_.TaskName -eq $Task.TaskName}))
-			{
-				[void]$SelectedTasks.Add($Task)
-			}
-		}
-		else
-		{
-			if ($null -ne $Task)
-			{
-				$TaskToRemove = $SelectedTasks | Where-Object -FilterScript {$_.TaskName -eq $Task.TaskName} | Select-Object -First 1
-				if ($null -ne $TaskToRemove)
-				{
-					[void]$SelectedTasks.Remove($TaskToRemove)
-				}
-			}
-		}
-
-		if ($null -ne $Button)
-		{
-			$Button.IsEnabled = ($SelectedTasks.Count -gt 0)
-		}
-	}
-
-	function Test-ScheduledTaskSeedSelected
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			$Task
-		)
-
-		if ($SelectedTaskNamesProvided)
-		{
-			return [bool](@($SelectedTaskNames | Where-Object -FilterScript {$_ -eq $Task.TaskName}).Count -gt 0)
-		}
-
-		return [bool](@($CheckedScheduledTasks | Where-Object -FilterScript {$Task.TaskName -match $_}).Count -gt 0)
-	}
+		#>
 
 	function Get-SelectedScheduledTaskList
 	{
 		return @($SelectedTasks | Where-Object { $_ })
 	}
 
+	<#
+	    .SYNOPSIS
+	    Gets selected scheduled task names.
+
+		#>
 	function Get-SelectedScheduledTaskNames
 	{
 		return @(
@@ -402,125 +355,13 @@ function ScheduledTasks
 		)
 	}
 
-	function Invoke-ScheduledTasksOperation
-	{
-		param (
-			[object[]]$TaskList
-		)
+	<#
+	    .SYNOPSIS
+	    Runs scheduled tasks operation.
 
-		$ResolvedTaskList = @($TaskList | Where-Object { $_ })
-		if ($ResolvedTaskList.Count -eq 0)
-		{
-			return
-		}
+		#>
 
-		switch ($PSCmdlet.ParameterSetName)
-		{
-			"Enable"
-			{
-				$ResolvedTaskList | Enable-ScheduledTask
-			}
-			"Disable"
-			{
-				$ResolvedTaskList | Disable-ScheduledTask
-			}
-		}
-	}
-
-	function Confirm-ScheduledTasksSelection
-	{
-		$SelectedTaskList = @(Get-SelectedScheduledTaskList)
-		$SelectionState.Confirmed = $true
-
-		if ($CollectSelectionOnly)
-		{
-			$script:ScheduledTasksSelectionResult = [PSCustomObject]@{
-				Mode = $PSCmdlet.ParameterSetName
-				SelectedTaskNames = @(Get-SelectedScheduledTaskNames)
-			}
-			if ($null -ne $Window)
-			{
-				[void]$Window.Close()
-			}
-			return
-		}
-
-		if ($null -ne $Window)
-		{
-			[void]$Window.Close()
-		}
-
-		Invoke-ScheduledTasksOperation -TaskList $SelectedTaskList
-	}
-
-	function Add-TaskControl
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$Task
-		)
-
-		process
-		{
-			$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
-			$CheckBox.Add_Click({Get-CheckboxClicked -CheckBox $_.Source})
-
-			$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
-			$TextBlock.Text = $Task.TaskName
-
-			$StackPanel = New-Object -TypeName System.Windows.Controls.StackPanel
-			[void]$StackPanel.Children.Add($CheckBox)
-			[void]$StackPanel.Children.Add($TextBlock)
-			[void]$PanelContainer.Children.Add($StackPanel)
-
-			# If task checked add to the array list
-			if (Test-ScheduledTaskSeedSelected -Task $Task)
-			{
-				[void]$SelectedTasks.Add($Task)
-			}
-			else
-			{
-				$CheckBox.IsChecked = $false
-			}
-
-			if ($null -ne $Button)
-			{
-				$Button.IsEnabled = ($SelectedTasks.Count -gt 0)
-			}
-		}
-	}
-	#endregion Functions
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			if (-not $CollectSelectionOnly)
-			{
-				Write-ConsoleStatus -Action "Enable Diagnostics Tracking Scheduled Tasks"
-				LogInfo "Enabling Diagnostics Tracking Scheduled Tasks"
-			}
-			$State           = "Disabled"
-			# Extract the localized "Enable" string from shell32.dll
-			$ButtonContent   = [WinAPI.GetStrings]::GetString(51472)
-		}
-		"Disable"
-		{
-			if (-not $CollectSelectionOnly)
-			{
-				Write-ConsoleStatus -Action "Disable Diagnostics Tracking Scheduled Tasks"
-				LogInfo "Disabling Diagnostics Tracking Scheduled Tasks"
-			}
-			$State           = "Ready"
-			$ButtonContent   = $Localization.Disable
-		}
-	}
+		. (Join-Path $PSScriptRoot 'TelemetryServices\ScheduledTasks\ScheduledTaskOperation.ps1')
 
 	# Getting list of all scheduled tasks according to the conditions
 	$Tasks = Get-ScheduledTask | Where-Object -FilterScript {($_.State -eq $State) -and ($_.TaskName -in $CheckedScheduledTasks)}
@@ -567,7 +408,7 @@ function ScheduledTasks
 	Add-Type -AssemblyName PresentationCore, PresentationFramework
 
 	#region XAML Markup
-	# The section defines the design of the upcoming dialog box
+	# This block defines the dialog XAML used at runtime.
 	[xml]$XAML = @"
 	<Window
 		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -576,8 +417,8 @@ function ScheduledTasks
 		MinHeight="450" MinWidth="400"
 		SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen"
 		TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
-		FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
-		Background="#F1F1F1" Foreground="#262626">
+		FontFamily="Segoe UI" FontSize="12" ShowInTaskbar="True"
+		Background="Transparent" WindowStyle="None" AllowsTransparency="True" Foreground="#262626">
 		<Window.Resources>
 			<Style TargetType="StackPanel">
 				<Setter Property="Orientation" Value="Horizontal"/>
@@ -606,19 +447,32 @@ function ScheduledTasks
 				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
 			</Style>
 		</Window.Resources>
-		<Grid>
-			<Grid.RowDefinitions>
-				<RowDefinition Height="Auto"/>
-				<RowDefinition Height="*"/>
-				<RowDefinition Height="Auto"/>
-			</Grid.RowDefinitions>
-			<ScrollViewer Name="Scroll" Grid.Row="0"
-				HorizontalScrollBarVisibility="Disabled"
-				VerticalScrollBarVisibility="Auto">
-				<StackPanel Name="PanelContainer" Orientation="Vertical"/>
-			</ScrollViewer>
-			<Button Name="Button" Grid.Row="2"/>
-		</Grid>
+		<Border Name="RootBorder" CornerRadius="8">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"/>
+					<RowDefinition Height="*"/>
+					<RowDefinition Height="Auto"/>
+				</Grid.RowDefinitions>
+				<Grid Grid.Row="0" Margin="10,8,10,8">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="*"/>
+					</Grid.ColumnDefinitions>
+					<StackPanel Name="PanelSelectAll" Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+						<CheckBox Name="CheckBoxSelectAll" IsChecked="False" VerticalAlignment="Center" Margin="0,0,6,0"/>
+						<TextBlock Name="TextBlockSelectAll" VerticalAlignment="Center"/>
+					</StackPanel>
+				</Grid>
+				<Border>
+					<ScrollViewer Name="Scroll"
+						HorizontalScrollBarVisibility="Disabled"
+						VerticalScrollBarVisibility="Auto">
+						<StackPanel Name="PanelContainer" Orientation="Vertical"/>
+					</ScrollViewer>
+				</Border>
+				<Button Name="Button" Grid.Row="2"/>
+			</Grid>
+		</Border>
 	</Window>
 "@
 	#endregion XAML Markup
@@ -628,42 +482,60 @@ function ScheduledTasks
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
 
-	try {
-		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
-			$useDark = $false
-			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
-			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
-		}
-	} catch { $null = $_ }
-
-	#region Sendkey function
-	# Emulate the Backspace key sending to prevent the console window to freeze
-	Start-Sleep -Milliseconds 500
-
-	Add-Type -AssemblyName System.Windows.Forms
-
-	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Utility for Windows"} | ForEach-Object -Process {
-		# Show window, if minimized
-		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
-
-		Start-Sleep -Seconds 1
-
-		# Force move the console window to the foreground
-		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
-
-		Start-Sleep -Seconds 1
-
-		# Emulate the Backspace key sending
-		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
+	$bc = New-Object System.Windows.Media.BrushConverter
+	$Theme = Get-ScheduledTasksPickerTheme
+	$UseDarkMode = Resolve-ScheduledTasksPickerUseDarkMode
+	$setScheduledTasksPickerSurface = ${function:Set-ScheduledTasksPickerSurface}
+	& $setScheduledTasksPickerSurface -Window $Form -RootBorder $RootBorder -PanelContainer $PanelContainer -ScrollViewer $Scroll -Theme $Theme -BrushConverter $bc -UseDarkMode $UseDarkMode
+	if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue)
+	{
+		[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode $UseDarkMode)
 	}
-	#endregion Sendkey function
 
 	$Window.Add_Loaded({$Tasks | Add-TaskControl})
 	$Button.Content = $ButtonContent
+	$Button.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	$Button.FontSize = 12
+	try { GUICommon\Set-GuiPopupActionButtonStyle -Button $Button -Theme $Theme -UseDarkMode $UseDarkMode } catch { Write-SwallowedException -ErrorRecord $_ -Source 'ScheduledTasks.SetPopupActionButtonStyle' }
+	$TextBlockSelectAll.Text = GUICommon\Get-GuiPopupLocalizedString -Key 'GuiSelectAll' -Fallback 'Select All'
+	$TextBlockSelectAll.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	if ($Form.Foreground) { $TextBlockSelectAll.Foreground = $Form.Foreground }
 	$Button.Add_Click({Confirm-ScheduledTasksSelection})
+	$CheckBoxSelectAll.Add_Click({Invoke-TelemetryServiceSelectAllClick})
 
-	$Window.Title = $Localization.ScheduledTasks
+	$scheduledTasksTitle = GUICommon\Get-GuiPopupLocalizedString -Key 'Tweak_ScheduledTasks' -Fallback 'Diagnostics Tracking Tasks'
+	$Form.Title = $scheduledTasksTitle
+	if (Test-Path -Path Function:\Add-GuiPopupWindowChrome)
+	{
+		[void](GUICommon\Add-GuiPopupWindowChrome -Window $Form -RootBorder $RootBorder -PanelContainer $PanelContainer -Title $scheduledTasksTitle -Theme $Theme -UseDarkMode $UseDarkMode)
+	}
+	$scheduledTasksThemeCallback = {
+		param($Window, $Theme, $UseDarkMode)
+
+		try
+		{
+			& $setScheduledTasksPickerSurface -Window $Window -RootBorder $RootBorder -PanelContainer $PanelContainer -ScrollViewer $Scroll -Theme $Theme -BrushConverter $bc -UseDarkMode $UseDarkMode
+		}
+		catch
+		{
+			Write-SwallowedException -ErrorRecord $_ -Source 'ScheduledTasks.ThemeCallback.SetSurface'
+		}
+
+		if ($Button)
+		{
+			try { GUICommon\Set-GuiPopupActionButtonStyle -Button $Button -Theme $Theme -UseDarkMode $UseDarkMode } catch { Write-SwallowedException -ErrorRecord $_ -Source 'ScheduledTasks.ThemeCallback.SetPopupActionButtonStyle' }
+		}
+
+		if ($TextBlockSelectAll -and $Window.Foreground)
+		{
+			$TextBlockSelectAll.Foreground = $Window.Foreground
+		}
+	}.GetNewClosure()
+	if (Test-Path -Path Function:\Register-GuiPopupThemeWindow)
+	{
+		[void](GUICommon\Register-GuiPopupThemeWindow -Window $Form -ThemeCallback $scheduledTasksThemeCallback)
+	}
+	& $scheduledTasksThemeCallback -Window $Form -Theme $Theme -UseDarkMode $UseDarkMode
 	$Button.IsEnabled = $false
 
 	if ($Global:GUIMode -and -not $CollectSelectionOnly)
@@ -672,7 +544,7 @@ function ScheduledTasks
 	}
 	else
 	{
-		# Restore minimized dialogs and bring them to the foreground once when shown.
+		# Normalize minimized dialogs before showing without reclaiming foreground focus.
 		Initialize-WpfWindowForeground -Window $Form
 		$Form.ShowDialog() | Out-Null
 	}
@@ -680,6 +552,20 @@ function ScheduledTasks
 	if ($CollectSelectionOnly)
 	{
 		return $script:ScheduledTasksSelectionResult
+	}
+
+	if ($Form.PSObject.Properties['GuiPopupOperationError'] -and $Form.GuiPopupOperationError)
+	{
+		$operationError = $Form.GuiPopupOperationError
+		Remove-HandledErrorRecord -ErrorRecord $operationError
+		LogError "Failed to $(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'disable' } else { 'enable' }) scheduled tasks: $($operationError.Exception.Message)"
+		Write-ConsoleStatus -Status failed
+		throw $operationError
+	}
+
+	if ($SelectionState.Confirmed)
+	{
+		Write-ConsoleStatus -Status success
 	}
 
 	if (-not $SelectionState.Confirmed)
@@ -767,6 +653,11 @@ function Powershell7Telemetry
 	.SYNOPSIS
 	Windows Error Reporting
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Error Reporting.
 	.PARAMETER Disable
 	Turn off Windows Error Reporting
 
@@ -802,7 +693,8 @@ function ErrorReporting
 	)
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting", "HKCU:\Software\Policies\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Force -ErrorAction Ignore | Out-Null
+	Remove-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Force -ErrorAction Ignore | Out-Null
+	Remove-RegistryValueSafe -Path "HKCU:\Software\Policies\Microsoft\Windows\Windows Error Reporting" -Name "Disabled" | Out-Null
 	Set-Policy -Scope Computer -Path "SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Type CLEAR | Out-Null
 	Set-Policy -Scope User -Path "Software\Policies\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Type CLEAR | Out-Null
 
@@ -815,7 +707,7 @@ function ErrorReporting
 				try
 				{
 					Get-ScheduledTask -TaskName QueueReporting -ErrorAction Ignore | Disable-ScheduledTask | Out-Null
-					Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\Windows Error Reporting' -Name 'Disabled' -Value 1 -Type DWord | Out-Null
+					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\Windows Error Reporting" -Name Disabled -Type DWord -Value 1 | Out-Null
 					try
 					{
 						Get-Service -Name WerSvc -ErrorAction Stop | Stop-Service -Force -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
@@ -889,6 +781,7 @@ function ErrorReporting
     .NOTES
     Current user
 #>
+
 function WAPPush
 {
 	param
@@ -918,7 +811,7 @@ function WAPPush
 			{
 				Set-Service "dmwappushservice" -StartupType Automatic -ErrorAction Stop | Out-Null
 				Start-Service "dmwappushservice" -WarningAction SilentlyContinue -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice" -Name "DelayedAutoStart" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice" -Name "DelayedAutoStart" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -945,5 +838,13 @@ function WAPPush
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'DiagnosticDataLevel',
+    'DiagTrackService',
+    'ErrorReporting',
+    'Powershell7Telemetry',
+    'Request-GuiScheduledTasksSelection',
+    'ScheduledTasks',
+    'WAPPush'
+)
+Export-ModuleMember -Function $ExportedFunctions

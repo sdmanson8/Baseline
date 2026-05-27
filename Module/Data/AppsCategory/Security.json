@@ -1,0 +1,392 @@
+{
+  "Tab": "Applications",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
+  "Entries": [
+    {
+      "Name": "Malwarebytes",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Anti-malware software for Windows",
+      "Detail": "WinGet: Malwarebytes.Malwarebytes | Chocolatey: malwarebytes",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Malwarebytes.Malwarebytes",
+        "ChocoId": "malwarebytes"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Anti-malware software for Windows",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Malwarebytes AdwCleaner",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Adware removal tool for Windows",
+      "Detail": "WinGet: Malwarebytes.AdwCleaner | Chocolatey: adwcleaner",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Malwarebytes.AdwCleaner",
+        "ChocoId": "adwcleaner"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Adware removal tool for Windows",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Windows Firewall Control",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Malwarebytes Windows Firewall Control application",
+      "Detail": "WinGet: BiniSoft.WindowsFirewallControl | Chocolatey: windowsfirewallcontrol",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "BiniSoft.WindowsFirewallControl",
+        "ChocoId": "windowsfirewallcontrol"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Malwarebytes Windows Firewall Control application",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "OnionShare",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Securely and anonymously share files via Tor network",
+      "Detail": "WinGet: OnionShare.OnionShare | Chocolatey: onionshare",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "OnionShare.OnionShare",
+        "ChocoId": "onionshare"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Securely and anonymously share files via Tor network",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Sniffnet",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Network monitoring tool to analyze your internet traffic",
+      "Detail": "WinGet: ",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "",
+        "StoreUri": "",
+        "DirectUrl": "https://github.com/GyulyVGC/sniffnet/releases",
+        "Command": "Download installer from GitHub releases"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Network monitoring tool to analyze your internet traffic",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "placeholder",
+      "SupportsExecution": false
+    },
+    {
+      "Name": "TeleGuard",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Secure messaging app with end-to-end encryption",
+      "Detail": "WinGet: ",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "",
+        "StoreUri": "",
+        "DirectUrl": "https://mxxthxs.github.io/",
+        "Command": "Download installer from official website"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Secure messaging app with end-to-end encryption",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "placeholder",
+      "SupportsExecution": false
+    },
+    {
+      "Name": "O&O ShutUp10++",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Free antispy tool for Windows 10 and 11",
+      "Detail": "WinGet: OO-Software.ShutUp10 | Chocolatey: shutup10",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "OO-Software.ShutUp10",
+        "ChocoId": "shutup10"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Free antispy tool for Windows 10 and 11",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "Cryptomator",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open-source file encryption tool",
+      "Detail": "WinGet: Cryptomator.Cryptomator | Chocolatey: cryptomator",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Cryptomator.Cryptomator",
+        "ChocoId": "cryptomator"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Open-source file encryption tool",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "VeraCrypt",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open-source disk encryption software",
+      "Detail": "WinGet: IDRIX.VeraCrypt | Chocolatey: veracrypt",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "IDRIX.VeraCrypt",
+        "ChocoId": "veracrypt"
+      },
+      "SubCategory": "Security",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "security"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Open-source disk encryption software",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    }
+  ]
+}

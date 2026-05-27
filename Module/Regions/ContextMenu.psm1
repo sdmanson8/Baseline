@@ -7,6 +7,11 @@ using module ..\SharedHelpers.psm1
 	.SYNOPSIS
 	The "Install" item for the Cabinet (.cab) filenames extensions context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Install" item for the Cabinet (.cab) filenames extensions context menu.
 	.PARAMETER Show
 	Show the "Install" item in the Cabinet (.cab) filenames extensions context menu
 
@@ -90,6 +95,11 @@ function CABInstallContext
 	.SYNOPSIS
 	The "Compressed (zipped) Folder" item in the "New" context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Compressed (zipped) Folder" item in the "New" context menu.
 	.PARAMETER Hide
 	Hide the "Compressed (zipped) Folder" item from the "New" context menu
 
@@ -171,6 +181,11 @@ function CompressedFolderNewContext
 	.SYNOPSIS
 	The "Edit with Clipchamp" item in the media files context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Edit with Clipchamp" item in the media files context menu.
 	.PARAMETER Hide
 	Hide the "Edit with Clipchamp" item from the media files context menu
 
@@ -226,7 +241,7 @@ function EditWithClipchampContext
 				{
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{8AB635F8-9A67-4698-AB99-784AD929F3B4}" -PropertyType String -Value "" -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{8AB635F8-9A67-4698-AB99-784AD929F3B4}" -Type String -Value "" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -257,6 +272,11 @@ function EditWithClipchampContext
 	.SYNOPSIS
 	The "Edit with Paint" item in the media files context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Edit with Paint" item in the media files context menu.
 	.PARAMETER Hide
 	Hide the "Edit with Paint" item from the media files context menu
 
@@ -312,7 +332,7 @@ function EditWithPaintContext
 				{
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{2430F218-B743-4FD6-97BF-5C76541B4AE9}" -PropertyType String -Value "" -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{2430F218-B743-4FD6-97BF-5C76541B4AE9}" -Type String -Value "" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -343,6 +363,11 @@ function EditWithPaintContext
 	.SYNOPSIS
 	The "Edit with Photos" item in the media files context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Edit with Photos" item in the media files context menu.
 	.PARAMETER Hide
 	Hide the "Edit with Photos" item from the media files context menu
 
@@ -398,7 +423,7 @@ function EditWithPhotosContext
 				{
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{BFE0E2A4-C70C-4AD7-AC3D-10D1ECEBB5B4}" -PropertyType String -Value "" -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{BFE0E2A4-C70C-4AD7-AC3D-10D1ECEBB5B4}" -Type String -Value "" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -429,6 +454,11 @@ function EditWithPhotosContext
 	.SYNOPSIS
 	The "Extract all" item in the Windows Installer (.msi) context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Extract all" item in the Windows Installer (.msi) context menu.
 	.PARAMETER Show
 	Show the "Extract all" item in the Windows Installer (.msi) context menu
 
@@ -512,6 +542,11 @@ function MSIExtractContext
 	.SYNOPSIS
 	The "Open", "Print", and "Edit" items if more than 15 files selected
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Open", "Print", and "Edit" items if more than 15 files selected.
 	.PARAMETER Enable
 	Enable the "Open", "Print", and "Edit" items if more than 15 files selected
 
@@ -554,7 +589,7 @@ function MultipleInvokeContext
 			LogInfo "Enabling 'Open', 'Print', and 'Edit' items if more than 15 files selected"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'MultipleInvokePromptMinimum' -Value 300 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name MultipleInvokePromptMinimum -Type DWord -Value 300 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -585,6 +620,11 @@ function MultipleInvokeContext
 	.SYNOPSIS
 	The "Open in Windows Terminal" item in the folders context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Open in Windows Terminal" item in the folders context menu.
 	.PARAMETER Hide
 	Hide the "Open in Windows Terminal" item in the folders context menu
 
@@ -654,7 +694,7 @@ function OpenWindowsTerminalContext
 				{
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -PropertyType String -Value "" -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" -Type String -Value "" | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -670,6 +710,11 @@ function OpenWindowsTerminalContext
 	.SYNOPSIS
 	The "Print" item in the .bat and .cmd context menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Print" item in the .bat and .cmd context menu.
 	.PARAMETER Hide
 	Hide the "Print" item from the .bat and .cmd context menu
 
@@ -745,6 +790,11 @@ function PrintCMDContext
 	.SYNOPSIS
 	The "Look for an app in the Microsoft Store" item in the "Open with" dialog
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the "Look for an app in the Microsoft Store" item in the "Open with" dialog.
 	.PARAMETER Hide
 	Hide the "Look for an app in the Microsoft Store" item in the "Open with" dialog
 
@@ -795,7 +845,7 @@ function UseStoreOpenWith
 				{
 					New-Item -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name NoUseStoreOpenWith -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Policies\Microsoft\Windows\Explorer" -Name NoUseStoreOpenWith -Type DWord -Value 1 | Out-Null
 				Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name NoUseStoreOpenWith -Type DWORD -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
@@ -826,8 +876,38 @@ function UseStoreOpenWith
 
 <#
 	.SYNOPSIS
+	Gets windows terminal settings path.
+
+	#>
+function Get-WindowsTerminalSettingsPath
+{
+	param(
+		[object]$Package
+	)
+
+	if (-not $Package -or [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA))
+	{
+		return $null
+	}
+
+	$packageFamilyName = [string]$Package.PackageFamilyName
+	if ([string]::IsNullOrWhiteSpace($packageFamilyName))
+	{
+		return $null
+	}
+
+	return (Join-Path $env:LOCALAPPDATA ("Packages\{0}\LocalState\settings.json" -f $packageFamilyName))
+}
+
+<#
+	.SYNOPSIS
 	Open Windows Terminal in context menu as administrator
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for open Windows Terminal in context menu as administrator.
 	.PARAMETER Enable
 	Open Windows Terminal in context menu as administrator by default
 
@@ -862,29 +942,75 @@ function OpenWindowsTerminalAdminContext
 		$Disable
 	)
 
-	if (-not (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue))
+	$WindowsTerminalPackage = Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue | Select-Object -First 1
+	if (-not $WindowsTerminalPackage)
 	{
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
 	}
 
-	if (-not (Test-Path -Path "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"))
+	$TerminalSettingsPath = Get-WindowsTerminalSettingsPath -Package $WindowsTerminalPackage
+	if ([string]::IsNullOrWhiteSpace($TerminalSettingsPath))
 	{
-		Start-Process -FilePath wt -PassThru | Out-Null
-		Start-Sleep -Seconds 2
-		Stop-Process -Name WindowsTerminal -Force -PassThru | Out-Null
+		LogWarning "Unable to resolve the Windows Terminal settings path. Skipping."
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+
+		return
+	}
+
+	$TerminalLocalStatePath = Split-Path -Path $TerminalSettingsPath -Parent
+	if (-not (Test-Path -Path $TerminalSettingsPath))
+	{
+		$wtCommand = Get-Command -Name wt -ErrorAction SilentlyContinue | Select-Object -First 1
+		$wtPath = $null
+		if ($wtCommand)
+		{
+			if ($wtCommand.PSObject.Properties['Path'] -and -not [string]::IsNullOrWhiteSpace([string]$wtCommand.Path))
+			{
+				$wtPath = [string]$wtCommand.Path
+			}
+			elseif ($wtCommand.PSObject.Properties['Source'] -and -not [string]::IsNullOrWhiteSpace([string]$wtCommand.Source))
+			{
+				$wtPath = [string]$wtCommand.Source
+			}
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($wtPath))
+		{
+			try
+			{
+				# Best effort: launch Terminal once so it can materialize the LocalState settings file.
+				Start-Process -FilePath $wtPath -PassThru | Out-Null
+				Start-Sleep -Seconds 2
+			}
+			finally
+			{
+				Stop-Process -Name WindowsTerminal -Force -ErrorAction SilentlyContinue | Out-Null
+			}
+		}
+	}
+
+	if (-not (Test-Path -Path $TerminalSettingsPath))
+	{
+		LogWarning ("Windows Terminal settings file not found: {0}" -f $TerminalSettingsPath)
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+
+		return
 	}
 
 	try
 	{
-		$Terminal = Get-Content -Path "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json" -Encoding UTF8 -Force | ConvertFrom-Json
+		$Terminal = Get-Content -Path $TerminalSettingsPath -Encoding UTF8 -Force | ConvertFrom-BaselineJson -Depth 16
 	}
 	catch [System.ArgumentException]
 	{
 		LogError $_.Exception.Message
 
-		Invoke-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
+		if (Test-Path -Path $TerminalLocalStatePath)
+		{
+			Invoke-Item -Path $TerminalLocalStatePath
+		}
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -900,7 +1026,7 @@ function OpenWindowsTerminalAdminContext
 			{
 				Remove-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" | Out-Null
 				Remove-RegistryValueSafe -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked" -Name "{9F156763-7844-4DC4-B2B1-901F640F5155}" | Out-Null
-				if ($Terminal.profiles.defaults.elevate)
+				if ($Terminal.profiles.defaults.PSObject.Properties['elevate'])
 				{
 					$Terminal.profiles.defaults.elevate = $true
 				}
@@ -923,7 +1049,7 @@ function OpenWindowsTerminalAdminContext
 			LogInfo "Disabling opening Windows Terminal in context menu as administrator by default"
 			try
 			{
-				if ($Terminal.profiles.defaults.elevate)
+				if ($Terminal.profiles.defaults.PSObject.Properties['elevate'])
 				{
 					$Terminal.profiles.defaults.elevate = $false
 				}
@@ -944,7 +1070,7 @@ function OpenWindowsTerminalAdminContext
 	try
 	{
 		# Save in UTF-8 with BOM despite JSON must not has the BOM: https://datatracker.ietf.org/doc/html/rfc8259#section-8.1. Unless Terminal profile names which contains non-Latin characters will have "?" instead of titles
-		ConvertTo-Json -InputObject $Terminal -Depth 4 | Set-Content -Path "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json" -Encoding UTF8 -Force -ErrorAction Stop | Out-Null
+		ConvertTo-Json -InputObject $Terminal -Depth 4 | Set-Content -Path $TerminalSettingsPath -Encoding UTF8 -Force -ErrorAction Stop | Out-Null
 	}
 	catch
 	{
@@ -955,4 +1081,238 @@ function OpenWindowsTerminalAdminContext
 
 #endregion Context menu
 
-Export-ModuleMember -Function '*'
+<#
+	.SYNOPSIS
+	Add "Take Ownership" to context menu
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for add "Take Ownership" to context menu.
+	.PARAMETER Add
+	Add "Take Ownership" entry to the context menu
+
+	.PARAMETER Remove
+	Remove "Take Ownership" entry from the context menu
+
+	.EXAMPLE
+	TakeOwnershipContextMenu -Add
+
+	.EXAMPLE
+	TakeOwnershipContextMenu -Remove
+
+	.NOTES
+	Computer policy. Adds UAC elevated context menu entry for taking file/folder ownership.
+
+	Defender ASR caveat:
+	The ASR rule "Block executable files unless trusted" (GUID
+	01443614-cd74-433a-b99e-2ecdc07bfc25) can block takeown.exe when the user
+	invokes the verb against an .exe target. Surfaces as Defender Operational
+	log Event 1121. Mitigation: add a takeown.exe exclusion to that ASR rule
+	via Add-MpPreference -AttackSurfaceReductionOnlyExclusions, or temporarily
+	switch the rule to AuditMode while taking ownership of executables.
+	Not fixable in code - this is Defender behavior; the toggle ships with
+	Caution=$true so the GUI surfaces the warning before the user applies it.
+#>
+function TakeOwnershipContextMenu
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Add"
+		)]
+		[switch]
+		$Add,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Remove"
+		)]
+		[switch]
+		$Remove
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Add"
+		{
+			Write-ConsoleStatus -Action "Adding 'Take Ownership' to context menu"
+			LogInfo "Adding 'Take Ownership' entry to context menu"
+			try
+			{
+				$path = "Registry::HKEY_CLASSES_ROOT\*\shell\TakeOwnership"
+				if (-not (Test-Path -Path $path))
+				{
+					New-Item -Path $path -Force -ErrorAction Stop | Out-Null
+				}
+				Set-ItemProperty -LiteralPath $path -Name "MUIVerb" -Type String -Value "Take Ownership" -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath $path -Name "HasLUAShield" -Type String -Value "" -Force -ErrorAction Stop | Out-Null
+
+				$cmdPath = "$path\command"
+				if (-not (Test-Path -Path $cmdPath))
+				{
+					New-Item -Path $cmdPath -Force -ErrorAction Stop | Out-Null
+				}
+				Set-ItemProperty -LiteralPath $cmdPath -Name "(Default)" -Type String -Value "cmd /c takeown /F `"%1`" /A && icacls `"%1`" /grant:r admins:F /T /C /Q" -Force -ErrorAction Stop | Out-Null
+
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to add Take Ownership to context menu: $($_.Exception.Message)"
+			}
+		}
+		"Remove"
+		{
+			Write-ConsoleStatus -Action "Removing 'Take Ownership' from context menu"
+			LogInfo "Removing 'Take Ownership' entry from context menu"
+			try
+			{
+				$path = "Registry::HKEY_CLASSES_ROOT\*\shell\TakeOwnership"
+				if (Test-Path -Path $path)
+				{
+					Remove-Item -Path $path -Recurse -Force -ErrorAction Stop | Out-Null
+				}
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to remove Take Ownership from context menu: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+
+function Set-TakeOwnershipContextMenu
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Add"
+		)]
+		[switch]
+		$Add,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Remove"
+		)]
+		[switch]
+		$Remove
+	)
+
+	if ($Add)
+	{
+		TakeOwnershipContextMenu -Add
+		return
+	}
+
+	TakeOwnershipContextMenu -Remove
+}
+
+<#
+	.SYNOPSIS
+	Show/Hide file extensions in context menu
+
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for show/Hide file extensions in context menu.
+	.PARAMETER Enable
+	Add "Show/Hide file extensions" toggle to context menu
+
+	.PARAMETER Disable
+	Remove "Show/Hide file extensions" from context menu
+
+	.EXAMPLE
+	Set-FileExtensionsContextMenu -Enable
+
+	.EXAMPLE
+	Set-FileExtensionsContextMenu -Disable
+
+	.NOTES
+	Current user. Quick toggle for showing/hiding file extensions.
+#>
+function Set-FileExtensionsContextMenu
+{
+	param
+	(
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Enable"
+		)]
+		[switch]
+		$Enable,
+
+		[Parameter(
+			Mandatory = $true,
+			ParameterSetName = "Disable"
+		)]
+		[switch]
+		$Disable
+	)
+
+	switch ($PSCmdlet.ParameterSetName)
+	{
+		"Enable"
+		{
+			Write-ConsoleStatus -Action "Adding 'Show/Hide extensions' to context menu"
+			LogInfo "Adding 'Show/Hide file extensions' toggle to context menu"
+			try
+			{
+				$path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+				Set-RegistryValueSafe -Path $path `
+					-Name "ShowFileExtensions" `
+					-Value 1 `
+					-Type DWord | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to add file extensions toggle: $($_.Exception.Message)"
+			}
+		}
+		"Disable"
+		{
+			Write-ConsoleStatus -Action "Removing 'Show/Hide extensions' from context menu"
+			LogInfo "Removing 'Show/Hide file extensions' from context menu"
+			try
+			{
+				$path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+				Remove-RegistryValueSafe -Path $path `
+					-Name "ShowFileExtensions" | Out-Null
+				Write-ConsoleStatus -Status success
+			}
+			catch
+			{
+				Write-ConsoleStatus -Status failed
+				LogError "Failed to remove file extensions toggle: $($_.Exception.Message)"
+			}
+		}
+	}
+}
+$ExportedFunctions = @(
+    'CABInstallContext',
+    'CompressedFolderNewContext',
+    'EditWithClipchampContext',
+    'EditWithPaintContext',
+    'EditWithPhotosContext',
+    'Get-WindowsTerminalSettingsPath',
+    'MSIExtractContext',
+    'MultipleInvokeContext',
+    'OpenWindowsTerminalAdminContext',
+    'OpenWindowsTerminalContext',
+    'PrintCMDContext',
+    'Set-FileExtensionsContextMenu',
+    'Set-TakeOwnershipContextMenu',
+    'TakeOwnershipContextMenu',
+    'UseStoreOpenWith'
+)
+Export-ModuleMember -Function $ExportedFunctions

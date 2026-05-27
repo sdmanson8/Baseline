@@ -31,10 +31,16 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether apps are allowed to run and update in the background when they are not in focus. Disabling saves CPU and memory. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "When disabled, UWP apps do not receive updates, notifications, or trigger background tasks while not in the foreground. Live tile data and push notifications will stop refreshing.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "High"
+      "CompatibilitySensitivity": "High",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Background Apps is a client-only UWP runtime setting."
+      }
     },
     {
       "Name": "Copilot App",
@@ -47,6 +53,7 @@
       "DisplayOptions": null,
       "Default": null,
       "WinDefault": "Install",
+      "TimeoutSeconds": 900,
       "Description": "Install or remove Copilot, Recall, and Windows AI components",
       "Detail": "Uninstall removes: Copilot app and Store package, Copilot in Windows Search, Copilot sidebar in Edge, Image Creator in Paint, Recall and its scheduled tasks, AI voice effects, App Actions, WSAIFabric and Agent Activation services, .copilot file extension, AI Appx packages, and related registry policies. Install attempts to restore the Copilot Store app via winget or Microsoft Store.",
       "Caution": true,
@@ -68,10 +75,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Removes Copilot, Recall, and all related Windows AI components. Reinstalling requires winget or Microsoft Store access.",
+      "WhyThisMatters": "Removes Copilot, Recall, and the related Windows AI component packages. Reinstallation requires winget or Microsoft Store access.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Manual",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Copilot and related Windows AI components are client-only Windows 10/11 features."
+      }
     },
     {
       "Name": "Cortana Autostart",
@@ -102,10 +115,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "Prevents Cortana from launching automatically at startup. Cortana can still be opened manually if needed.",
+      "WhyThisMatters": "Prevents Cortana from registering a startup entry. Cortana can still be launched manually; this only stops it from starting automatically with Windows.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Cortana is a client-only UWP component."
+      }
     },
     {
       "Name": "Edge Debloat",
@@ -137,10 +156,58 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Applies Group Policy settings to disable telemetry, shopping assistant, collections, Copilot sidebar, and other optional Edge extras. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Writes Group Policy values to disable Edge telemetry, the shopping assistant, Collections, the Copilot sidebar, and other optional features. Does not affect browsing, sync, or extensions.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true,
+        "UnavailableReason": "Microsoft Edge ships on client and server editions, but the underlying policies still apply only where Edge is installed."
+      }
+    },
+    {
+      "Name": "Remove Microsoft Edge",
+      "Function": "EdgeRemoval",
+      "Type": "Action",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": true,
+      "Description": "Remove Microsoft Edge (Legacy + Chromium); preserve EdgeWebView2",
+      "Detail": "One-way removal of Legacy UWP Edge, Chromium Edge, and EdgeUpdate. EdgeWebView2 (required by other apps) is preserved by backing up and restoring its ClientState registry. Installs an OpenWebSearch protocol redirect via ie_to_edge_stub.exe so links resolving through MSEdgeHTM are forwarded to the user's actual default browser. HKCU UserChoice ProgId for .html/.htm/.xml/.pdf is preserved (non-MSEdgeHTM defaults are restored after removal). Logs to %ProgramData%\\Baseline\\Logs\\EdgeRemovalLog.txt.",
+      "Caution": true,
+      "CautionReason": "Destructive and difficult to reverse. Removes Microsoft Edge entirely from the system; reinstalling requires Windows Update component repair, an offline installer, or a full feature update. Some Windows features that hard-depend on Edge (certain Settings deeplinks, PDF previews, Widgets) may misbehave or fail. Run only if you have an alternative browser already installed and set as default.",
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": false,
+      "OnParam": "Remove",
+      "OffParam": null,
+      "ExtraArgs": null,
+      "SubCategory": "Tweaks",
+      "SourceRegion": "UWPApps",
+      "WinDefaultDesc": "Microsoft Edge is installed and shipped with Windows",
+      "Risk": "High",
+      "Tags": [
+        "browser",
+        "debloat",
+        "edge",
+        "removal"
+      ],
+      "Impact": "High",
+      "Safe": false,
+      "RequiresRestart": true,
+      "WhyThisMatters": "Removes Microsoft Edge entirely. EdgeWebView2 is preserved (required by Outlook, Teams, and other apps). The OpenWebSearch redirect ensures that links opened via the microsoft-edge:// protocol still launch — they are forwarded to the user's default browser instead of failing.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "RestorePoint",
+      "CompatibilitySensitivity": "High",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Edge removal is gated to client editions; Server installations rely on Edge for tooling and remote administration."
+      }
     },
     {
       "Name": "New Outlook",
@@ -171,10 +238,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether the new Outlook app is available. Disable to keep using the classic Mail and Calendar apps instead.",
+      "WhyThisMatters": "Removes or disables the new Outlook (formerly Mail & Calendar) app. Disabling reverts to the classic Win32 Outlook or Mail app.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "New Outlook is a client-only UWP app."
+      }
     },
     {
       "Name": "Notifications",
@@ -205,10 +278,16 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Master switch for the entire Windows notification system. Disabling stops all app notifications and hides the notification center. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Disables the entire Windows notification system. No app will be able to deliver toasts or badge updates, and the Action Center will be empty.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Disabling the Notification Tray is a client-only personalization setting."
+      }
     },
     {
       "Name": "Revert Start Menu (24H2)",
@@ -240,10 +319,17 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Reverts the Start Menu to the pre-24H2 layout on Windows 11 24H2 builds. May affect compatibility with future Windows updates. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Rolls back the Start Menu layout introduced in Windows 11 24H2. Applied via a registry key that may be reset by future Windows updates.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 26100,
+        "UnavailableReason": "The 24H2 Start Menu rollback only applies to Windows 11 24H2 (build 26100) and newer."
+      }
     },
     {
       "Name": "UWP Apps (Bulk)",
@@ -256,6 +342,7 @@
       "DisplayOptions": null,
       "Default": "Uninstall",
       "WinDefault": "Install",
+      "TimeoutSeconds": 1800,
       "Description": "Bulk install or uninstall selected Windows Store apps",
       "Detail": "Opens a selection dialog to remove or restore selected Windows Store apps. This is package management rather than a simple toggle, and some removals cannot be reversed automatically.",
       "Caution": true,
@@ -276,10 +363,16 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Opens a selection dialog to remove or restore selected Windows Store apps. Some removals are one-way, and even supported restore paths can still require Microsoft Store, winget, or manual reinstall follow-up. This is a high-risk package operation rather than a simple toggle.",
+      "WhyThisMatters": "Opens a selection dialog to remove or restore Store apps in bulk. Some removals are one-way or require winget, Microsoft Store, or manual reinstall to reverse.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Manual",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Bulk Store-app management targets the consumer Appx packages on client editions."
+      }
     }
   ]
 }

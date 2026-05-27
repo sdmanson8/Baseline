@@ -1,0 +1,7 @@
+# Force users into one of the structured templates so issues arrive with the
+# context Baseline maintainers need (version, build, applied tweaks, log path).
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/sdmanson8/Baseline/discussions
+    about: For general questions, share-your-setup posts, or open-ended discussion.

@@ -1,7 +1,12 @@
 <#
 	.SYNOPSIS
-	The "Process Creation" Event Viewer custom view
+	Configures the "Process Creation" Event Viewer custom view.
 
+
+
+.DESCRIPTION
+
+Applies the "Process Creation" Event Viewer custom view in GUI and headless runs.
 	.PARAMETER Enable
 	Create the "Process Creation" custom view in the Event Viewer to log executed processes and their arguments
 
@@ -20,6 +25,7 @@
 	.NOTES
 	Machine-wide
 #>
+
 function EventViewerCustomView
 {
 	param
@@ -114,6 +120,11 @@ function EventViewerCustomView
 	.SYNOPSIS
 	Logging for all Windows PowerShell modules
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for logging for all Windows PowerShell modules.
 	.PARAMETER Enable
 	Enable logging for all Windows PowerShell modules
 
@@ -196,6 +207,11 @@ function PowerShellModulesLogging
 	.SYNOPSIS
 	Logging for all PowerShell scripts input to the Windows PowerShell event log
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for logging for all PowerShell scripts input to the Windows PowerShell event log.
 	.PARAMETER Enable
 	Enable logging for all PowerShell scripts input to the Windows PowerShell event log
 
@@ -275,6 +291,11 @@ function PowerShellScriptsLogging
 	.SYNOPSIS
 	Detection for potentially unwanted applications
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for detection for potentially unwanted applications.
 	.PARAMETER Enable
 	Enable detection for potentially unwanted applications and block them
 
@@ -309,10 +330,9 @@ function PUAppsDetection
 		$Disable
 	)
 
-	if (-not $Script:DefenderEnabled)
+	if (-not (Test-BaselineDefenderExecutionAvailable))
 	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
+		LogWarning ("Skipping {0}: {1}" -f (Get-TweakSkipLabel $MyInvocation), (Get-BaselineDefenderExecutionUnavailableReason))
 		return
 	}
 
@@ -355,6 +375,11 @@ function PUAppsDetection
 	.SYNOPSIS
 	The Attachment Manager
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the Attachment Manager.
 	.PARAMETER Disable
 	Microsoft Defender SmartScreen doesn't marks downloaded files from the Internet as unsafe
 
@@ -405,7 +430,7 @@ function SaveZoneInformation
 				{
 					New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments -Name SaveZoneInformation -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments" -Name SaveZoneInformation -Type DWord -Value 1 | Out-Null
 				Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Attachments -Name SaveZoneInformation -Type DWORD -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
@@ -438,6 +463,11 @@ function SaveZoneInformation
 	.SYNOPSIS
 	Sharing mapped drives between elevated and standard user sessions
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for sharing mapped drives between elevated and standard user sessions.
 	.PARAMETER Enable
 	Enable sharing mapped drives between users
 
@@ -480,7 +510,7 @@ function SharingMappedDrives
 			LogInfo "Enabling sharing mapped drives between users"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLinkedConnections" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLinkedConnections" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -512,6 +542,11 @@ function SharingMappedDrives
 	.SYNOPSIS
 	Windows Sandbox
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Sandbox.
 	.PARAMETER Disable
 	Disable Windows Sandbox (default value)
 
@@ -641,6 +676,11 @@ function WindowsSandbox
 	.SYNOPSIS
 	Windows Script Host
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Script Host.
 	.PARAMETER Disable
 	Disable Windows Script Host
 
@@ -659,6 +699,7 @@ function WindowsSandbox
 	.NOTES
 	Current user
 #>
+
 function WindowsScriptHost
 {
 	param
@@ -701,7 +742,7 @@ function WindowsScriptHost
 				{
 					New-Item -Path "HKCU:\Software\Microsoft\Windows Script Host\Settings" -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows Script Host\Settings" -Name Enabled -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows Script Host\Settings" -Name Enabled -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -727,5 +768,14 @@ function WindowsScriptHost
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'EventViewerCustomView',
+    'PowerShellModulesLogging',
+    'PowerShellScriptsLogging',
+    'PUAppsDetection',
+    'SaveZoneInformation',
+    'SharingMappedDrives',
+    'WindowsSandbox',
+    'WindowsScriptHost'
+)
+Export-ModuleMember -Function $ExportedFunctions

@@ -1,11 +1,22 @@
 ﻿Set-StrictMode -Version Latest
 
 BeforeAll {
-    $guiPath = Join-Path $PSScriptRoot '../../Module/Regions/GUI.psm1'
+    $sourceContentHelperPath = Join-Path $PSScriptRoot 'Support/SourceContent.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $sourceContentHelperPath)) { $sourceContentHelperPath = Join-Path $PSScriptRoot '../Support/SourceContent.Helpers.ps1' }
+    . $sourceContentHelperPath
+
+
+    $xamlPath = Join-Path $PSScriptRoot '../../Module/GUI/MainWindow.xaml'
+    $buildPrimaryTabsPath = Join-Path $PSScriptRoot '../../Module/GUI/BuildPrimaryTabs.ps1'
+    $windowSetupPath = Join-Path $PSScriptRoot '../../Module/GUI/WindowSetup.ps1'
     $tabMgmtPath = Join-Path $PSScriptRoot '../../Module/GUI/TabManagement.ps1'
 
-    $script:GuiContent = Get-Content -LiteralPath $guiPath -Raw -Encoding UTF8
-    $script:TabMgmtContent = Get-Content -LiteralPath $tabMgmtPath -Raw -Encoding UTF8
+    $script:GuiContent = @(
+        Get-BaselineTestSourceText -Path $xamlPath
+        Get-BaselineTestSourceText -Path $buildPrimaryTabsPath
+        Get-BaselineTestSourceText -Path $windowSetupPath
+    ) -join "`n"
+    $script:TabMgmtContent = Get-BaselineTestSourceText -Path $tabMgmtPath
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -128,6 +139,9 @@ Describe 'Responsive tab/dropdown switching contracts' {
             $script:TabMgmtContent | Should -Match '\$tab -eq \$PrimaryTabs\.SelectedItem'
             $script:TabMgmtContent | Should -Match 'FontWeight.*SemiBold'
             $script:TabMgmtContent | Should -Match 'FontWeight.*Normal'
+            $script:TabMgmtContent | Should -Match '\$tab\.Foreground = \$bc\.ConvertFromString\(''#FFFFFF''\)'
+            $script:TabMgmtContent | Should -Match '\[bool\]\$Script:SafeMode -and \$Script:CurrentTheme\.ContainsKey\(''StateAccent''\)'
+            $script:TabMgmtContent | Should -Match '\$tab\.BorderThickness = \[System\.Windows\.Thickness\]::new\(0, 0, 0, 2\)'
         }
 
         It 'hover effects register MouseEnter, MouseLeave, GotKeyboardFocus, LostKeyboardFocus handlers' {

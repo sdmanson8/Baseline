@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline -- registry operations, policy setting, and hive management.
+# Shared helpers for Baseline -- registry operations, policy setting, and hive management.
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-Policy
 {
@@ -77,6 +81,10 @@ function Set-Policy
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-CurrentWindowsUserSid
 {
 	<# .SYNOPSIS Resolves the current Windows user's SID from WindowsIdentity. #>
@@ -135,13 +143,17 @@ function ConvertTo-NativeRegistryPath
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function ConvertTo-RegExeValueType
 {
 	<# .SYNOPSIS Converts PowerShell registry type names to reg.exe format (REG_DWORD, REG_SZ, etc.). #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
-		[ValidateSet('DWord', 'String', 'QWord', 'Binary', 'ExpandString', 'MultiString')]
+		[ValidateSet('DWord', 'String', 'QWord', 'Binary', 'ExpandString', 'MultiString', 'None')]
 		[string]
 		$Type
 	)
@@ -154,8 +166,13 @@ function ConvertTo-RegExeValueType
 		'Binary'       { return 'REG_BINARY' }
 		'ExpandString' { return 'REG_EXPAND_SZ' }
 		'MultiString'  { return 'REG_MULTI_SZ' }
+		'None'         { return 'REG_NONE' }
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Dismount-RegistryHive
 {
@@ -195,6 +212,10 @@ function Dismount-RegistryHive
 
 	return (-not (Test-Path -Path $PsPath))
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Mount-RegistryHive
 {
@@ -242,6 +263,10 @@ function Mount-RegistryHive
 	return $false
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-RegistryValueEquivalent
 {
 	<# .SYNOPSIS Compares current and desired registry values accounting for type differences. #>
@@ -271,6 +296,7 @@ function Test-RegistryValueEquivalent
 		'EXPANDSTRING' { 'ExpandString' }
 		'MULTISTRING'  { 'MultiString' }
 		'BINARY'       { 'Binary' }
+		'NONE'         { 'None' }
 		default        { $Type }
 	}
 
@@ -284,12 +310,16 @@ function Test-RegistryValueEquivalent
 		'DWORD'
 		{
 			try { return ([int64]$CurrentValue -eq [int64]$DesiredValue) }
-			catch { return ([string]$CurrentValue -eq [string]$DesiredValue) }
+			catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Registry.Helpers.Test-RegistryValueEquivalent:catch313' -Severity Debug }
+			 return ([string]$CurrentValue -eq [string]$DesiredValue) }
 		}
 		'QWORD'
 		{
 			try { return ([int64]$CurrentValue -eq [int64]$DesiredValue) }
-			catch { return ([string]$CurrentValue -eq [string]$DesiredValue) }
+			catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Registry.Helpers.Test-RegistryValueEquivalent:catch318' -Severity Debug }
+			 return ([string]$CurrentValue -eq [string]$DesiredValue) }
 		}
 		'STRING' { return ([string]$CurrentValue -eq [string]$DesiredValue) }
 		'EXPANDSTRING' { return ([string]$CurrentValue -eq [string]$DesiredValue) }
@@ -304,7 +334,7 @@ function Test-RegistryValueEquivalent
 			}
 			return $true
 		}
-		'BINARY'
+		{ $_ -in @('BINARY', 'NONE') }
 		{
 			$currentBytes = [byte[]]@($CurrentValue)
 			$desiredBytes = [byte[]]@($DesiredValue)
@@ -321,6 +351,10 @@ function Test-RegistryValueEquivalent
 		}
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-RegistryValueSafe
 {
@@ -340,7 +374,7 @@ function Set-RegistryValueSafe
 		$Value,
 
 		[Parameter(Mandatory = $true)]
-		[ValidateSet('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord')]
+		[ValidateSet('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord', 'None')]
 		[string]
 		$Type,
 
@@ -355,6 +389,11 @@ function Set-RegistryValueSafe
 		[switch]
 		$SkipOnAccessDenied
 	)
+
+	if (Get-Command -Name 'Assert-BaselineWriteAllowed' -ErrorAction SilentlyContinue)
+	{
+		Assert-BaselineWriteAllowed -Operation ("Set-RegistryValueSafe({0}\{1})" -f $Path, $Name)
+	}
 
 	try
 	{
@@ -374,10 +413,12 @@ function Set-RegistryValueSafe
 		}
 		catch
 		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Registry.Helpers.Set-RegistryValueSafe:catch410' -Severity Debug }
+
 			$currentValueKind = $null
 		}
 
-		$existingProperty = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
+		$existingProperty = Get-ItemProperty -Path $Path -ErrorAction Ignore
 		if ($existingProperty -and $existingProperty.PSObject.Properties[$Name])
 		{
 			$currentValue = $existingProperty.PSObject.Properties[$Name].Value
@@ -408,6 +449,8 @@ function Set-RegistryValueSafe
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Registry.Helpers.Set-RegistryValueSafe:catch444' -Severity Debug }
+
 				$FallbackSucceeded = $false
 			}
 		}
@@ -441,9 +484,153 @@ function Set-RegistryValueSafe
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Remove-RegistryValueSafe
 {
 	<# .SYNOPSIS Safely removes a registry value, returning $true if removed or $false if absent. #>
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[string[]]
+		$Path,
+
+		[Parameter(Mandatory = $true)]
+		[string[]]
+		$Name
+	)
+
+	$removedAny = $false
+
+	foreach ($singlePath in @($Path))
+	{
+		if ([string]::IsNullOrWhiteSpace([string]$singlePath))
+		{
+			continue
+		}
+
+		foreach ($singleName in @($Name))
+		{
+			if ([string]::IsNullOrWhiteSpace([string]$singleName))
+			{
+				continue
+			}
+
+			if (Get-Command -Name 'Assert-BaselineWriteAllowed' -ErrorAction SilentlyContinue)
+			{
+				Assert-BaselineWriteAllowed -Operation ("Remove-RegistryValueSafe({0}\{1})" -f $singlePath, $singleName)
+			}
+
+			try
+			{
+				if (-not (Test-Path -Path $singlePath))
+				{
+					continue
+				}
+
+				$existingProperty = Get-ItemProperty -Path $singlePath -ErrorAction Ignore
+				if (-not ($existingProperty -and $existingProperty.PSObject.Properties[$singleName]))
+				{
+					continue
+				}
+
+				Remove-ItemProperty -Path $singlePath -Name $singleName -Force -ErrorAction Stop | Out-Null
+				$removedAny = $true
+			}
+			catch
+			{
+				throw "Failed to remove registry value '$singleName' at '$singlePath': $($_.Exception.Message)"
+			}
+		}
+	}
+
+	return $removedAny
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function ConvertTo-RegistryCompositeStringValue
+{
+	<# .SYNOPSIS Updates a semicolon-delimited registry string while preserving unrelated key/value pairs. #>
+	param
+	(
+		[Parameter(Mandatory = $false)]
+		[string]
+		$CurrentValue,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$CompositeStringKey,
+
+		[Parameter(Mandatory = $true)]
+		[AllowEmptyString()]
+		[string]
+		$Value
+	)
+
+	$normalizedKey = $CompositeStringKey.Trim()
+	$parts = [System.Collections.Generic.List[string]]::new()
+	$keyMatched = $false
+
+	if (-not [string]::IsNullOrWhiteSpace($CurrentValue))
+	{
+		foreach ($segment in $CurrentValue.Split(';'))
+		{
+			$token = $segment.Trim()
+			if ([string]::IsNullOrWhiteSpace($token))
+			{
+				continue
+			}
+
+			$equalsIndex = $token.IndexOf('=')
+			if ($equalsIndex -lt 0)
+			{
+				$parts.Add($token)
+				continue
+			}
+
+			$segmentKey = $token.Substring(0, $equalsIndex).Trim()
+			$segmentValue = $token.Substring($equalsIndex + 1).Trim()
+
+			if ($segmentKey.Equals($normalizedKey, [System.StringComparison]::OrdinalIgnoreCase))
+			{
+				if (-not $keyMatched)
+				{
+					$parts.Add(('{0}={1}' -f $normalizedKey, $Value))
+					$keyMatched = $true
+				}
+
+				continue
+			}
+
+			$parts.Add(('{0}={1}' -f $segmentKey, $segmentValue))
+		}
+	}
+
+	if (-not $keyMatched)
+	{
+		$parts.Add(('{0}={1}' -f $normalizedKey, $Value))
+	}
+
+	if ($parts.Count -eq 0)
+	{
+		return $null
+	}
+
+	return (($parts -join ';') + ';')
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Set-RegistryCompositeStringValue
+{
+	<# .SYNOPSIS Sets a key=value pair inside a semicolon-delimited registry string without clobbering unrelated pairs. #>
 	param
 	(
 		[Parameter(Mandatory = $true)]
@@ -452,30 +639,57 @@ function Remove-RegistryValueSafe
 
 		[Parameter(Mandatory = $true)]
 		[string]
-		$Name
+		$Name,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$CompositeStringKey,
+
+		[Parameter(Mandatory = $true)]
+		[object]
+		$Value
 	)
 
 	try
 	{
 		if (-not (Test-Path -Path $Path))
 		{
-			return $false
+			New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
 		}
 
 		$existingProperty = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
-		if (-not ($existingProperty -and $existingProperty.PSObject.Properties[$Name]))
+		$currentValue = $null
+		if ($existingProperty -and $existingProperty.PSObject.Properties[$Name])
+		{
+			$currentValue = [string]$existingProperty.PSObject.Properties[$Name].Value
+		}
+
+		$desiredValue = ConvertTo-RegistryCompositeStringValue -CurrentValue $currentValue -CompositeStringKey $CompositeStringKey -Value ([string]$Value)
+		if ($currentValue -eq $desiredValue)
 		{
 			return $false
 		}
 
-		Remove-ItemProperty -Path $Path -Name $Name -Force -ErrorAction Stop | Out-Null
+		if ($existingProperty -and $existingProperty.PSObject.Properties[$Name])
+		{
+			Set-ItemProperty -Path $Path -Name $Name -Type String -Value $desiredValue -Force -ErrorAction Stop | Out-Null
+		}
+		else
+		{
+			New-ItemProperty -Path $Path -Name $Name -PropertyType String -Value $desiredValue -Force -ErrorAction Stop | Out-Null
+		}
+
 		return $true
 	}
 	catch
 	{
-		throw "Failed to remove registry value '$Name' at '$Path': $($_.Exception.Message)"
+		throw "Failed to set composite registry value '$Name' at '$Path': $($_.Exception.Message)"
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-SystemTweaksRegistryValue
 {
@@ -499,6 +713,10 @@ function Set-SystemTweaksRegistryValue
 	Set-RegistryValueSafe -Path $Path -Name $Name -Value $Value -Type $Type | Out-Null
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Remove-SystemTweaksRegistryValue
 {
 	<# .SYNOPSIS Wrapper that removes a registry value via Remove-RegistryValueSafe for system tweaks. #>
@@ -513,3 +731,4 @@ function Remove-SystemTweaksRegistryValue
 
 	return Remove-RegistryValueSafe -Path $Path -Name $Name
 }
+

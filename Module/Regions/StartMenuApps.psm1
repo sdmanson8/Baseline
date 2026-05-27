@@ -7,6 +7,11 @@ using module ..\SharedHelpers.psm1
 	.SYNOPSIS
 	Most used apps in Start
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for most used apps in Start.
 	.PARAMETER Hide
 	Hide most used Apps in Start (default value)
 
@@ -42,11 +47,11 @@ function MostUsedStartApps
 	)
 
 	# Remove all policies in order to make changes visible in UI
-	Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer, HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer -Name ShowOrHideMostUsedApps -Force -ErrorAction SilentlyContinue | Out-Null
+	Remove-RegistryValueSafe -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer, HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer -Name ShowOrHideMostUsedApps | Out-Null
 	Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name ShowOrHideMostUsedApps -Type CLEAR | Out-Null
 	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\Explorer -Name ShowOrHideMostUsedApps -Type CLEAR | Out-Null
 
-	Remove-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoStartMenuMFUprogramsList, NoInstrumentation -Force -ErrorAction SilentlyContinue | Out-Null
+	Remove-RegistryValueSafe -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer, HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoStartMenuMFUprogramsList, NoInstrumentation | Out-Null
 	Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoStartMenuMFUprogramsList -Type CLEAR | Out-Null
 	Set-Policy -Scope User -Path Software\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoInstrumentation -Type CLEAR | Out-Null
 	Set-Policy -Scope Computer -Path SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer -Name NoStartMenuMFUprogramsList -Type CLEAR | Out-Null
@@ -72,7 +77,7 @@ function MostUsedStartApps
 				{
 					New-Item -Path $StartSettingsPath -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path $StartSettingsPath -Name ShowFrequentList -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name ShowFrequentList -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -104,6 +109,11 @@ function MostUsedStartApps
 	.SYNOPSIS
 	Recently added apps on Start
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for recently added apps on Start.
 	.PARAMETER Hide
 	Hide recently added apps on Start
 
@@ -139,7 +149,7 @@ function RecentlyAddedStartApps
 	)
 
 	# Remove all policies in order to make changes visible in UI
-	Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer, HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer -Name HideRecentlyAddedApps -Force -ErrorAction SilentlyContinue | Out-Null
+	Remove-RegistryValueSafe -Path HKCU:\Software\Policies\Microsoft\Windows\Explorer, HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer -Name HideRecentlyAddedApps | Out-Null
 	Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\Explorer -Name HideRecentlyAddedApps -Type CLEAR | Out-Null
 	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Windows\Explorer -Name HideRecentlyAddedApps -Type CLEAR | Out-Null
 
@@ -163,7 +173,7 @@ function RecentlyAddedStartApps
 				{
 					New-Item -Path $StartSettingsPath -Force -ErrorAction Stop | Out-Null
 				}
-				New-ItemProperty -Path $StartSettingsPath -Name ShowRecentList -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name ShowRecentList -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -195,6 +205,11 @@ function RecentlyAddedStartApps
 	.SYNOPSIS
 	All section with categories in Start
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for all section with categories in Start.
 	.PARAMETER Hide
 	Remove the All section with categories in Start
 
@@ -302,6 +317,11 @@ function StartMenuAllSectionCategories
 	.SYNOPSIS
 	Most used apps list in Start Menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for most used apps list in Start Menu.
 	.PARAMETER Enable
 	Show most used apps list in Start Menu
 
@@ -362,7 +382,7 @@ function MostUsedApps
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMFUprogramsList" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -378,6 +398,11 @@ function MostUsedApps
 	.SYNOPSIS
 	Recently added apps list in Start Menu
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for recently added apps list in Start Menu.
 	.PARAMETER Enable
 	Show recently added apps list in Start Menu
 
@@ -438,7 +463,7 @@ function RecentlyAddedApps
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" -Name "HideRecentlyAddedApps" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -449,5 +474,11 @@ function RecentlyAddedApps
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'MostUsedApps',
+    'MostUsedStartApps',
+    'RecentlyAddedApps',
+    'RecentlyAddedStartApps',
+    'StartMenuAllSectionCategories'
+)
+Export-ModuleMember -Function $ExportedFunctions

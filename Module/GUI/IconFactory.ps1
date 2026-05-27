@@ -1,3 +1,7 @@
+<#
+    .SYNOPSIS
+#>
+
 function Initialize-GuiIconSystem
 {
     <# .SYNOPSIS Initializes the icon font and enables text-only fallback if loading fails. #>
@@ -38,6 +42,10 @@ function Initialize-GuiIconSystem
     }
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-GuiIconsAvailable
 {
     <# .SYNOPSIS Returns true when the icon system is fully available. #>
@@ -46,6 +54,25 @@ function Test-GuiIconsAvailable
 
     return ($Script:GuiIconEnabled -and $null -ne $Script:GuiIconFontFamily)
 }
+
+function Test-GuiPositiveFontSize
+{
+    <# .SYNOPSIS Returns true when a font size is a finite positive value. #>
+    [CmdletBinding()]
+    param(
+        [double]$Value
+    )
+
+    return (
+        $Value -gt 0 -and
+        -not [double]::IsNaN($Value) -and
+        -not [double]::IsInfinity($Value)
+    )
+}
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GuiStatusBrushByKind
 {
@@ -74,6 +101,65 @@ function Get-GuiStatusBrushByKind
         default    { return ConvertTo-GuiBrush -Color $Theme.TextPrimary -Context 'Get-GuiStatusBrushByKind/Default' }
     }
 }
+
+<#
+    .SYNOPSIS
+#>
+
+function Resolve-GuiBrushInput
+{
+    <# .SYNOPSIS Normalizes brush inputs so WPF never receives wrapped PowerShell objects. #>
+    [CmdletBinding()]
+    param(
+        [object]$Value,
+        [string]$Context = 'GUI'
+    )
+
+    if ($null -eq $Value)
+    {
+        return $null
+    }
+
+    $resolvedValue = $Value
+    if ($Value -is [System.Management.Automation.PSObject])
+    {
+        $baseObjectProperty = $Value.PSObject.Properties['BaseObject']
+        if ($baseObjectProperty)
+        {
+            $resolvedValue = $baseObjectProperty.Value
+        }
+    }
+    if ($resolvedValue -is [System.Windows.Media.Brush])
+    {
+        return [System.Windows.Media.Brush]$resolvedValue
+    }
+
+    $colorText = [string]$resolvedValue
+    if ([string]::IsNullOrWhiteSpace($colorText))
+    {
+        return $null
+    }
+
+    try
+    {
+        if (Get-Command -Name 'ConvertTo-GuiBrush' -CommandType Function -ErrorAction SilentlyContinue)
+        {
+            return [System.Windows.Media.Brush](ConvertTo-GuiBrush -Color $colorText -Context $Context)
+        }
+
+        return [System.Windows.Media.Brush]([System.Windows.Media.BrushConverter]::new().ConvertFromString($colorText))
+    }
+    catch
+    {
+	if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'IconFactory.Resolve-GuiBrushInput:catch152' -Severity Debug }
+
+        return $null
+    }
+}
+
+<#
+    .SYNOPSIS
+#>
 
 function New-GuiIconTextBlock
 {
@@ -104,7 +190,10 @@ function New-GuiIconTextBlock
     $tb = [System.Windows.Controls.TextBlock]::new()
     $tb.Text = [string]$glyph
     $tb.FontFamily = $Script:GuiIconFontFamily
-    $tb.FontSize = $Size
+    if (Test-GuiPositiveFontSize -Value $Size)
+    {
+        $tb.FontSize = $Size
+    }
     $tb.VerticalAlignment = $VerticalAlignment
     $tb.TextAlignment = 'Center'
     $tb.TextWrapping = 'NoWrap'
@@ -112,9 +201,10 @@ function New-GuiIconTextBlock
     $tb.UseLayoutRounding = $true
     $tb.SnapsToDevicePixels = $true
 
-    if ($null -ne $Foreground)
+    $resolvedForeground = Resolve-GuiBrushInput -Value $Foreground -Context 'New-GuiIconTextBlock'
+    if ($null -ne $resolvedForeground)
     {
-        $tb.Foreground = $Foreground
+        $tb.Foreground = $resolvedForeground
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ToolTip))
@@ -125,6 +215,10 @@ function New-GuiIconTextBlock
     return $tb
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function New-GuiLabeledIconContent
 {
     <# .SYNOPSIS Creates a horizontal icon + text content container with text-only fallback. #>
@@ -134,6 +228,7 @@ function New-GuiLabeledIconContent
         [string]$IconName,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Text,
 
         [double]$IconSize = 16,
@@ -152,10 +247,13 @@ function New-GuiLabeledIconContent
     $panel.UseLayoutRounding = $true
     $panel.SnapsToDevicePixels = $true
 
-    $icon = New-GuiIconTextBlock -IconName $IconName -Size $IconSize -Foreground $Foreground -ToolTip $ToolTip -VerticalAlignment $VerticalAlignment
+    $resolvedForeground = Resolve-GuiBrushInput -Value $Foreground -Context 'New-GuiLabeledIconContent'
+    $icon = New-GuiIconTextBlock -IconName $IconName -Size $IconSize -Foreground $resolvedForeground -ToolTip $ToolTip -VerticalAlignment $VerticalAlignment
+    $hasText = -not [string]::IsNullOrEmpty($Text)
+
     if ($icon)
     {
-        $icon.Margin = [System.Windows.Thickness]::new(0, 0, $Gap, 0)
+        $icon.Margin = [System.Windows.Thickness]::new(0, 0, $(if ($hasText) { $Gap } else { 0 }), 0)
         [void]$panel.Children.Add($icon)
     }
     elseif (-not $AllowTextOnlyFallback)
@@ -163,30 +261,40 @@ function New-GuiLabeledIconContent
         return $null
     }
 
-    $label = [System.Windows.Controls.TextBlock]::new()
-    $label.Text = $Text
-    $label.FontSize = $TextFontSize
-    $label.VerticalAlignment = $VerticalAlignment
-    $label.TextWrapping = 'NoWrap'
-    $label.TextTrimming = 'CharacterEllipsis'
-    if ($Bold)
+    if ($hasText)
     {
-        $label.FontWeight = [System.Windows.FontWeights]::SemiBold
-    }
+        $label = [System.Windows.Controls.TextBlock]::new()
+        $label.Text = $Text
+        if (Test-GuiPositiveFontSize -Value $TextFontSize)
+        {
+            $label.FontSize = $TextFontSize
+        }
+        $label.VerticalAlignment = $VerticalAlignment
+        $label.TextWrapping = 'NoWrap'
+        $label.TextTrimming = 'CharacterEllipsis'
+        if ($Bold)
+        {
+            $label.FontWeight = [System.Windows.FontWeights]::SemiBold
+        }
 
-    if ($null -ne $Foreground)
-    {
-        $label.Foreground = $Foreground
-    }
+        if ($null -ne $resolvedForeground)
+        {
+            $label.Foreground = $resolvedForeground
+        }
 
-    if (-not [string]::IsNullOrWhiteSpace($ToolTip))
-    {
-        $label.ToolTip = $ToolTip
-    }
+        if (-not [string]::IsNullOrWhiteSpace($ToolTip))
+        {
+            $label.ToolTip = $ToolTip
+        }
 
-    [void]$panel.Children.Add($label)
+        [void]$panel.Children.Add($label)
+    }
     return $panel
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-GuiButtonIconContent
 {
@@ -200,6 +308,7 @@ function Set-GuiButtonIconContent
         [string]$IconName,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Text,
 
         [double]$IconSize = 16,
@@ -209,11 +318,11 @@ function Set-GuiButtonIconContent
         [string]$ToolTip = $null
     )
 
-    $resolvedTextFontSize = if ($TextFontSize -gt 0)
+    $resolvedTextFontSize = if (Test-GuiPositiveFontSize -Value $TextFontSize)
     {
         $TextFontSize
     }
-    elseif ($Button.FontSize -gt 0)
+    elseif (Test-GuiPositiveFontSize -Value $Button.FontSize)
     {
         [double]$Button.FontSize
     }
@@ -222,10 +331,15 @@ function Set-GuiButtonIconContent
         12
     }
 
-    $content = New-GuiLabeledIconContent -IconName $IconName -Text $Text -IconSize $IconSize -Gap $Gap -TextFontSize $resolvedTextFontSize -Foreground $Foreground -AllowTextOnlyFallback -ToolTip $ToolTip
+    $resolvedForeground = Resolve-GuiBrushInput -Value $Foreground -Context 'Set-GuiButtonIconContent'
+    $content = New-GuiLabeledIconContent -IconName $IconName -Text $Text -IconSize $IconSize -Gap $Gap -TextFontSize $resolvedTextFontSize -Foreground $resolvedForeground -AllowTextOnlyFallback -ToolTip $ToolTip
     $Button.Content = if ($content) { $content } else { $Text }
     $Button.ToolTip = if ([string]::IsNullOrWhiteSpace([string]$ToolTip)) { $null } else { $ToolTip }
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function New-GuiStatusIconLabel
 {
@@ -264,6 +378,10 @@ function New-GuiStatusIconLabel
     return New-GuiLabeledIconContent -IconName $Kind -Text $Text -IconSize $IconSize -Gap $Gap -TextFontSize $TextFontSize -Foreground $foreground -AllowTextOnlyFallback
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Set-GuiTabHeaderWithIcon
 {
     <# .SYNOPSIS Applies a standardized icon+label header to a TabItem. #>
@@ -285,6 +403,10 @@ function Set-GuiTabHeaderWithIcon
     $Tab.Header = New-GuiLabeledIconContent -IconName $IconName -Text $Text -IconSize $IconSize -Gap $Gap -AllowTextOnlyFallback
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GuiPrimaryTabIconName
 {
     <# .SYNOPSIS Maps a primary tab label to its logical icon name. #>
@@ -300,6 +422,8 @@ function Get-GuiPrimaryTabIconName
         'Privacy & Telemetry'  { return 'PrivacyTab' }
         'Security'             { return 'SecurityTab' }
         'System'               { return 'SystemTab' }
+        'Customizations'       { return 'WindowSettings' }
+        'Updates'              { return 'ArrowSync' }
         'UI & Personalization' { return 'UIPersonalizationTab' }
         'UWP Apps'             { return 'AppsTab' }
         'Gaming'               { return 'GamingTab' }
@@ -307,6 +431,10 @@ function Get-GuiPrimaryTabIconName
         default                { return $null }
     }
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-TextOrIconContent
 {
@@ -346,6 +474,10 @@ function Set-TextOrIconContent
     }
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function New-GamingGroupHeader
 {
     <# .SYNOPSIS Creates an icon+label header for gaming group sections. #>
@@ -373,6 +505,10 @@ function New-GamingGroupHeader
     return $null
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GuiPresetIconName
 {
     <# .SYNOPSIS Maps a preset name to its logical icon name. #>
@@ -392,6 +528,10 @@ function Get-GuiPresetIconName
     }
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-GuiPreflightIconGlyph
 {
     <# .SYNOPSIS Returns the icon glyph character for a pre-flight check status. #>
@@ -409,6 +549,10 @@ function Get-GuiPreflightIconGlyph
         default   { return $null }
     }
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-GuiSummaryCardIconName
 {

@@ -1,4 +1,9 @@
+
 # Preset application logic: resolve context, apply selections, and complete preset state updates
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiPresetDebugLogger
 	{
@@ -71,6 +76,17 @@
 			}
 		}
 
+		if ($unmatchedPresetEntries.Count -gt 0)
+		{
+			$unmatchedFunctionNames = @($unmatchedPresetEntries | ForEach-Object { [string]$_.Function } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+			$unmatchedMessage = "Preset '{0}' references {1} unknown function$(if ($unmatchedPresetEntries.Count -eq 1) { '' } else { 's' }) (typo or removed tweak): {2}. These entries will be ignored." -f $presetDefinition.Name, $unmatchedPresetEntries.Count, ($unmatchedFunctionNames -join ', ')
+			Write-Warning $unmatchedMessage
+			if ($WriteGuiPresetDebugScript)
+			{
+				& $WriteGuiPresetDebugScript -Context 'Set-TabPreset' -Message $unmatchedMessage
+			}
+		}
+
 		return [pscustomobject]@{
 			NormalizedPresetTier   = $normalizedPresetTier
 			PresetDefinition       = $presetDefinition
@@ -79,6 +95,10 @@
 			UnmatchedPresetEntries = $unmatchedPresetEntries
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Initialize-TabPresetApplicationState
 	{
@@ -131,6 +151,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Set-TabPresetSharedUiState
 	{
 		param (
@@ -165,6 +189,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Clear-GuiSelectableControlState
 	{
 		param ([object]$Control)
@@ -180,7 +208,51 @@
 			[int]$clearIndex = -1
 			$Control.SelectedIndex = $clearIndex
 		}
+		elseif ((Test-GuiObjectField -Object $Control -FieldName 'ACSlider') -or (Test-GuiObjectField -Object $Control -FieldName 'DCSlider'))
+		{
+			if ((Test-GuiObjectField -Object $Control -FieldName 'IsChecked'))
+			{
+				$Control.IsChecked = $false
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'ACValue'))
+			{
+				$Control.ACValue = $null
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'DCValue'))
+			{
+				$Control.DCValue = $null
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'Value'))
+			{
+				$Control.Value = $null
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'NumericValue'))
+			{
+				$Control.NumericValue = $null
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'IsEnabled'))
+			{
+				$Control.IsEnabled = $false
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'CheckBox') -and $Control.CheckBox)
+			{
+				$Control.CheckBox.IsChecked = $false
+				$Control.CheckBox.IsEnabled = $false
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'ACSlider') -and $Control.ACSlider)
+			{
+				$Control.ACSlider.IsEnabled = $false
+			}
+			if ((Test-GuiObjectField -Object $Control -FieldName 'DCSlider') -and $Control.DCSlider)
+			{
+				$Control.DCSlider.IsEnabled = $false
+			}
+		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiChoiceOptions
 	{
@@ -210,6 +282,10 @@
 		return [object[]]@([string]$Options)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Apply-TabPresetSelections
 	{
 		param (
@@ -219,226 +295,49 @@
 			[scriptblock]$SyncLinkedStateCapture
 		)
 
-		$stats = [ordered]@{
-			SelectedCount       = 0
-			ProcessedCount      = 0
-			VisibleCount        = 0
-			HiddenCount         = 0
-			ControlMissingCount = 0
-			ToggleCount         = 0
-			ChoiceCount         = 0
-			ActionCount         = 0
-			StateChangeCount    = 0
-		}
+			$stats = [ordered]@{
+				SelectedCount       = 0
+				ProcessedCount      = 0
+				VisibleCount        = 0
+				HiddenCount         = 0
+				ControlMissingCount = 0
+				ToggleCount         = 0
+				ChoiceCount         = 0
+				NumericRangeCount   = 0
+				ActionCount         = 0
+				StateChangeCount    = 0
+			}
 
 		$totalCount = $Script:TweakManifest.Count
-		$progressBar = $Script:PresetProgressBar
+		$progressBar = Get-Variable -Name 'PresetProgressBar' -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+		$progressHost = Get-Variable -Name 'PresetProgressHost' -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+		if ($progressHost)
+		{
+			$progressHost.Visibility = [System.Windows.Visibility]::Visible
+		}
 		if ($progressBar)
 		{
-			$progressBar.Maximum = $totalCount
-			$progressBar.Value = 0
-			$progressBar.Visibility = [System.Windows.Visibility]::Visible
+			Set-SharedProgressBarState -ProgressBar $progressBar -Completed 0 -Total $totalCount
 		}
 
-		for ($index = 0; $index -lt $totalCount; $index++)
-		{
-			$stats.ProcessedCount++
-			if ($progressBar -and ($index % 50 -eq 0))
-			{
-				$progressBar.Value = $index
-				[System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
-			}
-			$tweak = $Script:TweakManifest[$index]
-			$control = $Script:Controls[$index]
-			if (-not $control)
-			{
-				$stats.ControlMissingCount++
-				continue
-			}
-
-			$isVisible = $true
-			if ($tweak.VisibleIf)
-			{
-				try
-				{
-					$isVisible = [bool](& $tweak.VisibleIf)
-				}
-				catch
-				{
-					$isVisible = $false
-				}
-			}
-
-			if ($isVisible)
-			{
-				$stats.VisibleCount++
-			}
-			else
-			{
-				$stats.HiddenCount++
-			}
-
-			if ((Test-GuiObjectField -Object $control -FieldName 'IsEnabled'))
-			{
-				$control.IsEnabled = $isVisible
-			}
-
-			if (-not $isVisible)
-			{
-				Clear-GuiSelectableControlState -Control $control
-				continue
-			}
-
-			switch ($tweak.Type)
-			{
-				'Toggle'
-				{
-					$stats.ToggleCount++
-					$presetEntry = if ($PresetContext.UsesExplicitPreset -and $null -ne $PresetContext.PresetEntries[$tweak.Function]) { $PresetContext.PresetEntries[$tweak.Function] } else { $null }
-					if ($PresetContext.UsesExplicitPreset)
-					{
-						$includeInPreset = ($null -ne $presetEntry)
-						$targetChecked = ($includeInPreset -and [string]$presetEntry.State -eq 'On')
-					}
-					else
-					{
-						$includeInPreset = (& $TestTweakMatchesPresetTierScript -Tweak $tweak -Tier $PresetContext.PresetDefinition.Tier)
-						$targetChecked = ($includeInPreset -and [bool]$tweak.Default)
-					}
-
-					$currentChecked = $false
-					if ((Test-GuiObjectField -Object $control -FieldName 'IsChecked'))
-					{
-						$currentChecked = [bool]$control.IsChecked
-					}
-					if ($currentChecked -ne [bool]$targetChecked)
-					{
-						$stats.StateChangeCount++
-					}
-					if ((Test-GuiObjectField -Object $control -FieldName 'IsChecked'))
-					{
-						$control.IsChecked = $targetChecked
-					}
-
-					if ($includeInPreset)
-					{
-						if ($PresetContext.UsesExplicitPreset)
-						{
-							[void]$Script:ExplicitPresetSelections.Add([string]$tweak.Function)
-							$hasRunParam = if ($targetChecked) { -not [string]::IsNullOrWhiteSpace([string]$tweak.OnParam) } else { -not [string]::IsNullOrWhiteSpace([string]$tweak.OffParam) }
-							if ($hasRunParam)
-							{
-								$stats.SelectedCount++
-							}
-						}
-						elseif ($targetChecked)
-						{
-							$stats.SelectedCount++
-						}
-					}
-
-					if ($tweak.LinkedWith -and $SyncLinkedStateCapture)
-					{
-						& $SyncLinkedStateCapture $tweak.LinkedWith $targetChecked
-					}
-				}
-				'Action'
-				{
-					$stats.ActionCount++
-					$presetEntry = if ($PresetContext.UsesExplicitPreset -and $null -ne $PresetContext.PresetEntries[$tweak.Function]) { $PresetContext.PresetEntries[$tweak.Function] } else { $null }
-					if ($PresetContext.UsesExplicitPreset)
-					{
-						$includeInPreset = ($null -ne $presetEntry -and [bool]$presetEntry.Run)
-						$targetChecked = $includeInPreset
-					}
-					else
-					{
-						$includeInPreset = (& $TestTweakMatchesPresetTierScript -Tweak $tweak -Tier $PresetContext.PresetDefinition.Tier)
-						$targetChecked = ($includeInPreset -and [bool]$tweak.Default)
-					}
-
-					$currentChecked = $false
-					if ((Test-GuiObjectField -Object $control -FieldName 'IsChecked'))
-					{
-						$currentChecked = [bool]$control.IsChecked
-					}
-					if ($currentChecked -ne [bool]$targetChecked)
-					{
-						$stats.StateChangeCount++
-					}
-					if ((Test-GuiObjectField -Object $control -FieldName 'IsChecked'))
-					{
-						$control.IsChecked = $targetChecked
-					}
-					if ($targetChecked)
-					{
-						$stats.SelectedCount++
-					}
-
-					if ($tweak.LinkedWith -and $SyncLinkedStateCapture)
-					{
-						& $SyncLinkedStateCapture $tweak.LinkedWith $targetChecked
-					}
-				}
-				'Choice'
-				{
-					$stats.ChoiceCount++
-					$targetSelectedIndex = -1
-					$choiceOptions = Get-GuiChoiceOptions -Options $tweak.Options
-					$presetEntry = if ($PresetContext.UsesExplicitPreset -and $null -ne $PresetContext.PresetEntries[$tweak.Function]) { $PresetContext.PresetEntries[$tweak.Function] } else { $null }
-					if ($PresetContext.UsesExplicitPreset)
-					{
-						$includeInPreset = ($null -ne $presetEntry)
-						if ($includeInPreset)
-						{
-							$targetSelectedIndex = [array]::IndexOf($choiceOptions, [string]$presetEntry.Value)
-						}
-					}
-					else
-					{
-						$includeInPreset = (& $TestTweakMatchesPresetTierScript -Tweak $tweak -Tier $PresetContext.PresetDefinition.Tier)
-						if ($includeInPreset)
-						{
-							$targetSelectedIndex = [array]::IndexOf($choiceOptions, $tweak.Default)
-						}
-					}
-
-					if ($targetSelectedIndex -ge $choiceOptions.Count)
-					{
-						$targetSelectedIndex = -1
-					}
-
-					$currentSelectedIndex = -1
-					if ((Test-GuiObjectField -Object $control -FieldName 'SelectedIndex'))
-					{
-						$currentSelectedIndex = [int]$control.SelectedIndex
-					}
-					if ($currentSelectedIndex -ne [int]$targetSelectedIndex)
-					{
-						$stats.StateChangeCount++
-					}
-					if ((Test-GuiObjectField -Object $control -FieldName 'SelectedIndex'))
-					{
-						[int]$selectedIndex = $targetSelectedIndex
-						$control.SelectedIndex = $selectedIndex
-					}
-					if ($targetSelectedIndex -ge 0)
-					{
-						$stats.SelectedCount++
-					}
-				}
-			}
-		}
+		. (Join-Path $PSScriptRoot 'PresetApplication\Apply-TabPresetSelections\Apply-TabPresetSelections.ps1')
 
 		if ($progressBar)
 		{
-			$progressBar.Value = $totalCount
+			Set-SharedProgressBarState -ProgressBar $progressBar -Completed $totalCount -Total $totalCount
 			[System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background)
-			$progressBar.Visibility = [System.Windows.Visibility]::Collapsed
+		}
+		if ($progressHost)
+		{
+			$progressHost.Visibility = [System.Windows.Visibility]::Collapsed
 		}
 
 		return [pscustomobject]$stats
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Write-TabPresetUnmatchedEntryWarnings
 	{
@@ -469,6 +368,10 @@
 			}
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Ensure-SafePresetRestorePointSelection
 	{
@@ -531,6 +434,10 @@
 
 		return $PresetStats
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Complete-TabPresetApplication
 	{
@@ -629,6 +536,10 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Set-TabPreset
 	{
 		param (
@@ -675,7 +586,16 @@
 		}
 		finally
 		{
+			$progressBar = Get-Variable -Name 'PresetProgressBar' -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+			$progressHost = Get-Variable -Name 'PresetProgressHost' -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+			if ($progressBar)
+			{
+				Set-SharedProgressBarState -ProgressBar $progressBar -Completed 0 -Total 1
+			}
+			if ($progressHost)
+			{
+				$progressHost.Visibility = [System.Windows.Visibility]::Collapsed
+			}
 			$Script:ApplyingGuiPreset = $previousApplyingGuiPreset
 		}
 	}
-

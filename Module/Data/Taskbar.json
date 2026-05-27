@@ -25,7 +25,13 @@
       "PresetTier": "Safe",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": false,
+        "Server": false,
+        "UnavailableReason": "News and Interests is a Windows 10 taskbar feature; on Windows 11 this is replaced by Widgets."
+      }
     },
     {
       "Name": "Taskbar Alignment",
@@ -52,7 +58,14 @@
       "PresetTier": "Safe",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 22000,
+        "UnavailableReason": "Taskbar alignment is a Windows 11 feature; the Windows 10 taskbar is always left-aligned."
+      }
     },
     {
       "Name": "Taskbar Widgets",
@@ -77,7 +90,14 @@
       "PresetTier": "Minimal",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 22000,
+        "UnavailableReason": "Widgets is a Windows 11 taskbar feature."
+      }
     },
     {
       "Name": "Taskbar Search",
@@ -106,7 +126,13 @@
       "PresetTier": "Minimal",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Taskbar search presentation is a client-only personalization feature."
+      }
     },
     {
       "Name": "Search Highlights",
@@ -132,7 +158,13 @@
       "PresetTier": "Minimal",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Search Highlights is a client-only Windows Search feature."
+      }
     },
     {
       "Name": "Task View Button",
@@ -157,7 +189,13 @@
       "PresetTier": "Safe",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Taskbar personalization is not configured on Windows Server."
+      }
     },
     {
       "Name": "Taskbar Button Combine",
@@ -185,7 +223,13 @@
       "PresetTier": "Safe",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Taskbar grouping is a client-only personalization setting."
+      }
     },
     {
       "Name": "Unpin Taskbar Shortcuts",
@@ -217,6 +261,12 @@
           "Copilot",
           "Microsoft365"
         ]
+      },
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Bundled taskbar shortcuts ship only on client editions."
       }
     },
     {
@@ -242,7 +292,14 @@
       "PresetTier": "Minimal",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 22621,
+        "UnavailableReason": "End Task in the taskbar right-click is a Windows 11 22H2 (build 22621) feature."
+      }
     },
     {
       "Name": "Meet Now Icon",
@@ -267,7 +324,13 @@
       "PresetTier": "Safe",
       "Restorable": true,
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": false,
+        "Server": false,
+        "UnavailableReason": "Meet Now is a Windows 10 notification-area feature; Windows 11 removed it from the system tray."
+      }
     }
   ]
 }

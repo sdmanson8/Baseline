@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline -- system maintenance, RAM checks, and service management.
+# Shared helpers for Baseline -- system maintenance, RAM checks, and service management.
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-Windows11SmbDuplicateSidIssue
 {
@@ -27,6 +31,10 @@ function Test-Windows11SmbDuplicateSidIssue
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-MinimumRecommendedMemoryCompressionRamGB
 {
 	<# .SYNOPSIS Returns the minimum RAM threshold (8 GB) for safe Memory Compression disable. #>
@@ -48,6 +56,8 @@ function Invoke-AdditionalServiceOptimizations
 	}
 	catch
 	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'SystemMaintenance.Helpers.Invoke-AdditionalServiceOptimizations:catch57' -Severity Debug }
+
 		$memoryCompressionState = $null
 	}
 
@@ -145,3 +155,4 @@ function Invoke-AdditionalServiceOptimizations
 		Write-ConsoleStatus -Status success
 	}
 }
+

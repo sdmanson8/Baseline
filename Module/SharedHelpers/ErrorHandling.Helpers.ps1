@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline -- error handling, classification, and user-facing error info.
+﻿# Shared helpers for Baseline -- error handling, classification, and user-facing error info.
+
+<#
+    .SYNOPSIS
+#>
 
 function Remove-HandledErrorRecord
 {
@@ -38,11 +42,21 @@ function Remove-HandledErrorRecord
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Test-IgnorableErrorMessage
 {
 	<#
 	.SYNOPSIS
 	Tests whether an error message matches known ignorable patterns.
+
+	.DESCRIPTION
+	Each pattern below is annotated with its provenance and the failure mode it
+	protects against. Patterns were collected empirically across Win 10/11 SKUs
+	while running tweak regions; new entries should keep the same documentation
+	style so the rule list does not become an undocumented allowlist.
 	#>
 	param
 	(
@@ -51,35 +65,62 @@ function Test-IgnorableErrorMessage
 		$Message
 	)
 
-	if ([string]::IsNullOrWhiteSpace($Message)) { return $true }
+	if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
 
-	return ($Message -match (
-		'Property .* does not exist' +
-		'|Cannot find path' +
-		'|Cannot find a process with the name' +
-		'|The process \".*\" not found' +
-		'|The operation completed successfully\.' +
-		'|The system was unable to find the specified registry key or value\.' +
-		'|The registry key at the specified path does not exist\.' +
-		'|Cannot find any service with service name' +
-		'|No package found for ''Microsoft Edge' +
-		'|Function \".*\" skipped\.' +
-		'|\".*\" was skipped because a required component is not available on this system\.' +
-		'|No MSFT_ScheduledTask objects found with property ''TaskName'' equal to ''Disable LockScreen''' +
-		'|A key in this path already exists\.' +
-		'|You must specify an object for the Get-Member cmdlet' +
-		'|Cannot bind argument to parameter .InputObject. because it is null' +
-		'|The property .* cannot be found on this object' +
-		'|The parameter is incorrect' +
-		'|Unknown error \(0x' +
-		'|Safe handle has been closed' +
-		'|command that prompts the user failed because the host program' +
-		'|Access is denied\.' +
-		'|Security error\.' +
-		'|The system cannot find the path specified\.' +
-		'|The system cannot find the file specified\.'
-	))
+	$ignorablePatterns = @(
+		# Why: Service/process kill helpers run unconditionally; absence of the target
+		# means the tweak's goal (process not running) is already satisfied.
+		'Cannot find a process with the name'
+		'The process \".*\" not found'
+
+		# Why: Win32 APIs return success-coded exceptions when no work was needed
+		# (e.g. service already in desired state).
+		'The operation completed successfully\.'
+
+		# Why: Registry tweaks address keys that may not exist on every SKU; missing
+		# means the policy is already at default and no change is required.
+		'The system was unable to find the specified registry key or value\.'
+		'The registry key at the specified path does not exist\.'
+
+		# Why: Service-name lookups for SKU-specific services (e.g. Xbox, Maps) fail
+		# cleanly on SKUs where the service is not installed.
+		'Cannot find any service with service name'
+
+		# Why: Edge removal path is intentionally tolerant — Microsoft has shipped
+		# multiple Edge package layouts; missing package on this SKU is benign.
+		'No package found for ''Microsoft Edge'
+
+		# Why: Tweak orchestrator emits these after deciding a tweak is not applicable
+		# (e.g. wrong SKU). Skips are an intended outcome, not a failure.
+		'Function \".*\" skipped\.'
+		'\".*\" was skipped because a required component is not available on this system\.'
+
+		# Why: Specific scheduled-task lookup that fails on SKUs where the task was
+		# never created — observed during Disable LockScreen tweak on Pro builds.
+		'No MSFT_ScheduledTask objects found with property ''TaskName'' equal to ''Disable LockScreen'''
+
+		# Why: New-Item over an existing registry key emits this; idempotent re-runs
+		# are expected behaviour for our tweaks.
+		'A key in this path already exists\.'
+
+		# Why: Disposed runspace handles surface this on cleanup paths; not a tweak
+		# failure, just late teardown.
+		'Safe handle has been closed'
+
+		# Why: Custom non-interactive PSHost rejects prompts. Tweaks that try to prompt
+		# are intentionally short-circuited; we surface them via dedicated logs, not
+		# the error stream.
+		'command that prompts the user failed because the host program'
+
+	)
+
+	$combinedPattern = ($ignorablePatterns -join '|')
+	return ($Message -match $combinedPattern)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-IgnorableErrorRecord
 {
@@ -99,9 +140,42 @@ function Test-IgnorableErrorRecord
 		return $false
 	}
 
+	$targetText = if ($null -ne $ErrorRecord.TargetObject) { [string]$ErrorRecord.TargetObject } else { '' }
+	$messageText = [string]$ErrorRecord.Exception.Message
+	$registryPrefixes = @(
+		'HKLM:\',
+		'HKCU:\',
+		'HKCR:\',
+		'HKU:\',
+		'HKCC:\',
+		'HKEY_LOCAL_MACHINE\',
+		'HKEY_CURRENT_USER\',
+		'HKEY_CLASSES_ROOT\',
+		'HKEY_USERS\',
+		'HKEY_CURRENT_CONFIG\'
+	)
+	$registryAbsence = $false
+	foreach ($registryPrefix in $registryPrefixes)
+	{
+		if ($targetText.StartsWith($registryPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+			$messageText.IndexOf($registryPrefix, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+		{
+			$registryAbsence = $true
+			break
+		}
+	}
+	if ($registryAbsence -and ([string]$ErrorRecord.CategoryInfo.Category -in @('ObjectNotFound', 'InvalidArgument', 'InvalidOperation')))
+	{
+		return $true
+	}
+
 	return Test-IgnorableErrorMessage -Message $ErrorRecord.Exception.Message
 }
 
+<#
+    .SYNOPSIS
+    Returns new global error records that are not classified as ignorable.
+#>
 function Get-NewUnhandledErrorRecords
 {
 	<#
@@ -146,6 +220,10 @@ function Get-NewUnhandledErrorRecords
 	return $records
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-SilencedProgress
 {
 	# Temporarily suppresses progress bars (e.g. Invoke-WebRequest) by setting
@@ -172,6 +250,10 @@ function Invoke-SilencedProgress
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-BaselineErrorCatalog
 {
 	<#
@@ -184,7 +266,7 @@ function Get-BaselineErrorCatalog
 			Message = 'Baseline could not finish starting one of the components it needs.'
 			NextSteps = @(
 				'Close Baseline and open it again.'
-				'If this keeps happening, make sure the full Baseline folder is extracted and intact.'
+				'If this keeps happening, make sure the full Baseline folder is complete and intact.'
 				'Check the log file below for the failing step.'
 			)
 		}
@@ -236,6 +318,10 @@ function Get-BaselineErrorCatalog
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-BaselineExceptionMessageChain
 {
 	param
@@ -252,7 +338,9 @@ function Get-BaselineExceptionMessageChain
 	while ($currentException -and $depth -lt 10)
 	{
 		$currentMessage = $null
-		try { $currentMessage = [string]$currentException.Message } catch { $currentMessage = $null }
+		try { $currentMessage = [string]$currentException.Message } catch {
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ErrorHandling.Helpers.Get-BaselineExceptionMessageChain:catch341' -Severity Debug }
+		 $currentMessage = $null }
 
 		if (-not [string]::IsNullOrWhiteSpace($currentMessage))
 		{
@@ -272,12 +360,18 @@ function Get-BaselineExceptionMessageChain
 			}
 		}
 
-		try { $currentException = $currentException.InnerException } catch { $currentException = $null }
+		try { $currentException = $currentException.InnerException } catch {
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ErrorHandling.Helpers.Get-BaselineExceptionMessageChain:catch361' -Severity Debug }
+		 $currentException = $null }
 		$depth++
 	}
 
 	return ($messages -join [Environment]::NewLine)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Resolve-BaselineErrorCode
 {
@@ -333,6 +427,10 @@ function Resolve-BaselineErrorCode
 	return 'GUI-GENERIC-001'
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Resolve-BaselineErrorStageDescription
 {
 	<#
@@ -362,6 +460,10 @@ function Resolve-BaselineErrorStageDescription
 		default { return $null }
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-BaselineErrorInfo
 {
@@ -400,6 +502,10 @@ function Get-BaselineErrorInfo
 		Title = $errorTitle
 	}
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Format-BaselineErrorDialogMessage
 {
@@ -459,3 +565,4 @@ function Format-BaselineErrorDialogMessage
 
 	return ($messageLines -join [Environment]::NewLine)
 }
+

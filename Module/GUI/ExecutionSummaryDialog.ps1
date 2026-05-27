@@ -1,9 +1,8 @@
-﻿# ──────────────────────────────────────────────────────────────────
-# ExecutionSummaryDialog.ps1
-# Execution-summary dialog wrapper extracted from Show-TweakGUI
-# (GUI.psm1).  Dot-sourced inside Show-TweakGUI so all $Script:
-# and local UI variables remain in scope.
-# ──────────────────────────────────────────────────────────────────
+﻿# Execution summary dialog helpers for Baseline UI.
+
+<#
+    .SYNOPSIS
+#>
 
 function Show-ExecutionSummaryDialog
 {
@@ -22,7 +21,7 @@ function Show-ExecutionSummaryDialog
 		$dialogStrings = Get-UxExecutionSummaryDialogStrings
 	}
 
-	return (GUICommon\Show-ExecutionSummaryDialog `
+	return (GUICommon\Show-GuiCommonExecutionSummaryDialog `
 		-Theme $Script:CurrentTheme `
 		-ApplyButtonChrome ${function:Set-ButtonChrome} `
 		-OwnerWindow $Form `

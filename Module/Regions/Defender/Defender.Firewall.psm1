@@ -1,10 +1,15 @@
-﻿using module ..\..\Logging.psm1
+using module ..\..\Logging.psm1
 using module ..\..\SharedHelpers.psm1
 
 <#
 	.SYNOPSIS
-	Windows Firewall configuration
+	Configures Windows Firewall configuration.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's Windows Firewall configuration in GUI and headless runs.
 	.PARAMETER Enable
 	Enable Windows Firewall (default value)
 
@@ -65,7 +70,7 @@ function Firewall
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile" -Name "EnableFirewall" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\WindowsFirewall\StandardProfile" -Name "EnableFirewall" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -77,33 +82,46 @@ function Firewall
 	}
 }
 
-<#
-	.SYNOPSIS
-	Configure Windows Firewall logging.
-
-	.DESCRIPTION
-	Configures the current firewall profile to log to pfirewall.log with a
-	larger size limit and dropped-connections logging enabled.
-
-	.EXAMPLE
-	Set-WindowsFirewallLogging
-
-	.NOTES
-	Machine-wide
-
-	.CAUTION
-	Usually safe, but log file growth and storage policies should still be
-	considered on managed systems.
-#>
-function Set-WindowsFirewallLogging
+function WindowsFirewallLogging
 {
+	<#
+		.SYNOPSIS
+		Configure Windows Firewall logging.
+
+		.DESCRIPTION
+		Configures the current firewall profile to log to pfirewall.log with a
+		larger size limit and dropped-connections logging enabled.
+
+		.EXAMPLE
+		WindowsFirewallLogging
+
+		.NOTES
+		Machine-wide
+
+		Caution:
+		Usually safe, but log file growth and storage policies should still be
+		considered on managed systems.
+	#>
 	Write-ConsoleStatus -Action "Configuring Windows Firewall logging"
 	LogInfo "Configuring Windows Firewall logging"
 	try
 	{
-		netsh advfirewall set currentprofile logging filename %systemroot%\system32\LogFiles\Firewall\pfirewall.log | Out-Null
-		netsh advfirewall set currentprofile logging maxfilesize 4096 | Out-Null
-		netsh advfirewall set currentprofile logging droppedconnections enable | Out-Null
+		# Apply per-profile (Domain / Private / Public) so traffic filtered on
+		# any profile lands in its own log; enable both dropped and allowed
+		# connection logging. windows_hardening.cmd only configured currentprofile
+		# + dropped, leaving the other two profiles unaudited.
+		$profiles = @('domainprofile', 'privateprofile', 'publicprofile')
+		$logRoot  = '%systemroot%\system32\LogFiles\Firewall'
+
+		foreach ($profile in $profiles)
+		{
+			$leaf    = ($profile -replace 'profile$', '')
+			$logPath = "$logRoot\pfirewall_$leaf.log"
+			netsh advfirewall set $profile logging filename $logPath | Out-Null
+			netsh advfirewall set $profile logging maxfilesize 16384 | Out-Null
+			netsh advfirewall set $profile logging droppedconnections enable | Out-Null
+			netsh advfirewall set $profile logging allowedconnections enable | Out-Null
+		}
 		Write-ConsoleStatus -Status success
 	}
 	catch
@@ -113,26 +131,73 @@ function Set-WindowsFirewallLogging
 	}
 }
 
-<#
-	.SYNOPSIS
-	Configure LOLBin outbound firewall block rules.
-
-	.DESCRIPTION
-	Adds outbound block rules for a large list of built-in Windows binaries that
-	should not normally make network connections.
-
-	.EXAMPLE
-	Set-LOLBinFirewallRules
-
-	.NOTES
-	Machine-wide
-
-	.CAUTION
-	Advanced. Can break administrative scripts, installers, troubleshooting
-	tools, or enterprise workflows that intentionally use these binaries.
-#>
-function Set-LOLBinFirewallRules
+function LOLBinFirewallRules
 {
+	<#
+		.SYNOPSIS
+		Configure LOLBin outbound firewall block rules.
+
+		.DESCRIPTION
+		Enable: adds outbound block rules for built-in Windows binaries that should
+		not normally make network connections. All rules are tagged with the
+		Baseline-LOLBin-Block group so removal is a single
+		Remove-NetFirewallRule -Group call rather than a per-rule iteration.
+
+		Disable: removes every rule in the Baseline-LOLBin-Block group, restoring
+		default outbound behaviour for these binaries.
+
+		.PARAMETER Enable
+		Add the LOLBin outbound block rules.
+
+		.PARAMETER Disable
+		Remove every rule in the Baseline-LOLBin-Block group.
+
+		.EXAMPLE
+		LOLBinFirewallRules -Enable
+
+		.EXAMPLE
+		LOLBinFirewallRules -Disable
+
+		.NOTES
+		Machine-wide
+
+		Caution:
+		Advanced. Can break administrative scripts, installers, troubleshooting
+		tools, or enterprise workflows that intentionally use these binaries.
+	#>
+	[CmdletBinding(DefaultParameterSetName = 'Enable')]
+	param
+	(
+		[Parameter(Mandatory = $true, ParameterSetName = 'Enable')]
+		[switch]
+		$Enable,
+
+		[Parameter(Mandatory = $true, ParameterSetName = 'Disable')]
+		[switch]
+		$Disable
+	)
+
+	$groupName = 'Baseline-LOLBin-Block'
+
+	if ($PSCmdlet.ParameterSetName -eq 'Disable')
+	{
+		Write-ConsoleStatus -Action "Removing LOLBin firewall rules"
+		LogInfo "Removing LOLBin firewall rules"
+		try
+		{
+			# Remove-NetFirewallRule -Group is the only built-in way to delete a
+			# whole rule group in one shot; netsh advfirewall has no group filter.
+			Remove-NetFirewallRule -Group $groupName -ErrorAction SilentlyContinue
+			Write-ConsoleStatus -Status success
+		}
+		catch
+		{
+			Write-ConsoleStatus -Status failed
+			LogError "Failed to remove LOLBin firewall rules: $($_.Exception.Message)"
+		}
+		return
+	}
+
 	Write-ConsoleStatus -Action "Configuring LOLBin firewall rules"
 	LogInfo "Configuring LOLBin firewall rules"
 	try
@@ -188,8 +253,10 @@ function Set-LOLBinFirewallRules
 		foreach ($program in $programs)
 		{
 			$expandedProgram = [Environment]::ExpandEnvironmentVariables($program)
-			$ruleName = "Block $(Split-Path $expandedProgram -Leaf) netconns"
-			netsh advfirewall firewall add rule name="$ruleName" program="$expandedProgram" protocol=tcp dir=out enable=yes action=block profile=any | Out-Null
+			$ruleName = "$groupName`: $(Split-Path $expandedProgram -Leaf)"
+			# New-NetFirewallRule -Group tags every rule with the Baseline-LOLBin-Block
+			# group so a single Remove-NetFirewallRule -Group call cleans them all up.
+			New-NetFirewallRule -DisplayName $ruleName -Group $groupName -Direction Outbound -Action Block -Program $expandedProgram -Protocol TCP -Profile Any -Enabled True -ErrorAction Stop | Out-Null
 		}
 
 		Write-ConsoleStatus -Status success
@@ -205,6 +272,11 @@ function Set-LOLBinFirewallRules
 	.SYNOPSIS
 	Microsoft Defender Exploit Guard network protection
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for microsoft Defender Exploit Guard network protection.
 	.PARAMETER Enable
 	Enable Microsoft Defender Exploit Guard network protection
 
@@ -239,9 +311,9 @@ function NetworkProtection
 		$Disable
 	)
 
-	if (-not $Script:DefenderEnabled)
+	if (-not (Test-BaselineDefenderExecutionAvailable))
 	{
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+		LogWarning ("Skipping {0}: {1}" -f (Get-TweakSkipLabel $MyInvocation), (Get-BaselineDefenderExecutionUnavailableReason))
 		return
 	}
 
@@ -279,5 +351,10 @@ function NetworkProtection
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'Firewall',
+    'LOLBinFirewallRules',
+    'NetworkProtection',
+    'WindowsFirewallLogging'
+)
+Export-ModuleMember -Function $ExportedFunctions

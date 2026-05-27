@@ -1,4 +1,8 @@
-# Shared helper slice for Baseline -- taskbar pin/unpin and News & Interests helpers.
+﻿# Shared helpers for Baseline -- taskbar pin/unpin and News & Interests helpers.
+
+<#
+    .SYNOPSIS
+#>
 
 function Initialize-NewsInterestsTaskbarHashInterop
 {
@@ -20,6 +24,10 @@ public static extern int HashData(byte[] pbData, int cbData, byte[] piet, int ou
 
 	Add-Type @signatureDefinition -ErrorAction Stop | Out-Null
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-NewsInterestsTaskbarHashValue
 {
@@ -51,6 +59,10 @@ function Get-NewsInterestsTaskbarHashValue
 	return [System.BitConverter]::ToUInt32($bytesOut, 0)
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Set-UCPDBypassedRegistryDWordValue
 {
 	<# .SYNOPSIS Sets a registry DWord value via a UCPD-bypassed PowerShell process. #>
@@ -76,9 +88,13 @@ if (-not (Test-Path -LiteralPath '$escapedPath'))
 New-ItemProperty -Path '$escapedPath' -Name '$escapedName' -PropertyType DWord -Value $Value -Force -ErrorAction Stop | Out-Null
 "@
 
-	Invoke-UCPDBypassed -ScriptBlock ([scriptblock]::Create($scriptText))
+	Invoke-UCPDBypassed -ScriptText $scriptText
 	return $true
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Set-NewsInterestsTaskbarViewMode
 {
@@ -108,6 +124,10 @@ function Set-NewsInterestsTaskbarViewMode
 	Set-RegistryValueSafe -Path $feedsPath -Name "ShellFeedsTaskbarViewMode" -Type DWord -Value $ViewMode -AccessDeniedFallback $accessDeniedFallback | Out-Null
 	Set-RegistryValueSafe -Path $feedsPath -Name "EnShellFeedsTaskbarViewMode" -Type DWord -Value $dwordData -AccessDeniedFallback $accessDeniedFallback | Out-Null
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-TaskbarPinnedItems
 {
@@ -154,6 +174,10 @@ function Get-TaskbarPinnedItems
 	return $pinnedItems
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-TaskbarPinnedMatches
 {
 	<# .SYNOPSIS Filters taskbar pinned items by regex patterns. #>
@@ -187,6 +211,10 @@ function Get-TaskbarPinnedMatches
 		return $false
 	})
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Invoke-TaskbarUnpin
 {
@@ -231,6 +259,10 @@ function Invoke-TaskbarUnpin
 	return $false
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Get-TaskbarUnpinVerbCandidates
 {
 	<# .SYNOPSIS Returns localized unpin verb candidates for multiple languages. #>
@@ -255,6 +287,10 @@ function Get-TaskbarUnpinVerbCandidates
 		-not [string]::IsNullOrWhiteSpace([string]$_)
 	} | Select-Object -Unique
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Remove-TaskbarPinnedLink
 {
@@ -283,6 +319,10 @@ function Remove-TaskbarPinnedLink
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-TaskbarUnpinWithFallback
 {
 	<# .SYNOPSIS Unpins a taskbar item with fallback to shortcut file removal. #>
@@ -302,6 +342,10 @@ function Invoke-TaskbarUnpinWithFallback
 
 	return (Remove-TaskbarPinnedLink -ShellItem $ShellItem)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Remove-TaskbarPinnedLinksByPattern
 {
@@ -356,6 +400,10 @@ function Remove-TaskbarPinnedLinksByPattern
 	return $RemovedAny
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-ARM64ShellUnpin
 {
 	<# .SYNOPSIS Unpins taskbar items on ARM64 architecture via a background runspace. #>
@@ -407,7 +455,7 @@ function Invoke-ARM64ShellUnpin
 
 				if ($UnpinVerb)
 				{
-					try { $UnpinVerb.DoIt() } catch {}
+					try { $UnpinVerb.DoIt() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TaskbarHelpers.Invoke-ARM64ShellUnpin.DoIt' }
 				}
 			}
 		}
@@ -418,13 +466,14 @@ function Invoke-ARM64ShellUnpin
 	if (-not $AsyncResult.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds)))
 	{
 		LogWarning "ARM64 shell unpin timed out after $TimeoutSeconds seconds."
-		try { $PS.Stop() } catch {}
+		try { $PS.Stop() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TaskbarHelpers.Invoke-ARM64ShellUnpin.StopPowerShell' }
 	}
 	else
 	{
-		try { $PS.EndInvoke($AsyncResult) } catch {}
+		try { $PS.EndInvoke($AsyncResult) } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TaskbarHelpers.Invoke-ARM64ShellUnpin.EndInvokePowerShell' }
 	}
 
-	try { $PS.Dispose() } catch {}
-	try { $Runspace.Close(); $Runspace.Dispose() } catch {}
+	try { $PS.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TaskbarHelpers.Invoke-ARM64ShellUnpin.DisposePowerShell' }
+	try { $Runspace.Close(); $Runspace.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TaskbarHelpers.Invoke-ARM64ShellUnpin.DisposeRunspace' }
 }
+

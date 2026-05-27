@@ -1,11 +1,13 @@
 Set-StrictMode -Version Latest
 
 BeforeAll {
-    # Extract inner functions from both Manifest.Helpers.ps1 (for Get-TweakManifestEntryValue
     # and Test-TweakManifestEntryField) and GameMode.Helpers.ps1 via AST.
     # Uses Invoke-Expression on function definition AST nodes - safe because
     # ParseFile only parses (no execution) and we only evaluate FunctionDefinitionAst
     # nodes, which merely define functions without side effects.
+
+    # Json helpers must load first - GameMode.Helpers calls ConvertFrom-BaselineJson.
+    . (Join-Path $PSScriptRoot '../../Module/SharedHelpers/Json.Helpers.ps1')
 
     $Script:SharedHelpersModuleRoot = (Resolve-Path (Join-Path $PSScriptRoot '../../Module')).Path
     $Script:CachedGameModeAllowlistData = $null
@@ -44,6 +46,20 @@ Describe 'Get-GameModeAllowlist' {
         $allowlist | Should -Contain 'GPUScheduling'
         $allowlist | Should -Contain 'XboxGameBar'
         $allowlist | Should -Contain 'FullscreenOptimizations'
+    }
+
+    It 'contains the new advanced gaming functions' {
+        $allowlist = Get-GameModeAllowlist
+
+        $allowlist | Should -Contain 'Win32PrioritySeparation'
+        $allowlist | Should -Contain 'SystemResponsiveness'
+        $allowlist | Should -Contain 'GamingCpuPriority'
+        $allowlist | Should -Contain 'GamingSchedulingCategory'
+        $allowlist | Should -Contain 'GamingGpuPriority'
+        $allowlist | Should -Contain 'DirectXFlipModel'
+        $allowlist | Should -Contain 'DirectXVrrOptimizations'
+        $allowlist | Should -Contain 'DirectXAutoHdr'
+        $allowlist | Should -Contain 'NvidiaSharpening'
     }
 
     It 'contains only unique entries' {
@@ -200,6 +216,37 @@ Describe 'Test-GameModeProfileDefaultEligible' {
 
     It 'returns false for null entry' {
         Test-GameModeProfileDefaultEligible -Entry $null | Should -Be $false
+    }
+}
+
+Describe 'Test-GameModeAdvancedProfileDefaultSelection' {
+    It 'returns true when the profile default is enabled' {
+        $entry = [pscustomobject]@{
+            DefaultCheckedByProfile = [pscustomobject]@{
+                Competitive = $true
+            }
+        }
+
+        Test-GameModeAdvancedProfileDefaultSelection -Entry $entry -ProfileName 'Competitive' | Should -Be $true
+    }
+
+    It 'returns false when the profile default is disabled or missing' {
+        $entry = [pscustomobject]@{
+            DefaultCheckedByProfile = [pscustomobject]@{
+                Casual = $false
+            }
+        }
+
+        Test-GameModeAdvancedProfileDefaultSelection -Entry $entry -ProfileName 'Competitive' | Should -Be $false
+        Test-GameModeAdvancedProfileDefaultSelection -Entry $entry -ProfileName 'Casual' | Should -Be $false
+    }
+
+    It 'falls back to DefaultChecked when profile-specific defaults are absent' {
+        $entry = [pscustomobject]@{
+            DefaultChecked = $true
+        }
+
+        Test-GameModeAdvancedProfileDefaultSelection -Entry $entry -ProfileName 'Streaming' | Should -Be $true
     }
 }
 

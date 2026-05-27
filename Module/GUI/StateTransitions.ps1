@@ -1,9 +1,13 @@
 # Shared state-transition orchestration for GUI mode and preset changes.
-# Dot-sourced inside Show-TweakGUI after GuiContext.ps1.
+# Loaded inside Show-TweakGUI after GuiContext.ps1.
 #
 # AS-3: Collapses duplicate orchestration patterns found in ModeState.ps1
 # and PresetApplication.ps1. Each mode/preset toggle follows the same
 # sequence: save undo -> apply state -> clear cache -> rebuild tab -> status.
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Invoke-GuiStateTransition
 	{
@@ -82,7 +86,7 @@
 				[System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke(
 					[action]{}, [System.Windows.Threading.DispatcherPriority]::Input)
 			}
-			catch { <# non-fatal #> }
+			catch { Write-SwallowedException -ErrorRecord $_ -Source 'StateTransitions.Invoke-GuiStateTransition.DispatcherYield' }
 
 			& $Script:UpdateCurrentTabContentScript -SkipIdlePrebuild
 			if (Get-Command -Name 'Sync-ActivePresetButtonChrome' -CommandType Function -ErrorAction SilentlyContinue)
@@ -114,7 +118,7 @@
 			Set-GuiStatusText -Text $StatusMessage -Tone $(if ([string]::IsNullOrWhiteSpace($StatusTone)) { 'accent' } else { $StatusTone })
 		}
 
-		# 8. Keep Ctx mirrors in sync
+		# 8. Keep Ctx helpers in sync
 		if (Get-Command -Name 'Sync-GuiContextFromScriptState' -CommandType Function -ErrorAction SilentlyContinue)
 		{
 			Sync-GuiContextFromScriptState

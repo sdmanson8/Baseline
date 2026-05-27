@@ -1,4 +1,47 @@
-﻿# Tweak filtering, visibility, and category filter management
+# Tweak filtering, visibility, and category filter management
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Test-TweakVisibleByManifestGate
+	{
+		param (
+			[object]$Tweak
+		)
+
+		if (-not $Tweak) { return $false }
+
+		$visibleIf = $null
+		if ($Tweak -is [System.Collections.IDictionary])
+		{
+			if ($Tweak.Contains('VisibleIf')) { $visibleIf = $Tweak['VisibleIf'] }
+		}
+		elseif ($Tweak.PSObject -and $Tweak.PSObject.Properties['VisibleIf'])
+		{
+			$visibleIf = $Tweak.VisibleIf
+		}
+
+		if ($visibleIf)
+		{
+			try
+			{
+				if (-not [bool](& $visibleIf)) { return $false }
+			}
+			catch
+			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Test-TweakVisibleByManifestGate:catch31' -Severity Debug }
+
+				return $false
+			}
+		}
+
+		return $true
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Test-TweakVisibleInSafeMode
 	{
@@ -36,6 +79,10 @@
 		return $true
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakVisibleInCurrentMode
 	{
 		param (
@@ -43,6 +90,7 @@
 			[int]$LeftIndent = 28
 		)
 		if (-not $Tweak) { return $false }
+		if (-not (Test-TweakVisibleByManifestGate -Tweak $Tweak)) { return $false }
 
 		# Game Mode allowlist entries are always visible regardless of Safe Mode or standard filtering
 		if ($Script:GameMode -and $Script:GameModeAllowlist)
@@ -69,6 +117,10 @@
 		return $true
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-AvailableCategoryFilters
 	{
 		param (
@@ -77,7 +129,7 @@
 		)
 
 		$effectiveSearchQuery = if ($null -eq $SearchQuery) { '' } else { [string]$SearchQuery.Trim() }
-		$cacheKey = "$PrimaryTab|$effectiveSearchQuery|$Script:RiskFilter|$([int][bool]$Script:SafeMode)|$([int][bool]$Script:AdvancedMode)|$([int][bool]$Script:GamingOnlyFilter)|$([int][bool]$Script:SelectedOnlyFilter)|$([int][bool]$Script:HighRiskOnlyFilter)|$([int][bool]$Script:RestorableOnlyFilter)"
+		$cacheKey = "$PrimaryTab|$effectiveSearchQuery|$Script:RiskFilter|$Script:PlatformFilter|$([int][bool]$Script:HideUnavailableItems)|$([int][bool]$Script:SafeMode)|$([int][bool]$Script:AdvancedMode)|$([int][bool]$Script:GamingOnlyFilter)|$([int][bool]$Script:SelectedOnlyFilter)|$([int][bool]$Script:HighRiskOnlyFilter)|$([int][bool]$Script:RestorableOnlyFilter)"
 		if ($Script:CategoryFilterListCache -and $Script:CategoryFilterListCache.ContainsKey($cacheKey))
 		{
 			return $Script:CategoryFilterListCache[$cacheKey]
@@ -85,17 +137,45 @@
 
 		$categorySet = New-Object 'System.Collections.Generic.SortedSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 		$isSearchContext = ($PrimaryTab -eq $Script:SearchResultsTabTag)
-		for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
+
+		$candidateIndices = $null
+		$tweakIndexMap = Get-Variable -Name TweakIndicesByPrimaryTab -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+		if (
+			-not $isSearchContext -and
+			$tweakIndexMap -and
+			$tweakIndexMap.ContainsKey($PrimaryTab)
+		)
 		{
-			$tweak = $Script:TweakManifest[$i]
-			if (-not (Test-TweakVisibleInCurrentMode -Tweak $tweak)) { continue }
-			$stateSource = if ($Script:Controls -and $Script:Controls.Count -gt $i) { $Script:Controls[$i] } else { $null }
-			if (-not (Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab $PrimaryTab -SearchQuery $effectiveSearchQuery -StateSource $stateSource -IsSearchResultsTab:$isSearchContext -IgnoreCategoryFilter:$true -TweakIndex $i))
+			$candidateIndices = $tweakIndexMap[$PrimaryTab]
+		}
+
+		if ($null -ne $candidateIndices)
+		{
+			foreach ($i in $candidateIndices)
 			{
-				continue
+				$tweak = $Script:TweakManifest[$i]
+				if ([string]::IsNullOrWhiteSpace([string]$tweak.Category)) { continue }
+				$stateSource = if ($Script:Controls -and $Script:Controls.Count -gt $i) { $Script:Controls[$i] } else { $null }
+				if (-not (Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab $PrimaryTab -SearchQuery $effectiveSearchQuery -StateSource $stateSource -IsSearchResultsTab:$isSearchContext -IgnoreCategoryFilter:$true -TweakIndex $i))
+				{
+					continue
+				}
+				[void]$categorySet.Add([string]$tweak.Category)
 			}
-			if ([string]::IsNullOrWhiteSpace([string]$tweak.Category)) { continue }
-			[void]$categorySet.Add([string]$tweak.Category)
+		}
+		else
+		{
+			for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++)
+			{
+				$tweak = $Script:TweakManifest[$i]
+				if ([string]::IsNullOrWhiteSpace([string]$tweak.Category)) { continue }
+				$stateSource = if ($Script:Controls -and $Script:Controls.Count -gt $i) { $Script:Controls[$i] } else { $null }
+				if (-not (Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab $PrimaryTab -SearchQuery $effectiveSearchQuery -StateSource $stateSource -IsSearchResultsTab:$isSearchContext -IgnoreCategoryFilter:$true -TweakIndex $i))
+				{
+					continue
+				}
+				[void]$categorySet.Add([string]$tweak.Category)
+			}
 		}
 
 		$result = @($categorySet)
@@ -105,6 +185,10 @@
 		}
 		return $result
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Update-CategoryFilterList
 	{
@@ -125,14 +209,33 @@
 			$null
 		}
 
-		$currentValue = if ($CmbCategoryFilter.SelectedItem) { [string]$CmbCategoryFilter.SelectedItem } elseif ($Script:CategoryFilter) { [string]$Script:CategoryFilter } else { 'All' }
+		$currentValue = if ($Script:CategoryFilterInternalValues -and $CmbCategoryFilter.SelectedIndex -ge 0 -and $CmbCategoryFilter.SelectedIndex -lt $Script:CategoryFilterInternalValues.Count) { $Script:CategoryFilterInternalValues[$CmbCategoryFilter.SelectedIndex] } elseif ($Script:CategoryFilter) { [string]$Script:CategoryFilter } else { 'All' }
 		$searchQuery = if ($null -eq $Script:SearchText) { '' } else { [string]$Script:SearchText.Trim() }
 
-		# Skip the ComboBox clear+repopulate when the same tab/filter state was already rendered.
-		# This avoids per-tab-switch WPF layout invalidations when nothing has changed.
-		$populateKey = "$targetTab|$searchQuery|$Script:RiskFilter|$([int][bool]$Script:SafeMode)|$([int][bool]$Script:AdvancedMode)|$([int][bool]$Script:GamingOnlyFilter)|$([int][bool]$Script:SelectedOnlyFilter)|$([int][bool]$Script:HighRiskOnlyFilter)|$([int][bool]$Script:RestorableOnlyFilter)|$currentValue"
-		if ($Script:LastCategoryFilterPopulateKey -eq $populateKey) { return }
+		# Skip the ComboBox clear+repopulate when the rendered item set is unchanged.
+		# The signature deliberately omits the current selection: user selection movement
+		# should not force a full ComboBox rebuild.
+		$manifestCount = 0
+		try { $manifestCount = [int]$Script:TweakManifest.Count } catch {
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-CategoryFilterList:catch217' -Severity Debug }
+		 $manifestCount = 0 }
+		$signature = "{0}|{1}|{2}|{3}|{4}" -f `
+			[int]$Script:FilterGeneration, `
+			[string]$Script:SelectedLanguage, `
+			[string]$targetTab, `
+			$searchQuery, `
+			$manifestCount
+		if ($Script:LastCategoryFilterSignature -eq $signature) { return }
+
+		# Secondary guard for callers that invalidate the older populate key directly.
+		$populateKey = "$targetTab|$searchQuery|$Script:RiskFilter|$Script:PlatformFilter|$([int][bool]$Script:HideUnavailableItems)|$([int][bool]$Script:SafeMode)|$([int][bool]$Script:AdvancedMode)|$([int][bool]$Script:GamingOnlyFilter)|$([int][bool]$Script:SelectedOnlyFilter)|$([int][bool]$Script:HighRiskOnlyFilter)|$([int][bool]$Script:RestorableOnlyFilter)|$Script:SelectedLanguage|$Script:FilterGeneration"
+		if ($Script:LastCategoryFilterPopulateKey -eq $populateKey)
+		{
+			$Script:LastCategoryFilterSignature = $signature
+			return
+		}
 		$Script:LastCategoryFilterPopulateKey = $populateKey
+		$Script:LastCategoryFilterSignature = $signature
 
 		$values = if ($targetTab) { @(Get-AvailableCategoryFilters -PrimaryTab $targetTab -SearchQuery $searchQuery) } else { @() }
 
@@ -140,15 +243,39 @@
 		try
 		{
 			$CmbCategoryFilter.Items.Clear()
-			[void]$CmbCategoryFilter.Items.Add('All')
+			$Script:CategoryFilterInternalValues = [System.Collections.Generic.List[string]]::new()
+			$catLocKeyMap = @{
+				'Initial Setup'       = 'GuiTabInitialSetup'
+				'Privacy & Telemetry' = 'GuiTabPrivacyTelemetry'
+				'Security'            = 'GuiTabSecurity'
+				'System'              = 'GuiTabSystem'
+				'Updates'             = 'GuiTabUpdates'
+				'UI & Personalization'= 'GuiTabUIPersonalization'
+				'UWP Apps'            = 'GuiTabUWPApps'
+				'Gaming'              = 'GuiTabGaming'
+				'Context Menu'        = 'GuiTabContextMenu'
+				'Cursors'             = 'GuiTabCursors'
+				'OS Hardening'        = 'GuiTabOSHardening'
+				'OneDrive'            = 'GuiTabOneDrive'
+				'Start Menu'          = 'GuiTabStartMenu'
+				'Start Menu Apps'     = 'GuiTabStartMenuApps'
+				'System Tweaks'       = 'GuiTabSystemTweaks'
+				'Taskbar'             = 'GuiTabTaskbar'
+				'Taskbar Clock'       = 'GuiTabTaskbarClock'
+			}
+			[void]$CmbCategoryFilter.Items.Add((Get-UxLocalizedString -Key 'GuiCategoryAll' -Fallback 'All'))
+			[void]$Script:CategoryFilterInternalValues.Add('All')
 			foreach ($value in $values)
 			{
-				[void]$CmbCategoryFilter.Items.Add($value)
+				$locKey = if ($catLocKeyMap.ContainsKey($value)) { $catLocKeyMap[$value] } else { $null }
+				$displayValue = if ($locKey) { Get-UxLocalizedString -Key $locKey -Fallback $value } else { $value }
+				[void]$CmbCategoryFilter.Items.Add($displayValue)
+				[void]$Script:CategoryFilterInternalValues.Add($value)
 			}
 
 			if ($currentValue -and $currentValue -ne 'All' -and $values -contains $currentValue)
 			{
-				$found = $CmbCategoryFilter.Items.IndexOf($currentValue)
+				$found = $Script:CategoryFilterInternalValues.IndexOf($currentValue)
 				if ($found -ge 0) { $CmbCategoryFilter.SelectedIndex = [int]$found }
 				$Script:CategoryFilter = $currentValue
 			}
@@ -165,6 +292,294 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Update-RiskFilterList
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+		if (-not $CmbRiskFilter) { return }
+
+		$currentValue = if ($Script:RiskFilterInternalValues -and $CmbRiskFilter.SelectedIndex -ge 0 -and $CmbRiskFilter.SelectedIndex -lt $Script:RiskFilterInternalValues.Count)
+		{
+			$Script:RiskFilterInternalValues[$CmbRiskFilter.SelectedIndex]
+		}
+		elseif ($Script:RiskFilter)
+		{
+			[string]$Script:RiskFilter
+		}
+		else
+		{
+			'All'
+		}
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$CmbRiskFilter.Items.Clear()
+			$riskDisplayAll = Get-UxLocalizedString -Key 'GuiRiskAll' -Fallback 'All'
+			$riskDisplayLow = Get-UxLocalizedString -Key 'GuiRiskLowShort' -Fallback 'Low'
+			$riskDisplayMedium = Get-UxLocalizedString -Key 'GuiRiskMediumShort' -Fallback 'Medium'
+			$riskDisplayHigh = Get-UxLocalizedString -Key 'GuiRiskHighShort' -Fallback 'High'
+			$Script:RiskFilterInternalValues = @('All', 'Low', 'Medium', 'High')
+			foreach ($riskOption in @($riskDisplayAll, $riskDisplayLow, $riskDisplayMedium, $riskDisplayHigh))
+			{
+				[void]$CmbRiskFilter.Items.Add($riskOption)
+			}
+
+			$idx = 0
+			if ($currentValue -and $Script:RiskFilterInternalValues)
+			{
+				$found = $Script:RiskFilterInternalValues.IndexOf($currentValue)
+				if ($found -ge 0) { $idx = $found }
+			}
+			try
+			{
+				$CmbRiskFilter.SelectedIndex = [int]$idx
+			}
+			catch
+			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-RiskFilterList:catch338' -Severity Debug }
+
+				$CmbRiskFilter.SelectedIndex = 0
+			}
+
+			if ($Script:RiskFilterInternalValues -and $CmbRiskFilter.SelectedIndex -ge 0 -and $CmbRiskFilter.SelectedIndex -lt $Script:RiskFilterInternalValues.Count)
+			{
+				$Script:RiskFilter = $Script:RiskFilterInternalValues[$CmbRiskFilter.SelectedIndex]
+			}
+			else
+			{
+				$Script:RiskFilter = 'All'
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-PlatformFilterDisplayName
+	{
+		param (
+			[string]$PlatformFilter
+		)
+
+		switch ((Get-BaselinePlatformFilterOverride -Filter $PlatformFilter).Mode)
+		{
+			'AllSupported' { return 'All supported' }
+			'Windows10'    { return 'Windows 10' }
+			'Windows11'    { return 'Windows 11' }
+			'Server'       { return 'Server' }
+			default        { return 'This device' }
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Update-PlatformFilterAvailability
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[string]$PlatformFilter = $Script:PlatformFilter
+		)
+
+		if (-not $Script:TweakManifest) { return }
+
+		$resolved = Get-BaselinePlatformFilterOverride -Filter $PlatformFilter
+		$mode = if ($resolved -and -not [string]::IsNullOrWhiteSpace([string]$resolved.Mode)) { [string]$resolved.Mode } else { 'ThisDevice' }
+		$Script:PlatformFilter = $mode
+
+		$Script:FilterGeneration++
+		if (Get-Command -Name 'Clear-TabContentCache' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			Clear-TabContentCache
+		}
+
+		if ($mode -eq 'AllSupported')
+		{
+			if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				try { $Script:BaselineSystemPlatformInfo = Get-BaselineSystemPlatformInfo } catch {
+					if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-PlatformFilterAvailability:catch405' -Severity Debug }
+				 $Script:BaselineSystemPlatformInfo = $null }
+			}
+			if (Get-Command -Name 'Set-BaselineManifestAllAvailable' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				$null = Set-BaselineManifestAllAvailable -Manifest $Script:TweakManifest
+			}
+			if (Get-Command -Name 'Update-BaselineManifestExecutionSupport' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				$null = Update-BaselineManifestExecutionSupport -Manifest $Script:TweakManifest
+			}
+			return $mode
+		}
+
+		$systemInfo = $null
+		if ($resolved -and $resolved.Override -and (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -CommandType Function -ErrorAction SilentlyContinue))
+		{
+			try { $systemInfo = Get-BaselineSystemPlatformInfo -Override $resolved.Override } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-PlatformFilterAvailability:catch421' -Severity Debug }
+			 $systemInfo = $null }
+		}
+		elseif (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			try { $systemInfo = Get-BaselineSystemPlatformInfo } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-PlatformFilterAvailability:catch425' -Severity Debug }
+			 $systemInfo = $null }
+		}
+
+		$Script:BaselineSystemPlatformInfo = $systemInfo
+		if ($systemInfo -and (Get-Command -Name 'Update-BaselineManifestAvailability' -CommandType Function -ErrorAction SilentlyContinue))
+		{
+			$null = Update-BaselineManifestAvailability -Manifest $Script:TweakManifest -SystemInfo $systemInfo
+		}
+		if (Get-Command -Name 'Update-BaselineManifestExecutionSupport' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			$null = Update-BaselineManifestExecutionSupport -Manifest $Script:TweakManifest
+		}
+
+		return $mode
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Set-PlatformFilterState
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[string]$PlatformFilter = 'ThisDevice'
+		)
+
+		$resolved = Get-BaselinePlatformFilterOverride -Filter $PlatformFilter
+		$mode = if ($resolved -and -not [string]::IsNullOrWhiteSpace([string]$resolved.Mode)) { [string]$resolved.Mode } else { 'ThisDevice' }
+		$Script:PlatformFilter = $mode
+		$null = Update-PlatformFilterAvailability -PlatformFilter $mode
+		if ($CmbPlatformFilter)
+		{
+			Update-PlatformFilterList
+		}
+		return $mode
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Set-HideUnavailableItemsState
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[bool]$HideUnavailableItems = $true
+		)
+
+		$normalized = [bool]$HideUnavailableItems
+		$Script:HideUnavailableItems = $normalized
+		if (Get-Command -Name 'Set-BaselineUserPreference' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			try { Set-BaselineUserPreference -Key 'HideUnavailableItems' -Value $normalized } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Set-HideUnavailableItemsState:catch478' -Severity Debug }
+			 $null = $_ }
+		}
+
+		$Script:FilterGeneration++
+		if (Get-Command -Name 'Clear-TabContentCache' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			Clear-TabContentCache
+		}
+
+		return $normalized
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Update-PlatformFilterList
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param ()
+
+		if (-not $CmbPlatformFilter) { return }
+
+		$currentValue = if (-not [string]::IsNullOrWhiteSpace([string]$Script:PlatformFilter))
+		{
+			[string]$Script:PlatformFilter
+		}
+		elseif ($Script:PlatformFilterInternalValues -and $CmbPlatformFilter.SelectedIndex -ge 0 -and $CmbPlatformFilter.SelectedIndex -lt $Script:PlatformFilterInternalValues.Count)
+		{
+			$Script:PlatformFilterInternalValues[$CmbPlatformFilter.SelectedIndex]
+		}
+		else
+		{
+			'ThisDevice'
+		}
+
+		$resolved = Get-BaselinePlatformFilterOverride -Filter $currentValue
+		$currentMode = if ($resolved -and -not [string]::IsNullOrWhiteSpace([string]$resolved.Mode)) { [string]$resolved.Mode } else { 'ThisDevice' }
+		$populateKey = $currentMode
+		if ($Script:LastPlatformFilterPopulateKey -eq $populateKey) { return }
+		$Script:LastPlatformFilterPopulateKey = $populateKey
+
+		$Script:FilterUiUpdating = $true
+		try
+		{
+			$CmbPlatformFilter.Items.Clear()
+			$Script:PlatformFilterInternalValues = [System.Collections.Generic.List[string]]::new()
+
+			$values = @('ThisDevice', 'AllSupported', 'Windows10', 'Windows11', 'Server')
+			foreach ($value in $values)
+			{
+				[void]$CmbPlatformFilter.Items.Add((Get-PlatformFilterDisplayName -PlatformFilter $value))
+				[void]$Script:PlatformFilterInternalValues.Add($value)
+			}
+
+			$idx = 0
+			if ($Script:PlatformFilterInternalValues -and $Script:PlatformFilterInternalValues.Contains($currentMode))
+			{
+				$found = $Script:PlatformFilterInternalValues.IndexOf($currentMode)
+				if ($found -ge 0) { $idx = $found }
+			}
+			try
+			{
+				$CmbPlatformFilter.SelectedIndex = [int]$idx
+			}
+			catch
+			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Update-PlatformFilterList:catch543' -Severity Debug }
+
+				$CmbPlatformFilter.SelectedIndex = 0
+			}
+
+			if ($Script:PlatformFilterInternalValues -and $CmbPlatformFilter.SelectedIndex -ge 0 -and $CmbPlatformFilter.SelectedIndex -lt $Script:PlatformFilterInternalValues.Count)
+			{
+				$Script:PlatformFilter = $Script:PlatformFilterInternalValues[$CmbPlatformFilter.SelectedIndex]
+			}
+			else
+			{
+				$Script:PlatformFilter = 'ThisDevice'
+			}
+		}
+		finally
+		{
+			$Script:FilterUiUpdating = $false
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-CurrentFilterSummaryItems
 	{
 		param (
@@ -175,6 +590,7 @@
 		$effectiveSearchQuery = if ([string]::IsNullOrWhiteSpace($SearchQuery)) { '' } else { ([string]$SearchQuery).Trim() }
 		$effectiveRiskFilter = if ($null -eq $Script:RiskFilter) { 'All' } else { ([string]$Script:RiskFilter).Trim() }
 		$effectiveCategoryFilter = if ($null -eq $Script:CategoryFilter) { 'All' } else { ([string]$Script:CategoryFilter).Trim() }
+		$effectivePlatformFilter = if ($null -eq $Script:PlatformFilter) { 'ThisDevice' } else { ([string]$Script:PlatformFilter).Trim() }
 		$selectedOnly = ($Script:SelectedOnlyFilter -eq $true)
 		$safeMode = ($Script:SafeMode -eq $true)
 		$advancedMode = ($Script:AdvancedMode -eq $true)
@@ -200,19 +616,70 @@
 				'Low' { 'Success'; break }
 				default { 'Primary' }
 			}
+			$riskDisplay = switch ($effectiveRiskFilter)
+			{
+				'High' { Get-UxLocalizedString -Key 'GuiRiskHighShort' -Fallback 'High' }
+				'Medium' { Get-UxLocalizedString -Key 'GuiRiskMediumShort' -Fallback 'Medium' }
+				'Low' { Get-UxLocalizedString -Key 'GuiRiskLowShort' -Fallback 'Low' }
+				default { Get-UxLocalizedString -Key 'GuiRiskAll' -Fallback 'All' }
+			}
 			[void]$items.Add([pscustomobject]@{
-				Label = "Risk: $effectiveRiskFilter"
+				Label = ('{0}: {1}' -f (Get-UxLocalizedString -Key 'GuiRiskFilterLabel' -Fallback 'Risk'), $riskDisplay)
 				Tone = $riskTone
-				ToolTip = 'Risk filter'
+				ToolTip = (Get-UxLocalizedString -Key 'GuiRiskFilterLabel' -Fallback 'Risk')
 			})
 		}
 
 		if (-not [string]::IsNullOrWhiteSpace($effectiveCategoryFilter) -and $effectiveCategoryFilter -ne 'All')
 		{
+			$categoryLocKeyMap = @{
+				'Initial Setup'       = 'GuiTabInitialSetup'
+				'Privacy & Telemetry' = 'GuiTabPrivacyTelemetry'
+				'Security'            = 'GuiTabSecurity'
+				'System'              = 'GuiTabSystem'
+				'Updates'             = 'GuiTabUpdates'
+				'UI & Personalization'= 'GuiTabUIPersonalization'
+				'UWP Apps'            = 'GuiTabUWPApps'
+				'Gaming'              = 'GuiTabGaming'
+				'Context Menu'        = 'GuiTabContextMenu'
+				'Cursors'             = 'GuiTabCursors'
+				'OS Hardening'        = 'GuiTabOSHardening'
+				'OneDrive'            = 'GuiTabOneDrive'
+				'Start Menu'          = 'GuiTabStartMenu'
+				'Start Menu Apps'     = 'GuiTabStartMenuApps'
+				'System Tweaks'       = 'GuiTabSystemTweaks'
+				'Taskbar'             = 'GuiTabTaskbar'
+				'Taskbar Clock'       = 'GuiTabTaskbarClock'
+			}
+			$categoryDisplay = $effectiveCategoryFilter
+			$categoryLocKey = if ($categoryLocKeyMap.ContainsKey($effectiveCategoryFilter)) { $categoryLocKeyMap[$effectiveCategoryFilter] } else { $null }
+			if ($categoryLocKey)
+			{
+				$categoryDisplay = Get-UxLocalizedString -Key $categoryLocKey -Fallback $effectiveCategoryFilter
+			}
 			[void]$items.Add([pscustomobject]@{
-				Label = "Category: $effectiveCategoryFilter"
+				Label = ('{0}: {1}' -f (Get-UxLocalizedString -Key 'GuiCategoryFilterLabel' -Fallback 'Category'), $categoryDisplay)
 				Tone = 'Primary'
-				ToolTip = 'Category filter'
+				ToolTip = (Get-UxLocalizedString -Key 'GuiCategoryFilterLabel' -Fallback 'Category')
+			})
+		}
+
+		if (-not [string]::IsNullOrWhiteSpace($effectivePlatformFilter) -and $effectivePlatformFilter -ne 'ThisDevice')
+		{
+			$platformDisplay = Get-PlatformFilterDisplayName -PlatformFilter $effectivePlatformFilter
+			[void]$items.Add([pscustomobject]@{
+				Label = "Platform: $platformDisplay"
+				Tone = 'Primary'
+				ToolTip = 'Preview entry availability on a selected Windows platform'
+			})
+		}
+
+		if ($Script:HideUnavailableItems -ne $null)
+		{
+			[void]$items.Add([pscustomobject]@{
+				Label = if ($Script:HideUnavailableItems) { 'Unavailable hidden' } else { 'Unavailable shown' }
+				Tone = 'Muted'
+				ToolTip = if ($Script:HideUnavailableItems) { 'Unavailable tweaks are hidden from the list' } else { 'Unavailable tweaks remain visible and greyed out' }
 			})
 		}
 
@@ -273,6 +740,10 @@
 		return @($items)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Test-TweakMatchesCurrentFilters
 	{
 		param (
@@ -287,13 +758,17 @@
 
 		if (-not (Test-TweakVisibleInCurrentMode -Tweak $Tweak)) { return $false }
 
-		$owningPrimary = $CategoryToPrimary[$Tweak.Category]
+		$owningPrimary = Resolve-GuiPrimaryTabForTweak -Tweak $Tweak
+		if (-not [bool]$Script:GamingModeActive -and $owningPrimary -eq 'Gaming')
+		{
+			return $false
+		}
 		if (-not $IsSearchResultsTab -and $owningPrimary -ne $PrimaryTab)
 		{
 			# Cross-tab entries: allow specific tweaks from other tabs to appear in Gaming
 			if ($PrimaryTab -eq 'Gaming' -and $Script:GamingCrossTabFunctions -and $Script:GamingCrossTabFunctions.Contains([string]$Tweak.Function))
 			{
-				# Allow through — this entry belongs to another tab but is cross-listed in Gaming
+				# Allow through - this entry belongs to another tab but is cross-listed in Gaming
 			}
 			else
 			{
@@ -311,6 +786,49 @@
 		if (-not $IgnoreCategoryFilter -and -not [string]::IsNullOrWhiteSpace([string]$Script:CategoryFilter) -and $Script:CategoryFilter -ne 'All')
 		{
 			if ([string]$Tweak.Category -ne [string]$Script:CategoryFilter) { return $false }
+		}
+
+		$hideUnavailableItems = $true
+		if ($null -ne $Script:HideUnavailableItems)
+		{
+			$hideUnavailableItems = [bool]$Script:HideUnavailableItems
+		}
+		elseif (Get-Command -Name 'Get-BaselineUserPreference' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			try { $hideUnavailableItems = [bool](Get-BaselineUserPreference -Key 'HideUnavailableItems' -Default $true) } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'FilteringLogic.Test-TweakMatchesCurrentFilters:catch778' -Severity Debug }
+			 $hideUnavailableItems = $true }
+		}
+
+		if ($hideUnavailableItems)
+		{
+			$availability = $null
+			if ($Tweak -is [System.Collections.IDictionary])
+			{
+				if ($Tweak.Contains('Availability')) { $availability = $Tweak['Availability'] }
+			}
+			elseif ($Tweak.PSObject -and $Tweak.PSObject.Properties['Availability'])
+			{
+				$availability = $Tweak.Availability
+			}
+
+			$hasAvailabilityFlag = $false
+			$isAvailable = $true
+			if ($availability -is [System.Collections.IDictionary])
+			{
+				if ($availability.Contains('Available'))
+				{
+					$hasAvailabilityFlag = $true
+					$isAvailable = [bool]$availability['Available']
+				}
+			}
+			elseif ($availability -and $availability.PSObject -and $availability.PSObject.Properties['Available'])
+			{
+				$hasAvailabilityFlag = $true
+				$isAvailable = [bool]$availability.Available
+			}
+
+			if ($hasAvailabilityFlag -and -not $isAvailable) { return $false }
 		}
 
 		if ([bool]$Script:SelectedOnlyFilter)
@@ -363,4 +881,3 @@
 
 		return $true
 	}
-

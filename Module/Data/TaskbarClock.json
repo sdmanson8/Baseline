@@ -33,7 +33,13 @@
       "WhyThisMatters": "Time in Notification Center",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Notification Center clock visibility is a client-only personalization setting."
+      }
     },
     {
       "Name": "Seconds on Taskbar Clock",
@@ -67,7 +73,13 @@
       "WhyThisMatters": "Seconds on the taskbar clock",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Taskbar clock seconds is a client-only personalization setting."
+      }
     }
   ]
 }

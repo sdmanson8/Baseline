@@ -1,6 +1,10 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
+    <#
+        .SYNOPSIS
+    #>
+
     function Test-GuiObjectField { param([object]$Object, [string]$FieldName) if ($null -eq $Object) { return $false }; if ($Object -is [System.Collections.IDictionary]) { return $Object.Contains($FieldName) }; return [bool]($Object.PSObject -and $Object.PSObject.Properties[$FieldName]) }
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/EventInfrastructure.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
@@ -22,6 +26,10 @@ Describe 'Get-GuiFunctionCapture' {
     It 're-resolves functions when the runtime command cache contains a stale null entry' {
         $Script:GuiRuntimeCommandCache['Function|Get-TestGuiGreeting'] = $null
 
+        <#
+            .SYNOPSIS
+        #>
+
         function Get-TestGuiGreeting {
             return 'hello'
         }
@@ -35,10 +43,17 @@ Describe 'Get-GuiFunctionCapture' {
     It 'preserves module-scope private function resolution when invoking captured functions' {
         $moduleName = 'GuiCaptureTestModule'
         $module = New-Module -Name $moduleName -ScriptBlock {
+            <#
+                .SYNOPSIS
+            #>
             function Invoke-PrivateDependency {
                 param([string]$Name)
                 return "private:$Name"
             }
+
+            <#
+                .SYNOPSIS
+            #>
 
             function Invoke-ExportedDependency {
                 param([string]$Name)

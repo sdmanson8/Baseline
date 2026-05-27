@@ -1,5 +1,5 @@
 ﻿{
-    "generated":  "2026-04-05T09:52:25.0122924+02:00",
+    "generated":  "2026-05-25T07:34:53.9524544+02:00",
     "platform":  {
                      "os":  "Microsoft Windows NT 10.0.26100.0",
                      "edition":  "Desktop",
@@ -9,55 +9,55 @@
     "layers":  {
                    "smoke":  {
                                  "name":  "Smoke Tests",
-                                 "script":  "E:\\Baseline\\Tools\\Test-SmokeTest.ps1",
+                                 "script":  "E:\\Github\\Baseline\\Tools\\Test-SmokeTest.ps1",
                                  "result":  "Passed",
                                  "passed":  0,
                                  "failed":  0,
                                  "skipped":  0,
-                                 "duration":  14.52,
+                                 "duration":  223.62,
                                  "output":  ""
                              },
                    "unit":  {
                                 "name":  "Unit Tests",
-                                "script":  "E:\\Baseline\\Tests\\Unit",
-                                "result":  "Failed",
-                                "passed":  1881,
-                                "failed":  13,
+                                "script":  "E:\\Github\\Baseline\\Tests\\Unit",
+                                "result":  "Passed",
+                                "passed":  5730,
+                                "failed":  0,
                                 "skipped":  4,
-                                "duration":  55.4,
-                                "output":  "Tests: 1898 | Passed: 1881 | Failed: 13 | Skipped: 4"
+                                "duration":  995.95,
+                                "output":  "Tests: 5734 | Passed: 5730 | Failed: 0 | Skipped: 4"
                             },
                    "composition":  {
                                        "name":  "GUI Composition Tests",
-                                       "script":  "E:\\Baseline\\Tests\\GUI.Composition.Tests.ps1",
-                                       "result":  "Failed",
-                                       "passed":  22,
-                                       "failed":  1,
+                                       "script":  "E:\\Github\\Baseline\\Tests\\GUI.Composition.Tests.ps1",
+                                       "result":  "Passed",
+                                       "passed":  44,
+                                       "failed":  0,
                                        "skipped":  0,
-                                       "duration":  1.14,
-                                       "output":  "Tests: 23 | Passed: 22 | Failed: 1 | Skipped: 0"
+                                       "duration":  3.8,
+                                       "output":  "Tests: 44 | Passed: 44 | Failed: 0 | Skipped: 0"
                                    },
                    "preset":  {
                                   "name":  "Preset Validation",
-                                  "script":  "E:\\Baseline\\Tools\\Test-PresetGeneration.ps1",
-                                  "result":  "Failed",
+                                  "script":  "E:\\Github\\Baseline\\Tools\\Test-PresetGeneration.ps1",
+                                  "result":  "Passed",
                                   "passed":  0,
                                   "failed":  0,
                                   "skipped":  0,
-                                  "duration":  7.35,
+                                  "duration":  5.52,
                                   "output":  ""
                               }
                },
     "summary":  {
-                    "totalPassed":  1903,
-                    "totalFailed":  14,
+                    "totalPassed":  5774,
+                    "totalFailed":  0,
                     "totalSkipped":  4,
-                    "overallResult":  "Failed"
+                    "overallResult":  "Passed"
                 },
     "badge":  {
                   "schemaVersion":  1,
                   "label":  "tests",
-                  "message":  "14 failed",
-                  "color":  "red"
+                  "message":  "5774 passed",
+                  "color":  "brightgreen"
               }
 }

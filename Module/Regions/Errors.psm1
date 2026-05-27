@@ -2,7 +2,9 @@ using module ..\Logging.psm1
 using module ..\SharedHelpers.psm1
 
 #region Errors
-<#
+function Errors
+{
+    <#
 	.SYNOPSIS
 	Log the collected script errors and show the final log file location.
 
@@ -13,9 +15,7 @@ using module ..\SharedHelpers.psm1
 
 	.EXAMPLE
 	Errors
-#>
-function Errors
-{
+    #>
     if ($Global:Error)
     {
         $FilteredErrors = $Global:Error | Where-Object { -not (Test-IgnorableErrorRecord -ErrorRecord $_) }

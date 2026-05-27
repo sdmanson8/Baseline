@@ -1,0 +1,25 @@
+{
+  "Description": "Sample reviewer decisions matching imported-profile.json. Accepts the two Add rows + the Change to DefenderScanCPULimit; rejects the PowerPlanTimeout Change and both Remove rows.",
+  "DefaultDecision": "Reject",
+  "Decisions": [
+    { "Id": "DefenderScanCPULimit",      "Decision": "Accept" },
+    { "Id": "PowerPlanTimeout",          "Decision": "Reject" },
+    { "Id": "BrowserEnterprisePolicies", "Decision": "Accept" },
+    { "Id": "AuthHardeningRegistry",     "Decision": "Accept" },
+    { "Id": "BatteryPercentage",         "Decision": "Reject" },
+    { "Id": "LegacyTLSProtocols",        "Decision": "Reject" }
+  ],
+  "ExpectedAcceptedIds": [
+    "DefenderScanCPULimit",
+    "BrowserEnterprisePolicies",
+    "AuthHardeningRegistry"
+  ],
+  "ExpectedRejectedIds": [
+    "PowerPlanTimeout",
+    "BatteryPercentage",
+    "LegacyTLSProtocols"
+  ],
+  "ExpectedSkippedIds": [
+    "DisableTelemetry"
+  ]
+}

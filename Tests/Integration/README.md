@@ -39,8 +39,8 @@ require self-hosted runners or local execution inside a VM.
 | Registry      | Apply a toggle, verify the registry value, undo, verify restored |
 | Services      | Disable a service, verify stopped, restore, verify running  |
 | Packages      | Remove a safe UWP app, verify absent (skipped in DryRun)   |
-| GroupPolicy   | Apply an LGPO-backed setting, verify, restore               |
-| GameMode      | Apply a Game Mode profile, verify settings, restore         |
+| GroupPolicy   | Apply a Baseline policy-backed setting, verify, restore              |
+| GameMode      | Verify Game Bar, CPU priority, DirectX flip model, and GPU scheduling writes, then restore |
 
 ## Prerequisites
 
@@ -56,21 +56,44 @@ require self-hosted runners or local execution inside a VM.
 
 ```powershell
 # Run all categories (requires admin, real Windows VM)
-pwsh -File ./Tests/Integration/IntegrationTest.ps1
+powershell -File ./Tests/Integration/IntegrationTest.ps1
 
 # Run only registry tests
-pwsh -File ./Tests/Integration/IntegrationTest.ps1 -Category Registry
+powershell -File ./Tests/Integration/IntegrationTest.ps1 -Category Registry
 
 # Dry-run mode (skips destructive package operations)
-pwsh -File ./Tests/Integration/IntegrationTest.ps1 -DryRun
+powershell -File ./Tests/Integration/IntegrationTest.ps1 -DryRun
 
 # Run the focused registry tweak test
-pwsh -File ./Tests/Integration/Test-RegistryTweak.ps1 -FunctionName FileExtensions -RegistryPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -ValueName HideFileExt -ApplyParam Show -ExpectedValue 0 -UndoParam Hide -UndoExpectedValue 1
+powershell -File ./Tests/Integration/Test-RegistryTweak.ps1 -FunctionName FileExtensions -RegistryPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -ValueName HideFileExt -ApplyParam Show -ExpectedValue 0 -UndoParam Hide -UndoExpectedValue 1
 ```
 
 ## CI Integration
 
 The workflow `.github/workflows/integration.yml` is configured for manual
-dispatch only (`workflow_dispatch`). It runs on GitHub-hosted Windows Server
-runners and executes a subset of safe tests. Full desktop-SKU coverage requires
-self-hosted runners that are not yet provisioned.
+dispatch only (`workflow_dispatch`) with three parallel jobs:
+
+| Job              | Runner labels                                        | Status                |
+|------------------|------------------------------------------------------|-----------------------|
+| `server-2022`    | `windows-2022` (GitHub-hosted)                       | Active                |
+| `win10-22h2`     | `[self-hosted, windows, desktop, win10-22h2]`        | Needs runner provisioning |
+| `win11-23h2`     | `[self-hosted, windows, desktop, win11-23h2]`        | Needs runner provisioning |
+
+### Self-hosted runner provisioning
+
+Desktop-SKU jobs remain queued until a repo admin registers at least one
+self-hosted runner with the matching label set. To provision:
+
+1. On a clean Windows 10 22H2 or Windows 11 23H2 VM, run the runner installer
+   from `Settings → Actions → Runners → New self-hosted runner`.
+2. When prompted for labels, include **all four** of:
+   `self-hosted`, `windows`, `desktop`, and the SKU label
+   (`win10-22h2` or `win11-23h2`).
+3. Configure the runner to run as a service with administrator privileges
+   (Baseline tweaks require elevation).
+4. Ensure the VM snapshot is restored between runs — the integration suite
+   modifies real system state.
+
+Once at least one matching runner is online and `idle`, dispatching the
+workflow automatically routes the desktop-SKU jobs to it. The GitHub-hosted
+`server-2022` job is unaffected by runner availability.

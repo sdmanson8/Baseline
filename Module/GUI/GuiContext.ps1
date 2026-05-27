@@ -1,6 +1,10 @@
 # GUI context hashtable ($Script:Ctx) - groups $Script: variables by category.
 # Loaded first in Show-TweakGUI. Direct $Script: access still works everywhere.
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function New-GuiContext
 	{
 		param ([hashtable]$Overrides = @{})
@@ -59,6 +63,16 @@
 				Allowlist             = @()
 				ExecutionContext       = $null
 			}
+			Remote = @{
+				Connected        = $false
+				TargetComputers  = @()
+				ApprovedTargetComputers = @()
+				Credential       = $null
+				ConnectedAt      = $null
+				ApprovedAt       = $null
+				StatusMessage    = $null
+				ApprovalMessage  = $null
+			}
 			UI = @{
 				MainForm              = $null
 				StatusText            = $null
@@ -68,6 +82,9 @@
 				PresetBadge           = $null
 				CurrentPrimaryTab     = $null
 				LastStandardPrimaryTab = $null
+				AuditRetentionDays    = 90
+				PinnedBaselineVersion = $null
+				DesignMode            = $false
 			}
 			Services = @{
 				UpdateProgressFn = $null
@@ -80,7 +97,7 @@
 			}
 			Config = @{
 				ModuleBasePath      = $null
-				ExtractedRoot       = $null
+				ModuleRoot       = $null
 				PresetDirectoryPath = $null
 				DisplayVersion      = $null
 			}
@@ -88,6 +105,7 @@
 				Safe     = $false
 				Expert   = $false
 				Game     = $false
+				Design   = $false
 				Scenario = $null
 			}
 			Preset = @{
@@ -98,6 +116,7 @@
 			State = @{
 				UndoSnapshot   = $null
 				LastRunProfile = $null
+				InterruptedRunProfile = $null
 			}
 		}
 
@@ -114,6 +133,10 @@
 
 		return $ctx
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiContext
 	{
@@ -155,6 +178,10 @@
 
 		return $category[$fieldName]
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Set-GuiContext
 	{
@@ -199,7 +226,11 @@
 
 	# --- AS-2: Mirror mutable UI state inside $Script:Ctx ---
 	# These keep backward compat - old $Script: variables still work everywhere.
-	# The Ctx mirrors provide a single structured place for future callers.
+	# The Ctx helpers provide a single structured place for future callers.
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Sync-GuiContextFromScriptState
 	{
@@ -215,14 +246,33 @@
 		$Script:Ctx.Mode.Safe   = $modeSnapshot.Safe
 		$Script:Ctx.Mode.Expert = $modeSnapshot.Expert
 		$Script:Ctx.Mode.Game   = $modeSnapshot.Game
+		$Script:Ctx.Mode.Design = [bool]$Script:DesignMode
 
 		# GameMode detail
 		$Script:Ctx.GameMode.Active  = $modeSnapshot.Game
 		$Script:Ctx.GameMode.Profile = $Script:GameModeProfile
 		$Script:Ctx.GameMode.Plan    = @($Script:GameModePlan)
 
+		# Remote context
+		if (-not $Script:Ctx.ContainsKey('Remote'))
+		{
+			$Script:Ctx['Remote'] = @{
+				Connected       = $false
+				TargetComputers = @()
+				ApprovedTargetComputers = @()
+				Credential      = $null
+				ConnectedAt     = $null
+				ApprovedAt      = $null
+				StatusMessage   = $null
+				ApprovalMessage = $null
+			}
+		}
+
 		# Filter flag
 		$Script:Ctx.Filter.UiUpdating = [bool]$Script:FilterUiUpdating
+		$Script:Ctx.UI.AuditRetentionDays = if ($Script:AuditRetentionDays) { [int]$Script:AuditRetentionDays } else { 90 }
+		$Script:Ctx.UI.PinnedBaselineVersion = if ($Script:PinnedBaselineVersion) { [string]$Script:PinnedBaselineVersion } else { $null }
+		$Script:Ctx.UI.DesignMode = [bool]$Script:DesignMode
 
 		# Preset state - read active preset through accessor
 		if (-not $Script:Ctx.ContainsKey('Preset'))
@@ -234,6 +284,10 @@
 		$Script:Ctx.Preset.IsScenario    = ($Script:ActiveScenarioNames -is [hashtable] -and $Script:ActiveScenarioNames.Count -gt 0)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Get-GuiMode
 	{
 		<# .SYNOPSIS Returns a snapshot of the current GUI mode flags. #>
@@ -241,6 +295,7 @@
 			Safe   = [bool]$Script:SafeMode
 			Expert = [bool]$Script:AdvancedMode
 			Game   = [bool]$Script:GameMode
+			Design = [bool]$Script:DesignMode
 		}
 	}
 
@@ -249,7 +304,7 @@
 		<# .SYNOPSIS Tests whether a specific GUI mode is active. #>
 		param (
 			[Parameter(Mandatory = $true)]
-			[ValidateSet('Safe', 'Expert', 'Game')]
+			[ValidateSet('Safe', 'Expert', 'Game', 'Design')]
 			[string]$Mode
 		)
 
@@ -258,11 +313,16 @@
 			'Safe'   { return [bool]$Script:SafeMode }
 			'Expert' { return [bool]$Script:AdvancedMode }
 			'Game'   { return [bool]$Script:GameMode }
+			'Design' { return [bool]$Script:DesignMode }
 		}
 		return $false
 	}
 
 	# --- AS-4: Canonical mode transition function ---
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Set-GuiMode
 	{
@@ -282,11 +342,12 @@
 		# Safe and Expert are mutually exclusive
 		if (-not $Script:Ctx.ContainsKey('Mode'))
 		{
-			$Script:Ctx['Mode'] = @{ Safe = $false; Expert = $false; Game = $false; Scenario = $null }
+			$Script:Ctx['Mode'] = @{ Safe = $false; Expert = $false; Game = $false; Design = $false; Scenario = $null }
 		}
 		$Script:Ctx.Mode.Safe   = ($ViewMode -eq 'Safe')
 		$Script:Ctx.Mode.Expert = ($ViewMode -eq 'Expert')
 		$Script:Ctx.Mode.Game   = $GameMode
+		$Script:Ctx.Mode.Design = [bool]$Script:DesignMode
 
 		# Keep legacy $Script: variables in sync
 		$Script:SafeMode     = $Script:Ctx.Mode.Safe
@@ -297,6 +358,10 @@
 	# --- AS-5: Accessor functions for frequently-accessed $Script: state ---
 	# These reduce the GUI coordination surface by providing a single read path
 	# for state that many files previously accessed via raw $Script: variables.
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiActivePreset { return $Script:ActivePresetName }
 
@@ -324,6 +389,10 @@
 			default   { return $theme.AccentBlue }
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Invoke-GuiDispatcherAction
 	{
@@ -368,6 +437,10 @@
 		return $true
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+
 	function Set-GuiStatusText
 	{
 		param (
@@ -401,7 +474,11 @@
 		}
 	}
 
-	# --- Phase 2: Consolidated accessors for state migrated into $Script:Ctx ---
+	# Keep tab-accessor helpers on Script:Ctx so callers share one state path.
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiCurrentPrimaryTab { return $Script:Ctx.UI.CurrentPrimaryTab }
 	function Set-GuiCurrentPrimaryTab { param($Tab) $Script:Ctx.UI.CurrentPrimaryTab = $Tab }
@@ -409,4 +486,3 @@
 	function Set-GuiLastStandardPrimaryTab { param($Tab) $Script:Ctx.UI.LastStandardPrimaryTab = $Tab }
 	function Get-GuiCurrentStatusTone { return $Script:Ctx.Theme.CurrentTone }
 	function Set-GuiCurrentStatusTone { param([string]$Tone) $Script:Ctx.Theme.CurrentTone = $Tone }
-

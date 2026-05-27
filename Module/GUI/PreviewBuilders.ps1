@@ -1,12 +1,140 @@
 # Preview run list builders, selection summaries, and preview narrative generation
 
+<#
+    .SYNOPSIS
+    Internal GUI preview helper module.
+
+    .DESCRIPTION
+    Provides preview list builders and selection summary helpers for the GUI
+    runtime. This is internal implementation plumbing, not user-facing docs.
+#>
+
+	function Get-GuiPreviewActionPickerField
+	{
+		param (
+			[object]$ActionPicker,
+			[string]$FieldName
+		)
+
+		if (-not $ActionPicker -or [string]::IsNullOrWhiteSpace([string]$FieldName))
+		{
+			return $null
+		}
+		if (Test-GuiObjectField -Object $ActionPicker -FieldName $FieldName)
+		{
+			return (Get-GuiObjectField -Object $ActionPicker -FieldName $FieldName)
+		}
+		return $null
+	}
+
+	function Get-GuiPreviewActionPickerParameterName
+	{
+		param ([object]$Tweak)
+
+		if (-not $Tweak -or -not (Test-GuiObjectField -Object $Tweak -FieldName 'ActionPicker'))
+		{
+			return $null
+		}
+
+		$actionPicker = Get-GuiObjectField -Object $Tweak -FieldName 'ActionPicker'
+		$kind = [string](Get-GuiPreviewActionPickerField -ActionPicker $actionPicker -FieldName 'Kind')
+		if (-not [string]::IsNullOrWhiteSpace($kind) -and [string]$kind -ne 'OpenFile')
+		{
+			return $null
+		}
+
+		$parameterName = [string](Get-GuiPreviewActionPickerField -ActionPicker $actionPicker -FieldName 'ParameterName')
+		if ([string]::IsNullOrWhiteSpace($parameterName))
+		{
+			return $null
+		}
+
+		return $parameterName.Trim().TrimStart('-')
+	}
+
+	function Get-GuiPreviewActionPickerSelectedPath
+	{
+		param (
+			[object]$Selection,
+			[string]$ParameterName
+		)
+
+		if (-not $Selection -or [string]::IsNullOrWhiteSpace([string]$ParameterName))
+		{
+			return $null
+		}
+
+		if ((Test-GuiObjectField -Object $Selection -FieldName 'ExtraArgs') -and $Selection.ExtraArgs)
+		{
+			$extraArgs = $Selection.ExtraArgs
+			if ($extraArgs -is [System.Collections.IDictionary])
+			{
+				if ($extraArgs.Contains($ParameterName) -and -not [string]::IsNullOrWhiteSpace([string]$extraArgs[$ParameterName]))
+				{
+					return [string]$extraArgs[$ParameterName]
+				}
+			}
+			elseif ($extraArgs.PSObject -and $extraArgs.PSObject.Properties[$ParameterName] -and -not [string]::IsNullOrWhiteSpace([string]$extraArgs.PSObject.Properties[$ParameterName].Value))
+			{
+				return [string]$extraArgs.PSObject.Properties[$ParameterName].Value
+			}
+		}
+
+		foreach ($fieldName in @('Value', 'Selection', 'SelectedValue'))
+		{
+			if ((Test-GuiObjectField -Object $Selection -FieldName $fieldName) -and -not [string]::IsNullOrWhiteSpace([string](Get-GuiObjectField -Object $Selection -FieldName $fieldName)))
+			{
+				return [string](Get-GuiObjectField -Object $Selection -FieldName $fieldName)
+			}
+		}
+
+		return $null
+	}
+
+	function Get-GuiIndexedControlState
+	{
+		param (
+			[object]$Controls,
+			[int]$Index
+		)
+
+		if ($null -eq $Controls -or $Index -lt 0)
+		{
+			return $null
+		}
+
+		if ($Controls -is [System.Collections.IDictionary])
+		{
+			if ($Controls.Contains($Index))
+			{
+				return $Controls[$Index]
+			}
+
+			$stringIndex = [string]$Index
+			if ($Controls.Contains($stringIndex))
+			{
+				return $Controls[$stringIndex]
+			}
+
+			return $null
+		}
+
+		$controlList = @($Controls)
+		if ($Index -ge $controlList.Count)
+		{
+			return $null
+		}
+
+		return $controlList[$Index]
+	}
+
 	function Get-SelectedTweakRunList
 	{
 		param (
 			$TweakManifest = $null,
 			$Controls = $null
 		)
-		$resolvedManifest = if ($null -ne $TweakManifest) { $TweakManifest } else { $Script:TweakManifest }
+		$resolvedManifest = @(if ($null -ne $TweakManifest) { $TweakManifest } else { $Script:TweakManifest })
 		$resolvedControls = if ($null -ne $Controls) { $Controls } else { $Script:Controls }
 
 		$selectedTweaks = [System.Collections.Generic.List[hashtable]]::new()
@@ -14,7 +142,18 @@
 		for ($ri = 0; $ri -lt $resolvedManifest.Count; $ri++)
 		{
 			$rt = $resolvedManifest[$ri]
-			$rctl = $resolvedControls[$ri]
+			$rctl = Get-GuiIndexedControlState -Controls $resolvedControls -Index $ri
+			if (Get-Command -Name 'Test-GuiTweakAvailableOnCurrentSystem' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				if (-not (Test-GuiTweakAvailableOnCurrentSystem -Tweak $rt))
+				{
+					if (Get-Command -Name 'Remove-GuiExplicitSelectionDefinition' -CommandType Function -ErrorAction SilentlyContinue)
+					{
+						Remove-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
+					}
+					continue
+				}
+			}
 			if (-not $rctl -or -not $rctl.IsEnabled) { continue }
 
 			switch ($rt.Type)
@@ -79,11 +218,11 @@
 						})
 					}
 				}
-				'Choice'
-				{
-					$explicitChoiceSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
-					$selIdx = -1
-					if ($explicitChoiceSelection -and [string]$explicitChoiceSelection.Type -eq 'Choice' -and -not [string]::IsNullOrWhiteSpace([string]$explicitChoiceSelection.Value))
+					'Choice'
+					{
+						$explicitChoiceSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
+						$selIdx = -1
+						if ($explicitChoiceSelection -and [string]$explicitChoiceSelection.Type -eq 'Choice' -and -not [string]::IsNullOrWhiteSpace([string]$explicitChoiceSelection.Value))
 					{
 						$choiceOpts = if ($rt.Options) { [object[]]@($rt.Options) } else { [object[]]@() }
 						$explicitIdx = [array]::IndexOf($choiceOpts, [string]$explicitChoiceSelection.Value)
@@ -135,13 +274,200 @@
 							GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
 							TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
 						})
+						}
 					}
+					'NumericRange'
+					{
+						$explicitNumericSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
+						$selectedValueSource = $null
+						if ($explicitNumericSelection -and [string]$explicitNumericSelection.Type -eq 'NumericRange')
+						{
+							$selectedValueSource = $explicitNumericSelection
+						}
+						elseif ((Test-GuiObjectField -Object $rctl -FieldName 'IsChecked') -and [bool]$rctl.IsChecked)
+						{
+							$selectedValueSource = $rctl
+						}
+
+						if ($selectedValueSource)
+						{
+							$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
+							$numericRange = if ((Test-GuiObjectField -Object $rt -FieldName 'NumericRange')) { $rt.NumericRange } else { $null }
+							$units = if ($numericRange -and (Test-GuiObjectField -Object $numericRange -FieldName 'Units')) { [string]$numericRange.Units } else { $null }
+							$selectedACValue = Get-GuiNumericRangeChannelValue -Value $selectedValueSource -Channel 'AC' -NumericRange $numericRange
+							$selectedDCValue = Get-GuiNumericRangeChannelValue -Value $selectedValueSource -Channel 'DC' -NumericRange $numericRange
+							$selectionText = Format-GuiPowerSchemeValueText -Value ([pscustomobject]@{ ACValue = $selectedACValue; DCValue = $selectedDCValue }) -NumericRange $numericRange -Units $units
+							$valueObject = [ordered]@{}
+							if ($null -ne $selectedACValue)
+							{
+								$valueObject.ACValue = $selectedACValue
+							}
+							if ($null -ne $selectedDCValue)
+							{
+								$valueObject.DCValue = $selectedDCValue
+							}
+							$defaultSource = if ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { $rt.Default } elseif ((Test-GuiObjectField -Object $rt -FieldName 'WinDefault')) { $rt.WinDefault } else { $null }
+							$defaultACValue = if ($null -ne $defaultSource) { Get-GuiNumericRangeChannelValue -Value $defaultSource -Channel 'AC' -NumericRange $numericRange } else { $null }
+							$defaultDCValue = if ($null -ne $defaultSource) { Get-GuiNumericRangeChannelValue -Value $defaultSource -Channel 'DC' -NumericRange $numericRange } else { $null }
+							$defaultText = if ($null -ne $defaultACValue -or $null -ne $defaultDCValue) { Format-GuiPowerSchemeValueText -Value ([pscustomobject]@{ ACValue = $defaultACValue; DCValue = $defaultDCValue }) -NumericRange $numericRange -Units $units } else { $null }
+
+							$selectedTweaks.Add(@{
+								Key       = [string]$ri
+								Index     = $ri
+								Name      = $rt.Name
+								Function  = $rt.Function
+								Type      = 'NumericRange'
+								TypeKind  = [string]$visual.TypeKind
+								TypeLabel = [string]$visual.TypeLabel
+								TypeTone  = [string]$visual.TypeTone
+								TypeBadgeLabel = [string]$visual.TypeBadgeLabel
+								Category  = $rt.Category
+								Risk      = $rt.Risk
+								Restorable = $rt.Restorable
+								RecoveryLevel = if ((Test-GuiObjectField -Object $rt -FieldName 'RecoveryLevel')) { [string]$rt.RecoveryLevel } else { $null }
+								RequiresRestart = [bool]$rt.RequiresRestart
+								Impact    = $rt.Impact
+								PresetTier = $rt.PresetTier
+								Selection = [string]$selectionText
+								IsChecked = [bool]$true
+								Value     = if ((Test-GuiObjectField -Object $selectedValueSource -FieldName 'Value')) { $selectedValueSource.Value } elseif ($valueObject.Count -gt 0) { [pscustomobject]$valueObject } else { $null }
+								NumericValue = if ((Test-GuiObjectField -Object $selectedValueSource -FieldName 'NumericValue') -and $null -ne $selectedValueSource.NumericValue) { $selectedValueSource.NumericValue } elseif ($null -ne $selectedACValue -and $null -ne $selectedDCValue -and [string]$selectedACValue -eq [string]$selectedDCValue) { $selectedACValue } else { $null }
+								ACValue = $selectedACValue
+								DCValue = $selectedDCValue
+								Units = $units
+								DefaultValue = if ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { $rt.Default } elseif ((Test-GuiObjectField -Object $rt -FieldName 'WinDefault')) { $rt.WinDefault } else { $null }
+								CurrentState = [string]$visual.StateLabel
+								CurrentStateTone = [string]$visual.StateTone
+								StateDetail = [string]$visual.StateDetail
+								MatchesDesired = [bool]$visual.MatchesDesired
+								ScenarioTags = @($visual.ScenarioTags)
+								ReasonIncluded = [string]$visual.ReasonIncluded
+								BlastRadius = [string]$visual.BlastRadius
+								IsRemoval = [bool]$visual.IsRemoval
+								ExtraArgs = $null
+								GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
+								TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
+							})
+						}
+					}
+					'Date'
+					{
+						$explicitDateSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
+						$dateValue = $null
+					$runState = $null
+					if ($explicitDateSelection -and [string]$explicitDateSelection.Type -eq 'Date')
+					{
+						if (Test-GuiObjectField -Object $explicitDateSelection -FieldName 'Run')
+						{
+							$runState = [bool]$explicitDateSelection.Run
+						}
+						elseif (Test-GuiObjectField -Object $explicitDateSelection -FieldName 'State')
+						{
+							$runState = ([string]$explicitDateSelection.State -match '^(?i:on|true|1)$')
+						}
+						if (Test-GuiObjectField -Object $explicitDateSelection -FieldName 'Value')
+						{
+							$dateValue = [string]$explicitDateSelection.Value
+						}
+					}
+					if ($null -eq $dateValue -and (Test-GuiObjectField -Object $rctl -FieldName 'SelectedDate') -and $rctl.SelectedDate)
+					{
+						$dateValue = ([datetime]$rctl.SelectedDate).ToString('yyyy-MM-dd')
+					}
+					if ($null -eq $runState)
+					{
+						$runState = ($null -ne $dateValue)
+					}
+
+					$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
+					$selectionText = if ($runState)
+					{
+						if (-not [string]::IsNullOrWhiteSpace($dateValue)) { $dateValue } else { 'Pause enabled' }
+					}
+					else
+					{
+						'Pause cleared'
+					}
+
+					$selectedTweaks.Add(@{
+						Key       = [string]$ri
+						Index     = $ri
+						Name      = $rt.Name
+						Function  = $rt.Function
+						Type      = 'Date'
+						TypeKind  = [string]$visual.TypeKind
+						TypeLabel = [string]$visual.TypeLabel
+						TypeTone  = [string]$visual.TypeTone
+						TypeBadgeLabel = [string]$visual.TypeBadgeLabel
+						Category  = $rt.Category
+						Risk      = $rt.Risk
+						Restorable = $rt.Restorable
+						RecoveryLevel = if ((Test-GuiObjectField -Object $rt -FieldName 'RecoveryLevel')) { [string]$rt.RecoveryLevel } else { $null }
+						RequiresRestart = [bool]$rt.RequiresRestart
+						Impact    = $rt.Impact
+						PresetTier = $rt.PresetTier
+						Selection = $selectionText
+						Run       = [bool]$runState
+						Value     = $dateValue
+						DateValue = $dateValue
+						DateParam = if ((Test-GuiObjectField -Object $rt -FieldName 'DateParam')) { [string]$rt.DateParam } else { 'StartDate' }
+						ToggleParam = if ([bool]$runState) { if ((Test-GuiObjectField -Object $rt -FieldName 'OnParam')) { [string]$rt.OnParam } else { 'Enable' } } else { if ((Test-GuiObjectField -Object $rt -FieldName 'OffParam')) { [string]$rt.OffParam } else { 'Disable' } }
+						IsChecked = [bool]$runState
+						DefaultValue = if ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { [bool]$rt.Default } else { $false }
+						CurrentState = [string]$visual.StateLabel
+						CurrentStateTone = [string]$visual.StateTone
+						StateDetail = [string]$visual.StateDetail
+						MatchesDesired = [bool]$visual.MatchesDesired
+						ScenarioTags = @($visual.ScenarioTags)
+						ReasonIncluded = [string]$visual.ReasonIncluded
+						BlastRadius = [string]$visual.BlastRadius
+						IsRemoval = [bool]$visual.IsRemoval
+						ExtraArgs = $null
+						GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
+						TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
+					})
 				}
 				'Action'
 				{
-					if ($rctl.IsChecked)
+					$explicitActionSelection = Get-GuiExplicitSelectionDefinition -FunctionName ([string]$rt.Function)
+					$selectedActionSource = $null
+					$isActionChecked = $false
+					if ($explicitActionSelection -and [string]$explicitActionSelection.Type -eq 'Action' -and (Test-GuiObjectField -Object $explicitActionSelection -FieldName 'Run') -and [bool]$explicitActionSelection.Run)
+					{
+						$selectedActionSource = $explicitActionSelection
+						$isActionChecked = $true
+					}
+					elseif ($rctl.IsChecked)
+					{
+						$selectedActionSource = $rctl
+						$isActionChecked = $true
+					}
+
+					if ($isActionChecked)
 					{
 						$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
+						$selectionText = if ($rt.Name) { [string]$rt.Name } else { 'Run action' }
+						$selectedExtraArgs = $rt.ExtraArgs
+						$actionPickerParameterName = Get-GuiPreviewActionPickerParameterName -Tweak $rt
+						if (-not [string]::IsNullOrWhiteSpace([string]$actionPickerParameterName))
+						{
+							$selectedPath = Get-GuiPreviewActionPickerSelectedPath -Selection $selectedActionSource -ParameterName $actionPickerParameterName
+							if ([string]::IsNullOrWhiteSpace([string]$selectedPath) -and $explicitActionSelection)
+							{
+								$selectedPath = Get-GuiPreviewActionPickerSelectedPath -Selection $explicitActionSelection -ParameterName $actionPickerParameterName
+							}
+							if ([string]::IsNullOrWhiteSpace([string]$selectedPath))
+							{
+								continue
+							}
+							$selectedExtraArgs = @{}
+							$selectedExtraArgs[$actionPickerParameterName] = [string]$selectedPath
+							$selectionText = [string]$selectedPath
+						}
+						elseif ($explicitActionSelection -and (Test-GuiObjectField -Object $explicitActionSelection -FieldName 'ExtraArgs') -and $explicitActionSelection.ExtraArgs)
+						{
+							$selectedExtraArgs = $explicitActionSelection.ExtraArgs
+						}
 						$selectedTweaks.Add(@{
 							Key       = [string]$ri
 							Index     = $ri
@@ -159,7 +485,7 @@
 							RequiresRestart = [bool]$rt.RequiresRestart
 							Impact    = $rt.Impact
 							PresetTier = $rt.PresetTier
-							Selection = if ($rt.Name) { [string]$rt.Name } else { 'Run action' }
+							Selection = $selectionText
 							IsChecked = [bool]$rctl.IsChecked
 							CurrentState = [string]$visual.StateLabel
 							CurrentStateTone = [string]$visual.StateTone
@@ -169,7 +495,7 @@
 							ReasonIncluded = [string]$visual.ReasonIncluded
 							BlastRadius = [string]$visual.BlastRadius
 							IsRemoval = [bool]$visual.IsRemoval
-							ExtraArgs = $rt.ExtraArgs
+							ExtraArgs = $selectedExtraArgs
 							GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
 							TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
 						})
@@ -181,6 +507,9 @@
 		return $selectedTweaks
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
 	function Get-WindowsDefaultRunList
 	{
 		param (
@@ -195,7 +524,7 @@
 		for ($ri = 0; $ri -lt $resolvedManifest.Count; $ri++)
 		{
 			$rt = $resolvedManifest[$ri]
-			$rctl = $resolvedControls[$ri]
+			$rctl = Get-GuiIndexedControlState -Controls $resolvedControls -Index $ri
 			if (-not $rctl) { continue }
 			if ($null -ne $rt.Restorable -and -not $rt.Restorable) { continue }
 
@@ -224,19 +553,19 @@
 						RequiresRestart = [bool]$rt.RequiresRestart
 						Impact          = $rt.Impact
 						PresetTier      = $rt.PresetTier
-						Selection       = if ([bool]$rt.WinDefault) { 'Windows default: Enabled' } else { 'Windows default: Disabled' }
+						Selection       = if ([bool]$rt.WinDefault) { 'Recorded default: Enabled' } else { 'Recorded default: Disabled' }
 						ToggleParam     = $defaultParam
 						OnParam         = [string]$rt.OnParam
 						OffParam        = [string]$rt.OffParam
 						WinDefault      = [bool]$rt.WinDefault
 						IsChecked       = [bool]$rt.WinDefault
 						DefaultValue    = [bool]$rt.Default
-						CurrentState    = 'Windows default'
+						CurrentState    = 'Recorded default'
 						CurrentStateTone = 'Primary'
-						StateDetail     = 'This run restores Windows default toggle behavior where possible.'
+						StateDetail     = 'This run restores recorded default toggle behavior where supported.'
 						MatchesDesired  = $false
 						ScenarioTags    = @($visual.ScenarioTags)
-						ReasonIncluded  = 'Included because this run restores the Windows default toggle behavior where possible.'
+						ReasonIncluded  = 'Included because this run restores the recorded default toggle behavior where supported.'
 						BlastRadius     = [string]$visual.BlastRadius
 						IsRemoval       = [bool]$visual.IsRemoval
 						ExtraArgs       = $null
@@ -244,11 +573,11 @@
 						TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
 					})
 				}
-				'Choice'
-				{
-					$visual = Get-TweakVisualMetadata -Tweak $rt
-					if ([string]::IsNullOrWhiteSpace([string]$rt.WinDefault)) { continue }
-					$defaultIndex = [array]::IndexOf($rt.Options, $rt.WinDefault)
+					'Choice'
+					{
+						$visual = Get-TweakVisualMetadata -Tweak $rt
+						if ([string]::IsNullOrWhiteSpace([string]$rt.WinDefault)) { continue }
+						$defaultIndex = [array]::IndexOf($rt.Options, $rt.WinDefault)
 					if ($defaultIndex -lt 0) { continue }
 
 					$displayOpts = if ($rt.DisplayOptions) { $rt.DisplayOptions } else { $rt.Options }
@@ -269,28 +598,79 @@
 						RequiresRestart = [bool]$rt.RequiresRestart
 						Impact          = $rt.Impact
 						PresetTier      = $rt.PresetTier
-						Selection       = "Windows default: $([string]$displayOpts[$defaultIndex])"
+						Selection       = "Recorded default: $([string]$displayOpts[$defaultIndex])"
 						Value           = $rt.Options[$defaultIndex]
 						WinDefault      = [string]$rt.WinDefault
 						WinDefaultIndex = $defaultIndex
 						DefaultValue    = $(if ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { [string]$rt.Default } else { $null })
-						CurrentState    = 'Windows default'
+						CurrentState    = 'Recorded default'
 						CurrentStateTone = 'Primary'
-						StateDetail     = 'This run restores the Windows default choice where possible.'
+						StateDetail     = 'This run restores the recorded default choice where supported.'
 						MatchesDesired  = $false
 						ScenarioTags    = @($visual.ScenarioTags)
-						ReasonIncluded  = 'Included because this run restores the Windows default choice where possible.'
+						ReasonIncluded  = 'Included because this run restores the recorded default choice where supported.'
 						BlastRadius     = [string]$visual.BlastRadius
 						IsRemoval       = [bool]$visual.IsRemoval
 						ExtraArgs       = $rt.ExtraArgs
 						GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
-						TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
-					})
-				}
-				'Action'
-				{
-					if (-not $rt.WinDefault) { continue }
-					$visual = Get-TweakVisualMetadata -Tweak $rt
+							TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
+						})
+					}
+					'NumericRange'
+					{
+						$visual = Get-TweakVisualMetadata -Tweak $rt
+						$defaultValueSource = if ((Test-GuiObjectField -Object $rt -FieldName 'WinDefault')) { $rt.WinDefault } elseif ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { $rt.Default } else { $null }
+						if ($null -eq $defaultValueSource) { continue }
+
+						$numericRange = if ((Test-GuiObjectField -Object $rt -FieldName 'NumericRange')) { $rt.NumericRange } else { $null }
+						$units = if ($numericRange -and (Test-GuiObjectField -Object $numericRange -FieldName 'Units')) { [string]$numericRange.Units } else { $null }
+						$defaultACValue = Get-GuiNumericRangeChannelValue -Value $defaultValueSource -Channel 'AC' -NumericRange $numericRange
+						$defaultDCValue = Get-GuiNumericRangeChannelValue -Value $defaultValueSource -Channel 'DC' -NumericRange $numericRange
+						$defaultSelectionText = Format-GuiPowerSchemeValueText -Value ([pscustomobject]@{ ACValue = $defaultACValue; DCValue = $defaultDCValue }) -NumericRange $numericRange -Units $units
+
+						$defaultTweaks.Add(@{
+							Key             = [string]$ri
+							Index           = $ri
+							Name            = $rt.Name
+							Function        = $rt.Function
+							Type            = 'NumericRange'
+							TypeKind        = [string]$visual.TypeKind
+							TypeLabel       = [string]$visual.TypeLabel
+							TypeTone        = [string]$visual.TypeTone
+							TypeBadgeLabel  = [string]$visual.TypeBadgeLabel
+							Category        = $rt.Category
+							Risk            = $rt.Risk
+							Restorable      = $rt.Restorable
+							RecoveryLevel   = if ((Test-GuiObjectField -Object $rt -FieldName 'RecoveryLevel')) { [string]$rt.RecoveryLevel } else { $null }
+							RequiresRestart = [bool]$rt.RequiresRestart
+							Impact          = $rt.Impact
+							PresetTier      = $rt.PresetTier
+							Selection       = "Recorded default: $([string]$defaultSelectionText)"
+							IsChecked       = $true
+							Value           = $defaultValueSource
+							NumericValue    = if ((Test-GuiObjectField -Object $defaultValueSource -FieldName 'NumericValue') -and $null -ne $defaultValueSource.NumericValue) { $defaultValueSource.NumericValue } elseif ($null -ne $defaultACValue -and $null -ne $defaultDCValue -and [string]$defaultACValue -eq [string]$defaultDCValue) { $defaultACValue } else { $null }
+							ACValue         = $defaultACValue
+							DCValue         = $defaultDCValue
+							Units           = $units
+							WinDefault      = $defaultValueSource
+							DefaultValue    = if ((Test-GuiObjectField -Object $rt -FieldName 'Default')) { $rt.Default } else { $null }
+							CurrentState    = 'Recorded default'
+							CurrentStateTone = 'Primary'
+							StateDetail     = 'This run restores the recorded default numeric values where supported.'
+							MatchesDesired  = $false
+							ScenarioTags    = @($visual.ScenarioTags)
+							ReasonIncluded  = 'Included because this run restores the recorded default numeric values where supported.'
+							BlastRadius     = [string]$visual.BlastRadius
+							IsRemoval       = [bool]$visual.IsRemoval
+							ExtraArgs       = $null
+							GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
+							TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
+						})
+					}
+					'Action'
+					{
+						if (-not $rt.WinDefault) { continue }
+						$visual = Get-TweakVisualMetadata -Tweak $rt
 
 					$defaultTweaks.Add(@{
 						Key             = [string]$ri
@@ -309,9 +689,9 @@
 						RequiresRestart = [bool]$rt.RequiresRestart
 						Impact          = $rt.Impact
 						PresetTier      = $rt.PresetTier
-						Selection       = 'Run Windows default action'
+						Selection       = 'Run recorded default action'
 						WinDefault      = [bool]$rt.WinDefault
-						CurrentState    = 'Windows default'
+						CurrentState    = 'Recorded default'
 						CurrentStateTone = 'Primary'
 						StateDetail     = 'This run restores the default action flow.'
 						MatchesDesired  = $false
@@ -324,12 +704,106 @@
 						TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
 					})
 				}
+				'Date'
+				{
+					$visual = Get-TweakVisualMetadata -Tweak $rt
+					if (-not (Test-GuiObjectField -Object $rt -FieldName 'Default'))
+					{
+						continue
+					}
+
+					$defaultRun = [bool]$rt.Default
+					$defaultDate = $null
+					foreach ($candidateField in @('DefaultDate', 'DefaultValue', 'Value'))
+					{
+						if (Test-GuiObjectField -Object $rt -FieldName $candidateField)
+						{
+							$candidateValue = [string](Get-GuiObjectField -Object $rt -FieldName $candidateField)
+							if (-not [string]::IsNullOrWhiteSpace($candidateValue))
+							{
+								$defaultDate = $candidateValue
+								break
+							}
+						}
+					}
+
+					$defaultTweaks.Add(@{
+						Key             = [string]$ri
+						Index           = $ri
+						Name            = $rt.Name
+						Function        = $rt.Function
+						Type            = 'Date'
+						TypeKind        = [string]$visual.TypeKind
+						TypeLabel       = [string]$visual.TypeLabel
+						TypeTone        = [string]$visual.TypeTone
+						TypeBadgeLabel  = [string]$visual.TypeBadgeLabel
+						Category        = $rt.Category
+						Risk            = $rt.Risk
+						Restorable      = $rt.Restorable
+						RecoveryLevel   = if ((Test-GuiObjectField -Object $rt -FieldName 'RecoveryLevel')) { [string]$rt.RecoveryLevel } else { $null }
+						RequiresRestart = [bool]$rt.RequiresRestart
+						Impact          = $rt.Impact
+						PresetTier      = $rt.PresetTier
+						Selection       = if ($defaultRun) { if (-not [string]::IsNullOrWhiteSpace($defaultDate)) { $defaultDate } else { 'Recorded default: Enabled' } } else { 'Recorded default: Disabled' }
+						Run             = [bool]$defaultRun
+						Value           = $defaultDate
+						DateValue       = $defaultDate
+						DateParam       = if ((Test-GuiObjectField -Object $rt -FieldName 'DateParam')) { [string]$rt.DateParam } else { 'StartDate' }
+						ToggleParam     = if ($defaultRun) { if ((Test-GuiObjectField -Object $rt -FieldName 'OnParam')) { [string]$rt.OnParam } else { 'Enable' } } else { if ((Test-GuiObjectField -Object $rt -FieldName 'OffParam')) { [string]$rt.OffParam } else { 'Disable' } }
+						IsChecked       = [bool]$defaultRun
+						DefaultValue    = [bool]$rt.Default
+						CurrentState    = 'Recorded default'
+						CurrentStateTone = 'Primary'
+						StateDetail     = 'This run restores recorded default pause behavior where supported.'
+						MatchesDesired  = $false
+						ScenarioTags    = @($visual.ScenarioTags)
+						ReasonIncluded  = 'Included because this run restores the recorded default pause behavior where supported.'
+						BlastRadius     = [string]$visual.BlastRadius
+						IsRemoval       = [bool]$visual.IsRemoval
+						ExtraArgs       = $null
+						GamingPreviewGroup = if ((Test-GuiObjectField -Object $rt -FieldName 'GamingPreviewGroup')) { [string]$rt.GamingPreviewGroup } else { $null }
+						TroubleshootingOnly = if ((Test-GuiObjectField -Object $rt -FieldName 'TroubleshootingOnly')) { [bool]$rt.TroubleshootingOnly } else { $false }
+					})
+				}
 			}
 		}
 
 		return $defaultTweaks
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
+	function Get-CategoryDefaultRunList
+	{
+		<#
+			.SYNOPSIS
+			Returns the Windows-default run list filtered to a single category.
+			Used by per-page "Reset to defaults" buttons.
+
+			.PARAMETER Category
+			The manifest category name to filter by (e.g. 'Gaming & Performance',
+			'Privacy', 'Explorer').  Pass $null or empty string to return all
+			categories (equivalent to Get-WindowsDefaultRunList).
+		#>
+		param (
+			[string]$Category,
+			$TweakManifest = $null,
+			$Controls = $null
+		)
+
+		$allDefaults = Get-WindowsDefaultRunList -TweakManifest $TweakManifest -Controls $Controls
+		if ([string]::IsNullOrWhiteSpace($Category)) { return $allDefaults }
+
+		return @($allDefaults | Where-Object {
+			-not [string]::IsNullOrWhiteSpace($_.Category) -and
+			[string]$_.Category -eq $Category
+		})
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 	function Get-TweakSelectionSummary
 	{
 		param ([object[]]$SelectedTweaks)
@@ -459,6 +933,80 @@
 		}
 	}
 
+	<#
+	    .SYNOPSIS
+
+	    .DESCRIPTION
+	    Builds preview summary lines that surface active risk categories
+	    (managed endpoints, WinRM variability, partial-success rollout risk,
+	    pending reboot). Each active category produces a single summary line
+	    followed by up to two remediation pointers so the operator sees the
+	    next action before continuing.
+	#>
+	function Get-PreviewRiskCategoryLines
+	{
+		$categories = @()
+		try
+		{
+			if (Get-Command -Name 'Get-BaselineRiskCategoryList' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				$managedCheck = $null
+				$rebootCheck = $null
+				if (Get-Command -Name 'Test-PreflightManagedPolicyEnvironment' -CommandType Function -ErrorAction SilentlyContinue)
+				{
+					try { $managedCheck = Test-PreflightManagedPolicyEnvironment } catch {
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Get-PreviewRiskCategoryLines:catch957' -Severity Debug }
+					 $managedCheck = $null }
+				}
+				if (Get-Command -Name 'Test-PreflightPendingReboot' -CommandType Function -ErrorAction SilentlyContinue)
+				{
+					try { $rebootCheck = Test-PreflightPendingReboot } catch {
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Get-PreviewRiskCategoryLines:catch961' -Severity Debug }
+					 $rebootCheck = $null }
+				}
+				$categories = @(Get-BaselineRiskCategoryList -ManagedPolicyCheck $managedCheck -PendingRebootCheck $rebootCheck -IncludePartialSuccessHistory)
+			}
+		}
+		catch
+		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Get-PreviewRiskCategoryLines:catch966' -Severity Debug }
+
+			$categories = @()
+		}
+
+		$active = @($categories | Where-Object { $_ -and [string]$_.Status -ne 'Passed' })
+		if ($active.Count -eq 0)
+		{
+			return @()
+		}
+
+		$lines = [System.Collections.Generic.List[string]]::new()
+		[void]$lines.Add((Get-UxLocalizedString -Key 'GuiPreviewRiskCategoryHeading' -Fallback 'Risk-aware checks flagged before this run:'))
+		foreach ($cat in $active)
+		{
+			$marker = if ([string]$cat.Status -eq 'Failed') { [char]0x2717 } else { [char]0x26A0 }
+			[void]$lines.Add(('{0} {1}: {2}' -f $marker, $cat.Name, $cat.Summary))
+			$remediation = @()
+			if ($cat.PSObject.Properties['RemediationActions'] -and $cat.RemediationActions)
+			{
+				$remediation = @($cat.RemediationActions | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 2)
+			}
+			foreach ($action in $remediation)
+			{
+				[void]$lines.Add(('    ' + [char]0x2192 + ' {0}' -f [string]$action))
+			}
+			if (-not [string]::IsNullOrWhiteSpace([string]$cat.DocumentationPath))
+			{
+				$label = Get-UxLocalizedString -Key 'GuiPreviewRiskCategoryDocsLabel' -Fallback 'Remediation guide'
+				[void]$lines.Add(('    {0}: {1}' -f $label, [string]$cat.DocumentationPath))
+			}
+		}
+		return @($lines)
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 	function Show-SelectedTweakPreview
 	{
 		param (
@@ -492,7 +1040,7 @@
 			if ($Script:Form) { $previousCursor = $Script:Form.Cursor; $Script:Form.Cursor = [System.Windows.Input.Cursors]::Wait }
 			[System.Windows.Input.Mouse]::UpdateCursor()
 		}
-		catch { <# non-fatal #> }
+		catch { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Show-SelectedTweakPreview.SetWaitCursor' }
 
 		# Track this preview run in session statistics
 		Add-SessionStatistic -Name 'PreviewRunCount'
@@ -535,6 +1083,12 @@
 			-AdvancedTierCount $advancedTierCount `
 			-SelectedTweaks $selected)
 
+		$riskCategoryLines = @(Get-PreviewRiskCategoryLines)
+		if ($riskCategoryLines.Count -gt 0)
+		{
+			$summaryParts += $riskCategoryLines
+		}
+
 		$displayResults = @(Get-LocalizedPreviewResults -Results $previewResults)
 		$viewChangesLabel = Get-UxLocalizedString -Key 'GuiBtnViewChanges' -Fallback 'View Changes'
 		$cancelLabel = Get-UxLocalizedString -Key 'GuiBtnCancel' -Fallback 'Cancel'
@@ -552,7 +1106,7 @@
 			if ($Script:Form) { $Script:Form.Cursor = $previousCursor }
 			[System.Windows.Input.Mouse]::UpdateCursor()
 		}
-		catch { <# non-fatal #> }
+		catch { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Show-SelectedTweakPreview.RestoreCursor' }
 
 		$previewDialogResult = $null
 		do
@@ -584,6 +1138,9 @@
 		Set-GuiStatusText -Text $previewStatusText -Tone 'accent'
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
 	function Get-LocalizedPreviewResults
 	{
 		param ([object[]]$Results)
@@ -627,6 +1184,9 @@
 		return @($displayResults)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
 	function Confirm-HighRiskTweakRun
 	{
 		param ([object[]]$SelectedTweaks)
@@ -647,13 +1207,13 @@
 			{
 				return 'PreviewRequired'
 			}
-			return 'Continue Anyway'
+			return 'Run Anyway'
 		}
 
 		# Expert Mode: skip medium-risk confirmation when no high-risk/advanced/restore-point flags
 		if (Test-UxShouldSkipLowRiskConfirmation -Summary $summary -AdvancedTierCount $advancedTierCount)
 		{
-			return 'Continue Anyway'
+			return 'Run Anyway'
 		}
 
 		$runPathContext = Get-UxRunPathContext
@@ -784,15 +1344,20 @@
 		return (Show-RiskDecisionDialog -Title $title `
 			-Message ($messageParts -join "`n`n") `
 			-SummaryCards $summaryCards `
-			-Buttons @('Cancel', 'Create Restore Point', $previewActionLabel, 'Continue Anyway') `
-			-AccentButton 'Create Restore Point' `
-			-DestructiveButton 'Continue Anyway')
+			-Buttons @('Cancel', $previewActionLabel, 'Run Anyway') `
+			-DestructiveButton 'Run Anyway')
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
 	function Get-ExecutionPreviewResults
 	{
 		param ([object[]]$SelectedTweaks)
 
+		<#
+		    .SYNOPSIS
+		#>
 		function Get-TweakPreviewNarrative
 		{
 			param (
@@ -844,18 +1409,41 @@
 
 					if ((Test-GuiObjectField -Object $Tweak -FieldName 'WinDefaultDesc') -and -not [string]::IsNullOrWhiteSpace([string]$Tweak.WinDefaultDesc))
 					{
-						[void]$detailParts.Add(("Windows default: {0}." -f ([string]$Tweak.WinDefaultDesc).TrimEnd('.')))
+						[void]$detailParts.Add(("Recorded default: {0}." -f ([string]$Tweak.WinDefaultDesc).TrimEnd('.')))
 					}
 				}
-				'Choice'
-				{
-					$selectionLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Tweak.Selection)) { [string]$Tweak.Selection } else { 'the selected option' }
-					[void]$detailParts.Add(("{0} will be set to {1}." -f [string]$Tweak.Name, $selectionLabel))
-				}
-				'Action'
-				{
-					[void]$detailParts.Add(("{0} will run once during the real run." -f [string]$Tweak.Name))
-				}
+					'Choice'
+					{
+						$selectionLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Tweak.Selection)) { [string]$Tweak.Selection } else { 'the selected option' }
+						[void]$detailParts.Add(("{0} will be set to {1}." -f [string]$Tweak.Name, $selectionLabel))
+					}
+					'NumericRange'
+					{
+						$selectionLabel = if (-not [string]::IsNullOrWhiteSpace([string]$Tweak.Selection)) { [string]$Tweak.Selection } else { $null }
+						if ([string]::IsNullOrWhiteSpace($selectionLabel))
+						{
+							$selectionNumericRange = if ((Test-GuiObjectField -Object $Tweak -FieldName 'NumericRange')) { $Tweak.NumericRange } else { $null }
+							$selectionUnits = if ((Test-GuiObjectField -Object $Tweak -FieldName 'Units')) { [string]$Tweak.Units } else { $null }
+							if ((Test-GuiObjectField -Object $Tweak -FieldName 'Value') -and $null -ne $Tweak.Value)
+							{
+								$selectionLabel = Format-GuiPowerSchemeValueText -Value $Tweak.Value -NumericRange $selectionNumericRange -Units $selectionUnits
+							}
+							elseif ((Test-GuiObjectField -Object $Tweak -FieldName 'NumericValue') -and $null -ne $Tweak.NumericValue)
+							{
+								$selectionLabel = Format-GuiNumericRangeValueText -Value $Tweak.NumericValue -NumericRange $selectionNumericRange -Units $selectionUnits
+							}
+							else
+							{
+								$selectionLabel = 'the selected numeric value'
+							}
+						}
+
+						[void]$detailParts.Add(("{0} will be set to {1}." -f [string]$Tweak.Name, $selectionLabel))
+					}
+					'Action'
+					{
+						[void]$detailParts.Add(("{0} will run once during the real run." -f [string]$Tweak.Name))
+					}
 				default
 				{
 					if (-not [string]::IsNullOrWhiteSpace([string]$Tweak.Selection))
@@ -1009,6 +1597,9 @@
 		return @($previewResults | Sort-Object Order)
 	}
 
+	<#
+	    .SYNOPSIS
+	#>
 	function Write-ExecutionPreviewToLog
 	{
 		param ([object[]]$Results)
@@ -1022,9 +1613,32 @@
 			$highRiskCountPreview = @($results | Where-Object Status -eq 'High-risk changes').Count
 			$notFullyRestorablePreviewCount = @($results | Where-Object Status -eq 'Not fully restorable').Count
 		$categoryNames = @($results | ForEach-Object { [string]$_.Category } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+		$serverValidationSuffix = $null
+		try
+		{
+			if ((Get-Command -Name 'Get-OSInfo' -CommandType Function -ErrorAction SilentlyContinue) -and (Get-Command -Name 'Get-BaselineValidationMatrixSummary' -CommandType Function -ErrorAction SilentlyContinue))
+			{
+				$currentOS = Get-OSInfo
+				$validationMatrix = Get-BaselineValidationMatrixSummary
+				if ($currentOS -and $currentOS.IsWindowsServer)
+				{
+					if ($validationMatrix -and $validationMatrix.ServerValidationSummary)
+					{
+						$serverValidationSuffix = (' Server validation outside CI: {0}.' -f [string]$validationMatrix.ServerValidationSummary)
+					}
+					else
+					{
+						$serverValidationSuffix = ' Server validation outside CI is not recorded in the current matrix.'
+					}
+				}
+			}
+		}
+		catch
+		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'PreviewBuilders.Write-ExecutionPreviewToLog:catch1630' -Severity Debug }
 
-		LogInfo "Preview summary: Selected=$selectedCount, AlreadyDesired=$alreadyInDesiredCount, WillChange=$willChangeCount, MediumRisk=$mediumRiskCount, HighRisk=$highRiskCountPreview, NotFullyRestorable=$notFullyRestorablePreviewCount, RequiresRestart=$requiresRestartCount, Categories=$($categoryNames.Count). No changes were applied."
+			$serverValidationSuffix = $null
+		}
+
+		LogInfo ((Get-UxBilingualLocalizedString -Key 'GuiLogPreviewSummary' -Fallback 'Preview summary: Selected={0}, AlreadyDesired={1}, WillChange={2}, MediumRisk={3}, HighRisk={4}, NotFullyRestorable={5}, RequiresRestart={6}, Categories={7}. No changes were applied.' -FormatArgs @($selectedCount, $alreadyInDesiredCount, $willChangeCount, $mediumRiskCount, $highRiskCountPreview, $notFullyRestorablePreviewCount, $requiresRestartCount, $categoryNames.Count)) + $(if ($serverValidationSuffix) { $serverValidationSuffix } else { '' }))
 	}
-
-
-

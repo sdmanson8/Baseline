@@ -6,6 +6,32 @@ Common questions about Baseline, including antivirus false positives, preset sel
 
 Baseline is recommended for advanced users and careful enthusiasts who want explicit control over Windows configuration. If this is your first time, start with the Safe Mode beginner guide and the Minimal preset.
 
+### Where are the readme, FAQ, and enterprise help pages?
+
+Open the GUI Help menu for the current documentation surfaces:
+
+- `Readme` opens the rendered repository README.
+- `FAQ` opens this page.
+- `Release Status` shows build, signer, artifact, and validation-matrix information.
+- `Troubleshooting Guide` collects the support-bundle and incident-repro guidance.
+
+For remote workflow, use the Tools menu for Remote Console, Operator Console, approval-policy save/load, and support bundle export.
+
+---
+
+### Does headless mean Baseline is safe to run over PowerShell Remoting?
+
+Headless currently means local non-interactive execution: no WPF windows, no modal dialogs, and no input prompts on the machine running Baseline. PowerShell Remoting / WinRM is considered experimental/advanced.
+
+For remote automation, use `-NoGui` and avoid every GUI path, including `-ConsoleGui`. Validate these WinRM constraints first:
+
+- HKCU tweaks apply to the remoting account, not necessarily the desktop user.
+- `winget` and Chocolatey installs can fail without an interactive logged-in profile or Store/AppX context.
+- UAC/elevation requirements must be satisfied by the remoting endpoint.
+- Explorer, display-state, Store/AppX, and logged-in-profile dependent tasks can fail remotely.
+
+Use a local run for workflows that need the desktop user context. Use remote mode only when you have already validated the target environment.
+
 ---
 
 ### Windows Defender or another antivirus flags Baseline as malicious
@@ -14,7 +40,7 @@ This is a known false positive and is expected behavior for any system configura
 
 **Why it happens.** Baseline is a PowerShell toolkit that modifies registry values, disables or reconfigures Windows services, applies Group Policy settings via LGPO.exe, and removes built-in packages. These are exactly the kinds of operations that heuristic and behavioral antivirus engines are designed to flag. The detection is not based on a known malware signature; it is based on the pattern of system changes the scripts perform.
 
-**It is not malware.** Baseline is fully open-source. Every line of code is published on GitHub and is available for review before you run anything. There is no obfuscation, no network callbacks, no payload delivery, and no bundled binaries beyond Microsoft's own LGPO.exe.
+**It is not malware.** Baseline is fully open-source. Every line of code is published on GitHub and is available for review before you run anything. There is no obfuscation, no network callbacks, no payload delivery, and no bundled binaries beyond the Microsoft's own LGPO.exe used for policy-backed tweaks.
 
 **How to add an exclusion in Windows Defender.**
 

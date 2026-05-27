@@ -1,0 +1,178 @@
+{
+  "Tab": "Applications",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
+  "Entries": [
+    {
+      "Name": "7-Zip",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open-source file archiver with a high compression ratio",
+      "Detail": "WinGet: 7zip.7zip | Chocolatey: 7zip",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "7zip.7zip",
+        "ChocoId": "7zip"
+      },
+      "SubCategory": "Compression",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "compression"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Open-source file archiver with a high compression ratio",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "WinRAR archiver",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "File archiver with a high compression ratio",
+      "Detail": "WinGet: RARLab.WinRAR | Chocolatey: winrar",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "RARLab.WinRAR",
+        "ChocoId": "winrar"
+      },
+      "SubCategory": "Compression",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "compression"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "File archiver with a high compression ratio",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "PeaZip",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Free file archiver utility. Open and extract RAR, TAR, ZIP files and more",
+      "Detail": "WinGet: Giorgiotani.Peazip | Chocolatey: peazip",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Giorgiotani.Peazip",
+        "ChocoId": "peazip"
+      },
+      "SubCategory": "Compression",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "compression"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Free file archiver utility. Open and extract RAR, TAR, ZIP files and more",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "NanaZip",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open source fork of 7-zip intended for the modern Windows experience",
+      "Detail": "WinGet: M2Team.NanaZip | Chocolatey: nanazip",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "M2Team.NanaZip",
+        "ChocoId": "nanazip"
+      },
+      "SubCategory": "Compression",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "compression"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Open source fork of 7-zip intended for the modern Windows experience",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    }
+  ]
+}

@@ -33,7 +33,12 @@
       "WhyThisMatters": "Adds an Install option to the right-click context menu for .cab archive files.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Compressed Folder in New Menu",
@@ -67,7 +72,12 @@
       "WhyThisMatters": "Shows or hides the Compressed (zipped) Folder option in the right-click New submenu in File Explorer.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Edit with Clipchamp",
@@ -101,7 +111,13 @@
       "WhyThisMatters": "Shows or hides the Edit with Clipchamp video editor option in the right-click context menu for video files.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Clipchamp is a client-only UWP app and is not preinstalled on Windows Server."
+      }
     },
     {
       "Name": "Edit with Paint",
@@ -135,7 +151,13 @@
       "WhyThisMatters": "Shows or hides the Edit with Paint option in the right-click context menu for image files.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Paint ships only on client editions; the Edit-with-Paint shell verb relies on the UWP package."
+      }
     },
     {
       "Name": "Edit with Photos",
@@ -169,7 +191,13 @@
       "WhyThisMatters": "Shows or hides the Edit with Photos option in the right-click context menu for image files.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Photos is a client-only UWP app and is not preinstalled on Windows Server."
+      }
     },
     {
       "Name": "MSI Extract Context Menu",
@@ -203,7 +231,12 @@
       "WhyThisMatters": "Adds an Extract option to the right-click context menu for .msi installer files, letting you browse their contents without running the installer.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Multiple Invoke Context Menu",
@@ -237,7 +270,12 @@
       "WhyThisMatters": "When selecting 15 or more files and right-clicking, Windows normally shows a warning before displaying the context menu. This raises or removes that limit.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Open in Windows Terminal",
@@ -270,7 +308,13 @@
       "WhyThisMatters": "'Open in Windows Terminal' context menu",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Terminal is preinstalled only on client editions; Server hosts can install it manually."
+      }
     },
     {
       "Name": "Print CMD Context Menu",
@@ -304,7 +348,12 @@
       "WhyThisMatters": "Shows or hides the Print option in the right-click context menu for .bat and .cmd script files.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     },
     {
       "Name": "Store in Open With Dialog",
@@ -338,7 +387,13 @@
       "WhyThisMatters": "Shows or hides the Look for an app in the Microsoft Store option that appears in the Open With dialog for unassociated file types.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "The Microsoft Store is not present on Windows Server, so the Open With Store hint has no target."
+      }
     },
     {
       "Name": "Windows Terminal as Admin Default",
@@ -371,7 +426,53 @@
       "WhyThisMatters": "Open Windows Terminal as admin by default",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Terminal is preinstalled only on client editions; Server hosts can install it manually."
+      }
+    },
+    {
+      "Name": "Take Ownership Context Menu",
+      "Function": "TakeOwnershipContextMenu",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": false,
+      "WinDefault": false,
+      "Description": "Adds a 'Take Ownership' right-click option for files and folders with automatic permission elevation. May require temporarily disabling Windows Defender for protected files. If Defender ASR rule 'Block executable files unless trusted' is enabled it can also block takeown.exe on .exe targets - add a takeown.exe ASR exclusion if you hit that.",
+      "Detail": "Registers HKEY_CLASSES_ROOT\\*\\shell\\TakeOwnership with a takeown + icacls command. Defender ASR rule 'Block executable files unless trusted' (GUID 01443614-cd74-433a-b99e-2ecdc07bfc25) can block takeown.exe when invoked against .exe targets, surfacing as an ASR Event 1121 in Windows Defender Operational log; users hitting this need to add a takeown.exe exclusion to that ASR rule.",
+      "Caution": true,
+      "CautionReason": "Defender ASR rule 'Block executable files unless trusted' can block takeown.exe on .exe targets. Add a takeown.exe ASR exclusion if you need this to work on executables.",
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Add",
+      "OffParam": "Remove",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "ContextMenu",
+      "WinDefaultDesc": "Take Ownership entry is not present in the right-click menu",
+      "Risk": "Low",
+      "Tags": [
+        "context-menu",
+        "registry",
+        "defender-asr"
+      ],
+      "Impact": "Low",
+      "Safe": false,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Quickly take ownership of files or folders without opening Properties > Security > Advanced. Defender ASR can block this on .exe targets - see Caution.",
+      "PresetTier": "Advanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": true
+      }
     }
   ]
 }

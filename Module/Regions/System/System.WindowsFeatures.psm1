@@ -1,3 +1,15 @@
+<#
+    .SYNOPSIS
+    Configures Windows feature and capability selection.
+
+    .DESCRIPTION
+    Provides the GUI-facing request path for enabling or disabling Windows
+    optional features and capabilities through Baseline's maintenance flow.
+#>
+
+using module ..\..\GUICommon.psm1
+
+
 function Request-GuiSystemSelection
 {
 	param
@@ -55,10 +67,280 @@ function Request-GuiSystemSelection
 	return $responseState['Result']
 }
 
+function Resolve-SystemPickerUseDarkMode
+{
+	if (Test-Path -Path Variable:\Script:CurrentThemeName)
+	{
+		return ($Script:CurrentThemeName -ne 'Light')
+	}
+
+	if (Test-Path -Path Variable:\Global:BaselineCurrentThemeName)
+	{
+		return ([string]$Global:BaselineCurrentThemeName -ne 'Light')
+	}
+
+	if (Test-Path -Path Variable:\Global:BaselineUseDarkMode)
+	{
+		return [bool]$Global:BaselineUseDarkMode
+	}
+
+	if (-not [string]::IsNullOrWhiteSpace([string]$env:BASELINE_USE_DARK_MODE))
+	{
+		return ([string]$env:BASELINE_USE_DARK_MODE -eq '1')
+	}
+
+	if (-not [string]::IsNullOrWhiteSpace([string]$env:BASELINE_THEME_NAME))
+	{
+		return ([string]$env:BASELINE_THEME_NAME -ne 'Light')
+	}
+
+	return $true
+}
+
+function Get-SystemPickerTheme
+{
+	if (Test-Path -Path Variable:\Script:CurrentTheme)
+	{
+		return $Script:CurrentTheme
+	}
+
+	if (Test-Path -Path Variable:\Global:BaselineCurrentTheme)
+	{
+		return $Global:BaselineCurrentTheme
+	}
+
+	return @{}
+}
+
+function Resolve-SystemPickerGuiCommonPath
+{
+	param
+	(
+		[string]
+		$ModulePath
+	)
+
+	if ([string]::IsNullOrWhiteSpace([string]$ModulePath))
+	{
+		return $null
+	}
+
+	$cursor = Split-Path -Path $ModulePath -Parent
+	while (-not [string]::IsNullOrWhiteSpace([string]$cursor))
+	{
+		$candidate = Join-Path -Path $cursor -ChildPath 'GUICommon.psm1'
+		if (Test-Path -LiteralPath $candidate)
+		{
+			return $candidate
+		}
+
+		$parent = Split-Path -Path $cursor -Parent
+		if ([string]::Equals([string]$parent, [string]$cursor, [System.StringComparison]::OrdinalIgnoreCase))
+		{
+			break
+		}
+		$cursor = $parent
+	}
+
+	return $null
+}
+
+function Resolve-SystemPickerSharedHelpersPath
+{
+	param
+	(
+		[string]
+		$ModulePath
+	)
+
+	if ([string]::IsNullOrWhiteSpace([string]$ModulePath))
+	{
+		return $null
+	}
+
+	$cursor = Split-Path -Path $ModulePath -Parent
+	while (-not [string]::IsNullOrWhiteSpace([string]$cursor))
+	{
+		$candidate = Join-Path -Path $cursor -ChildPath 'SharedHelpers.psm1'
+		if (Test-Path -LiteralPath $candidate)
+		{
+			return $candidate
+		}
+
+		$parent = Split-Path -Path $cursor -Parent
+		if ([string]::Equals([string]$parent, [string]$cursor, [System.StringComparison]::OrdinalIgnoreCase))
+		{
+			break
+		}
+		$cursor = $parent
+	}
+
+	return $null
+}
+
+function Get-SystemPickerResolvedThemeColor
+{
+	param
+	(
+		[object]
+		$Theme,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$ColorName,
+
+		[string]
+		$DefaultColor,
+
+		[object]
+		$BrushConverter,
+
+		[object]
+		$UseDarkMode = $true,
+
+		[string]
+		$ErrorSource = 'System.WindowsFeatures.ThemeColor'
+	)
+
+	$resolvedUseDarkMode = [bool]$UseDarkMode
+	$fallbackColors = if ($resolvedUseDarkMode)
+	{
+		@{
+			WindowBg = '#1E1E2E'
+			BorderColor = '#333346'
+		}
+	}
+	else
+	{
+		@{
+			WindowBg = '#F3F5F8'
+			BorderColor = '#D8DEE8'
+		}
+	}
+
+	if (-not $BrushConverter)
+	{
+		$BrushConverter = New-Object System.Windows.Media.BrushConverter
+	}
+
+	$candidates = @()
+	try
+	{
+		if ($Theme -and ($Theme -is [System.Collections.IDictionary]) -and $Theme.Contains($ColorName))
+		{
+			$value = [string]$Theme[$ColorName]
+			if (-not [string]::IsNullOrWhiteSpace($value))
+			{
+				$candidates += $value
+			}
+		}
+	}
+	catch
+	{
+		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue)
+		{
+			Write-SwallowedException -ErrorRecord $_ -Source $ErrorSource
+		}
+		else
+		{
+			Write-Verbose ("{0}: {1}" -f $ErrorSource, $_.Exception.Message)
+		}
+	}
+
+	if (-not [string]::IsNullOrWhiteSpace([string]$DefaultColor))
+	{
+		$candidates += [string]$DefaultColor
+	}
+	if ($fallbackColors.ContainsKey($ColorName) -and -not [string]::IsNullOrWhiteSpace([string]$fallbackColors[$ColorName]))
+	{
+		$candidates += [string]$fallbackColors[$ColorName]
+	}
+
+	foreach ($candidate in $candidates)
+	{
+		try
+		{
+			[void]$BrushConverter.ConvertFromString([string]$candidate)
+			return [string]$candidate
+		}
+		catch
+		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				Write-SwallowedException -ErrorRecord $_ -Source $ErrorSource
+			}
+			else
+			{
+				Write-Verbose ("{0}: {1}" -f $ErrorSource, $_.Exception.Message)
+			}
+		}
+	}
+
+	return $(if ($resolvedUseDarkMode) { '#1E1E2E' } else { '#F3F5F8' })
+}
+
+function Invoke-WindowsCapabilityDismOperation
+{
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory = $true)]
+		[ValidateSet('Install', 'Uninstall')]
+		[string]
+		$Operation,
+
+		[Parameter(Mandatory = $true)]
+		[string]
+		$Name,
+
+		[ValidateRange(1, 86400)]
+		[int]
+		$TimeoutSeconds = 180
+	)
+
+	$dismPath = Join-Path $env:SystemRoot 'System32\dism.exe'
+	if (-not (Test-Path -LiteralPath $dismPath -PathType Leaf))
+	{
+		throw "DISM executable not found: $dismPath"
+	}
+
+	$operationArguments = if ([string]::Equals($Operation, 'Install', [System.StringComparison]::OrdinalIgnoreCase))
+	{
+		@('/Online', '/Add-Capability', ("/CapabilityName:$Name"), '/NoRestart')
+	}
+	else
+	{
+		@('/Online', '/Remove-Capability', ("/CapabilityName:$Name"), '/NoRestart')
+	}
+
+	$result = Invoke-BaselineProcess `
+		-FilePath $dismPath `
+		-ArgumentList $operationArguments `
+		-TimeoutSeconds $TimeoutSeconds `
+		-CaptureOutput `
+		-AllowedExitCodes @(0, 3010)
+
+	if ($result.ExitCode -notin @(0, 3010))
+	{
+		$diagnostic = @(
+			[string]$result.StandardOutput
+			[string]$result.StandardError
+		) -join [Environment]::NewLine
+		throw ("DISM capability {0} failed for '{1}' with exit code {2}. {3}" -f $Operation.ToLowerInvariant(), $Name, $result.ExitCode, $diagnostic.Trim())
+	}
+
+	return $result
+}
+
 <#
 .SYNOPSIS
 	Optional features
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for optional features.
 	.PARAMETER Uninstall
 	Uninstall optional features
 
@@ -77,6 +359,7 @@ function Request-GuiSystemSelection
 	.NOTES
 	Current user
 #>
+
 function WindowsCapabilities
 {
 	[CmdletBinding(DefaultParameterSetName = "Uninstall")]
@@ -106,8 +389,16 @@ function WindowsCapabilities
 
 		[Parameter(Mandatory = $false)]
 		[switch]
+		$UseDefaultSelection,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
 		$NonInteractive
 	)
+
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\ModulePathResolution.ps1')
+	$guiCommonPath = Resolve-SystemPickerGuiCommonPath -ModulePath $modulePath
+	$sharedHelpersPath = Resolve-SystemPickerSharedHelpersPath -ModulePath $modulePath
 
 	Add-Type -AssemblyName PresentationCore, PresentationFramework
 
@@ -119,97 +410,17 @@ function WindowsCapabilities
 	}
 	$script:WindowsCapabilitiesSelectionResult = $null
 	$SelectedCapabilityNamesProvided = $PSBoundParameters.ContainsKey('SelectedCapabilityNames')
-	# The following optional features will have their checkboxes checked
-	[string[]]$CheckedCapabilities = @(
-		# Steps Recorder
-		"App.StepsRecorder*"
-	)
-
-	# The following optional features will have their checkboxes unchecked
-	[string[]]$UncheckedCapabilities = @(
-		# Internet Explorer mode
-		"Browser.InternetExplorer*",
-
-		# Windows Media Player
-		# If you want to leave "Multimedia settings" element in the advanced settings of Power Options do not uninstall this feature
-		"Media.WindowsMediaPlayer*",
-
-		# Voice Access / related speech capability entries
-		"*VoiceAccess*"
-	)
-
-	# The following optional features will be excluded from the display
-	[string[]]$ExcludedCapabilities = @(
-		# The DirectX Database to configure and optimize apps when multiple Graphics Adapters are present
-		"DirectX.Configuration.Database*",
-
-		# Language components
-		"Language.*",
-
-		# Notepad
-		"Microsoft.Windows.Notepad*",
-
-		# Mail, contacts, and calendar sync component
-		"OneCoreUAP.OneSync*",
-
-		# Windows PowerShell Intergrated Scripting Enviroment
-		"Microsoft.Windows.PowerShell.ISE*",
-
-		# Management of printers, printer drivers, and printer servers
-		"Print.Management.Console*",
-
-		# Features critical to Windows functionality
-		"Windows.Client.ShellComponents*"
-	)
+	# Selection defaults are defined in SharedHelpers/WindowsFeatures.Helpers.ps1 so
+	# unit tests can validate selection logic without starting WPF.
+	[string[]]$CheckedCapabilities = @(Get-WindowsCapabilityCheckedDefaults)
+	[string[]]$UncheckedCapabilities = @(Get-WindowsCapabilityUncheckedDefaults)
+	[string[]]$ExcludedCapabilities = @(Get-WindowsCapabilityExcludedDefaults)
+	$CapabilityOperationTimeoutSeconds = 180
 	#endregion Variables
 
 	#region XAML Markup
-	# The section defines the design of the upcoming dialog box
-	[xml]$XAML = @"
-	<Window
-		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Name="Window"
-		MinHeight="450" MinWidth="415"
-		SizeToContent="Width" WindowStartupLocation="CenterScreen"
-		TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
-		FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
-		Background="#F1F1F1" Foreground="#262626">
-		<Window.Resources>
-			<Style TargetType="CheckBox">
-				<Setter Property="IsChecked" Value="True"/>
-			</Style>
-			<Style TargetType="Button">
-				<Setter Property="Margin" Value="20"/>
-				<Setter Property="Padding" Value="10"/>
-			</Style>
-			<Style TargetType="Border">
-				<Setter Property="Grid.Row" Value="1"/>
-				<Setter Property="CornerRadius" Value="0"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-			</Style>
-			<Style TargetType="ScrollViewer">
-				<Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-			</Style>
-		</Window.Resources>
-		<Grid>
-			<Grid.RowDefinitions>
-				<RowDefinition Height="Auto"/>
-				<RowDefinition Height="*"/>
-				<RowDefinition Height="Auto"/>
-			</Grid.RowDefinitions>
-			<Border>
-				<ScrollViewer>
-					<StackPanel Name="PanelContainer" Orientation="Vertical"/>
-				</ScrollViewer>
-			</Border>
-			<Button Name="Button" Grid.Row="2"/>
-		</Grid>
-	</Window>
-"@
+	# This block defines the dialog XAML used at runtime.
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilitySelectionDialogXaml.ps1')
 	#endregion XAML Markup
 
 	$Form = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $XAML))
@@ -217,100 +428,47 @@ function WindowsCapabilities
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
 
-	try {
-		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
-			$useDark = $false
-			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
-			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
-		}
-	} catch { $null = $_ }
+	$pickerBrushConverter = New-Object System.Windows.Media.BrushConverter
+
+	# Apply theme styling
+	$Theme = Get-SystemPickerTheme
+	$UseDarkMode = Resolve-SystemPickerUseDarkMode
+	$repairGuiThemePalette = Get-Command -Name 'GUICommon\Repair-GuiThemePalette' -CommandType Function -ErrorAction SilentlyContinue
+	if ($repairGuiThemePalette)
+	{
+		$Theme = & $repairGuiThemePalette -Theme $Theme -ThemeName $(if ($UseDarkMode) { 'Dark' } else { 'Light' })
+	}
+	$windowBgDefault = if ($UseDarkMode) { [string]$Script:DarkTheme.WindowBg } else { [string]$Script:LightTheme.WindowBg }
+	$borderColorDefault = if ($UseDarkMode) { [string]$Script:DarkTheme.BorderColor } else { [string]$Script:LightTheme.BorderColor }
+	$windowBg = Get-SystemPickerResolvedThemeColor -Theme $Theme -ColorName 'WindowBg' -DefaultColor $windowBgDefault -BrushConverter $pickerBrushConverter -UseDarkMode $UseDarkMode -ErrorSource 'System.WindowsFeatures.OptionalFeaturesPicker.WindowBg'
+	$borderColor = Get-SystemPickerResolvedThemeColor -Theme $Theme -ColorName 'BorderColor' -DefaultColor $borderColorDefault -BrushConverter $pickerBrushConverter -UseDarkMode $UseDarkMode -ErrorSource 'System.WindowsFeatures.OptionalFeaturesPicker.BorderColor'
+	$RootBorder.Background = [System.Windows.Media.Brush]($pickerBrushConverter.ConvertFromString($windowBg))
+	$RootBorder.BorderBrush = [System.Windows.Media.Brush]($pickerBrushConverter.ConvertFromString($borderColor))
+	$RootBorder.BorderThickness = '1'
+	if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue)
+	{
+		Set-GuiWindowChromeTheme -Window $Form -UseDarkMode $UseDarkMode
+	}
 
 	#region Functions
-	function Test-CapabilityPatternMatch
-	{
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			[string]
-			$CapabilityName,
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityPatternMatching.ps1')
 
-			[string[]]
-			$Patterns
-		)
+	<#
+	    .SYNOPSIS
+	    Gets selected capability list.
 
-		foreach ($Pattern in $Patterns)
-		{
-			if ($CapabilityName -like $Pattern)
-			{
-				return $true
-			}
-		}
-
-		return $false
-	}
-
-	function Get-CheckboxClicked
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$CheckBox
-		)
-
-		$Capability = $CheckBox.Tag
-
-		if ($CheckBox.IsChecked)
-		{
-			if ($Capability -and ($Capability -notin $SelectedCapabilities))
-			{
-				[void]$SelectedCapabilities.Add($Capability)
-			}
-		}
-		else
-		{
-			if ($Capability)
-			{
-				[void]$SelectedCapabilities.Remove($Capability)
-			}
-		}
-
-		if ($SelectedCapabilities.Count -gt 0)
-		{
-			$Button.IsEnabled = $true
-		}
-		else
-		{
-			$Button.IsEnabled = $false
-		}
-	}
-
-	function Test-CapabilitySeedSelected
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			$Capability
-		)
-
-		if ($SelectedCapabilityNamesProvided)
-		{
-			return [bool](@($SelectedCapabilityNames | Where-Object -FilterScript {$_ -eq $Capability.Name}).Count -gt 0)
-		}
-
-		return Test-CapabilityPatternMatch -CapabilityName $Capability.Name -Patterns $CheckedCapabilities
-	}
+		#>
 
 	function Get-SelectedCapabilityList
 	{
 		return @($SelectedCapabilities | Where-Object { $_ })
 	}
 
+	<#
+	    .SYNOPSIS
+	    Gets selected capability names.
+
+		#>
 	function Get-SelectedCapabilityNames
 	{
 		return @(
@@ -320,292 +478,45 @@ function WindowsCapabilities
 		)
 	}
 
-	function UninstallButton
-	{
-		param
-		(
-			[object[]]
-			$CapabilityList = @(Get-SelectedCapabilityList)
-		)
+	<#
+	    .SYNOPSIS
+	    Runs check box select all click.
 
-		try
-		{
-			$ResolvedCapabilityList = @($CapabilityList | Where-Object { $_ })
+	#>
 
-			Write-ConsoleStatus -Action "Uninstalling optional features"
-			LogInfo "Uninstalling optional features"
-			LogInfo "Optional features selected for uninstall: $($ResolvedCapabilityList.Count)"
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\SelectAllCapabilityHandler.ps1')
 
-			if ($ResolvedCapabilityList.Count -eq 0)
-			{
-				LogInfo "No optional features were selected for removal. Skipping."
-				Write-ConsoleStatus -Status success
-				return
-			}
+	# Friendly display names live in SharedHelpers/WindowsFeatures.Helpers.ps1
+	$CapabilityFriendlyNames = Get-WindowsCapabilityFriendlyNameMap
 
-			$AvailableCapabilityNames = (Get-WindowsCapability -Online -ErrorAction Stop).Name
+	<#
+	    .SYNOPSIS
+	    Gets capability friendly name.
 
-			$CapabilitiesToRemove = @(
-				$ResolvedCapabilityList | Where-Object -FilterScript {$_.Name -in $AvailableCapabilityNames}
-			)
+		#>
 
-			if (-not $CapabilitiesToRemove)
-			{
-				throw "None of the selected optional features are currently available for removal."
-			}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityFriendlyName.ps1')
 
-			foreach ($Capability in $CapabilitiesToRemove)
-			{
-				LogInfo "Uninstalling optional feature: $($Capability.Name)"
-				Invoke-SilencedProgress {
-					Remove-WindowsCapability -Online -Name $Capability.Name -ErrorAction Stop | Out-Null
-				}
-				LogInfo "Uninstalled optional feature: $($Capability.Name)"
-			}
+	<#
+	    .SYNOPSIS
+	    Creates capability info icon.
 
-			if ([string]$ResolvedCapabilityList.Name -match "Browser.InternetExplorer")
-			{
-				#LogWarning $Localization.RestartWarning
-			}
-				Write-ConsoleStatus -Status success
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogError "Failed to uninstall optional features: $($_.Exception.Message)"
-			Write-ConsoleStatus -Status failed
-		}
-	}
-
-	function InstallButton
-	{
-		param
-		(
-			[object[]]
-			$CapabilityList = @(Get-SelectedCapabilityList)
-		)
-
-		try
-		{
-			$ResolvedCapabilityList = @($CapabilityList | Where-Object { $_ })
-
-			Write-ConsoleStatus -Action "Installing optional features"
-			LogInfo "Installing optional features"
-			LogInfo "Optional features selected for install: $($ResolvedCapabilityList.Count)"
-
-			if ($ResolvedCapabilityList.Count -eq 0)
-			{
-				throw "No optional features were selected for installation."
-			}
-
-			$AvailableCapabilityNames = (Get-WindowsCapability -Online -ErrorAction Stop).Name
-
-			$CapabilitiesToInstall = @(
-				$ResolvedCapabilityList | Where-Object -FilterScript {$_.Name -in $AvailableCapabilityNames}
-			)
-
-			if (-not $CapabilitiesToInstall)
-			{
-				throw "None of the selected optional features are currently available for installation."
-			}
-
-			foreach ($Capability in $CapabilitiesToInstall)
-			{
-				LogInfo "Installing optional feature: $($Capability.Name)"
-				Invoke-SilencedProgress {
-					Add-WindowsCapability -Online -Name $Capability.Name -ErrorAction Stop | Out-Null
-				}
-				LogInfo "Installed optional feature: $($Capability.Name)"
-			}
-
-			if ([string]$ResolvedCapabilityList.Name -match "Browser.InternetExplorer")
-			{
-				#LogWarning $Localization.RestartWarning
-			}
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			if ($_.Exception -is [System.Runtime.InteropServices.COMException])
-			{
-				LogError ($Localization.NoResponse -f "http://tlu.dl.delivery.mp.microsoft.com/filestreamingservice")
-				LogError ($Localization.RestartFunction -f (Get-TweakSkipLabel $MyInvocation))
-			}
-			else
-			{
-				LogError "Failed to install optional features: $($_.Exception.Message)"
-			}
-			Write-ConsoleStatus -Status failed
-			return
-		}
-			Write-ConsoleStatus -Status success
-	}
-
-	function Confirm-WindowsCapabilitiesSelection
-	{
-		$SelectedCapabilityList = @(Get-SelectedCapabilityList)
-		$SelectionState.Confirmed = $true
-
-		if ($CollectSelectionOnly)
-		{
-			$script:WindowsCapabilitiesSelectionResult = [PSCustomObject]@{
-				Mode = $PSCmdlet.ParameterSetName
-				SelectedCapabilityNames = @(Get-SelectedCapabilityNames)
-			}
-			if ($null -ne $Window)
-			{
-				[void]$Window.Close()
-			}
-			return
-		}
-
-		if ($null -ne $Window)
-		{
-			[void]$Window.Close()
-		}
-
-		& $ButtonAdd_Click -CapabilityList $SelectedCapabilityList
-	}
-
-	# Friendly display names for capabilities whose DisplayName is empty or unhelpful
-	$CapabilityFriendlyNames = @{
-		'App.StepsRecorder'                  = 'Steps Recorder'
-		'App.WiredNetworkDriverInstaller'    = 'Wired Network Driver Installer'
-		'Browser.InternetExplorer'           = 'Internet Explorer Mode'
-		'Hello.Face'                         = 'Windows Hello Face'
-		'MathRecognizer'                     = 'Math Recognizer'
-		'Media.WindowsMediaPlayer'           = 'Windows Media Player'
-		'Microsoft.Wallpapers.Extended'      = 'Extended Wallpapers'
-		'Microsoft.Windows.MSPaint'          = 'Microsoft Paint'
-		'Microsoft.Windows.Notepad.System'   = 'Notepad (System)'
-		'Microsoft.Windows.WordPad'          = 'WordPad'
-		'OpenSSH.Client'                     = 'OpenSSH Client'
-		'OpenSSH.Server'                     = 'OpenSSH Server'
-		'Print.Fax.Scan'                     = 'Windows Fax and Scan'
-		'Accessibility.Braille'              = 'Accessibility - Braille Support'
-		'App.Support.QuickAssist'            = 'Quick Assist'
-		'VoiceAccess'                        = 'Voice Access'
-	}
-
-	function Get-CapabilityFriendlyName
-	{
-		param ([string]$Name, [string]$DisplayName)
-
-		if (-not [string]::IsNullOrWhiteSpace($DisplayName))
-		{
-			return $DisplayName
-		}
-
-		# Strip version suffix (e.g. ~~~~0.0.1.0) and match against friendly names
-		$baseName = ($Name -replace '~.*$', '').TrimEnd('~')
-		foreach ($pattern in $CapabilityFriendlyNames.Keys)
-		{
-			if ($baseName -like "$pattern*")
-			{
-				return $CapabilityFriendlyNames[$pattern]
-			}
-		}
-
-		# Last resort: strip the version suffix and return as-is
-		return $baseName
-	}
+		#>
 
 	function New-CapabilityInfoIcon
 	{
 		param ([string]$TooltipText)
 
-		$icon = New-Object -TypeName System.Windows.Controls.TextBlock
-		$icon.Text = [char]0x24D8  # info icon
-		$icon.FontSize = 14
-		$icon.Foreground = [System.Windows.Media.Brushes]::DodgerBlue
-		$icon.VerticalAlignment = 'Center'
-		$icon.Margin = [System.Windows.Thickness]::new(4, 0, 4, 0)
-		$icon.Cursor = [System.Windows.Input.Cursors]::Arrow
-		$icon.ToolTip = $(if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'Optional feature' } else { $TooltipText })
-		[System.Windows.Controls.ToolTipService]::SetPlacement($icon, [System.Windows.Controls.Primitives.PlacementMode]::Right)
-		[System.Windows.Controls.ToolTipService]::SetShowDuration($icon, 20000)
-		[System.Windows.Controls.ToolTipService]::SetInitialShowDelay($icon, 150)
-		return $icon
+		return GUICommon\New-GuiPopupInfoIcon -TooltipText $(if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'Optional feature' } else { $TooltipText }) -Theme $Theme -UseDarkMode $UseDarkMode
 	}
 
-	function Add-CapabilityControl
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$Capability
-		)
+	<#
+	    .SYNOPSIS
+	    Adds capability control.
 
-		process
-		{
-			$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
-			$CheckBox.Add_Click({Get-CheckboxClicked -CheckBox $_.Source})
-			$CheckBox.Tag = $Capability
-			$CheckBox.VerticalAlignment = 'Center'
-			$CheckBox.Margin = [System.Windows.Thickness]::new(10, 10, 5, 10)
+		#>
 
-			$CapabilityLabel = Get-CapabilityFriendlyName -Name $Capability.Name -DisplayName $Capability.DisplayName
-			$tooltipText = if (-not [string]::IsNullOrWhiteSpace($Capability.Description))
-			{
-				[string]$Capability.Description
-			}
-			elseif (-not [string]::IsNullOrWhiteSpace($Capability.DisplayName))
-			{
-				"Optional feature: $($Capability.DisplayName)"
-			}
-			else
-			{
-				"Optional feature: $CapabilityLabel"
-			}
-
-			$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
-			$TextBlock.Text = $CapabilityLabel
-			$TextBlock.VerticalAlignment = 'Center'
-			$TextBlock.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0)
-
-			$infoIcon = New-CapabilityInfoIcon -TooltipText $tooltipText
-
-			$rowPanel = New-Object -TypeName System.Windows.Controls.DockPanel
-			$rowPanel.LastChildFill = $true
-			$rowPanel.HorizontalAlignment = 'Stretch'
-			$rowPanel.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
-
-			[System.Windows.Controls.DockPanel]::SetDock($CheckBox, [System.Windows.Controls.Dock]::Left)
-			[void]$rowPanel.Children.Add($CheckBox)
-
-			$infoPanel = New-Object -TypeName System.Windows.Controls.StackPanel
-			$infoPanel.Orientation = 'Horizontal'
-			$infoPanel.VerticalAlignment = 'Center'
-			$infoPanel.HorizontalAlignment = 'Right'
-			$infoPanel.Margin = [System.Windows.Thickness]::new(8, 0, 10, 0)
-			[void]$infoPanel.Children.Add($infoIcon)
-
-			[System.Windows.Controls.DockPanel]::SetDock($infoPanel, [System.Windows.Controls.Dock]::Right)
-			[void]$rowPanel.Children.Add($infoPanel)
-
-			[void]$rowPanel.Children.Add($TextBlock)
-			[void]$PanelContainer.Children.Add($rowPanel)
-
-			if (Test-CapabilitySeedSelected -Capability $Capability)
-			{
-				[void]$SelectedCapabilities.Add($Capability)
-			}
-			else
-			{
-				$CheckBox.IsChecked = $false
-			}
-
-			if ($null -ne $Button)
-			{
-				$Button.IsEnabled = ($SelectedCapabilities.Count -gt 0)
-			}
-		}
-	}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityControlFactory.ps1')
 	#endregion Functions
 
 	switch ($PSCmdlet.ParameterSetName)
@@ -615,7 +526,7 @@ function WindowsCapabilities
 			try
 			{
 				$State = "NotPresent"
-				$ButtonContent = $Localization.Install
+				$ButtonContent = GUICommon\Get-GuiPopupLocalizedString -Key 'GuiChoiceInstall' -Fallback 'Install'
 				$ButtonAdd_Click = {
 					param
 					(
@@ -637,7 +548,7 @@ function WindowsCapabilities
 		"Uninstall"
 		{
 			$State = "Installed"
-			$ButtonContent = $Localization.Uninstall
+			$ButtonContent = GUICommon\Get-GuiPopupLocalizedString -Key 'GuiChoiceUninstall' -Fallback 'Uninstall'
 			$ButtonAdd_Click = {
 				param
 				(
@@ -650,7 +561,7 @@ function WindowsCapabilities
 		}
 	}
 
-	if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedCapabilityNamesProvided)
+	if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedCapabilityNamesProvided -and -not $UseDefaultSelection)
 	{
 		$selectionResult = Request-GuiSystemSelection -RequestType 'WindowsCapabilities' -Mode $PSCmdlet.ParameterSetName -SelectedNames @($SelectedCapabilityNames)
 		if ($null -ne $selectionResult)
@@ -660,7 +571,7 @@ function WindowsCapabilities
 		}
 	}
 
-	if ($NonInteractive -and -not $SelectedCapabilityNamesProvided)
+	if ($NonInteractive -and -not $SelectedCapabilityNamesProvided -and -not $UseDefaultSelection)
 	{
 		LogWarning 'Skipping optional features because no preselected capabilities were provided for noninteractive execution.'
 		Write-ConsoleStatus -Status warning
@@ -668,25 +579,7 @@ function WindowsCapabilities
 	}
 
 	# Getting list of all capabilities according to the conditions
-	try
-	{
-		$Capabilities = Get-WindowsCapability -Online -ErrorAction Stop |
-			Where-Object -FilterScript {
-				$CapabilityName = $_.Name
-				($_.State -eq $State) -and
-				(
-					(Test-CapabilityPatternMatch -CapabilityName $CapabilityName -Patterns $UncheckedCapabilities) -or
-					(Test-CapabilityPatternMatch -CapabilityName $CapabilityName -Patterns $CheckedCapabilities)
-				) -and
-				-not (Test-CapabilityPatternMatch -CapabilityName $CapabilityName -Patterns $ExcludedCapabilities)
-			} |
-			Sort-Object -Property DisplayName, Name
-	}
-	catch
-	{
-		Remove-HandledErrorRecord -ErrorRecord $_
-		$Capabilities = $null
-	}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityQuery.ps1')
 
 	if (-not $Capabilities)
 	{
@@ -698,9 +591,27 @@ function WindowsCapabilities
 			}
 		}
 		LogInfo "Optional Features:"
-		LogInfo "No preset-matched Optional features were found. Moving on."
-		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Uninstall') { 'Uninstalling optional features' } else { 'Installing optional features' })" -Status success
+		LogInfo "Skipping optional features because no preset-matched Optional features were found."
+		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Uninstall') { 'Uninstalling optional features' } else { 'Installing optional features' })" -Status warning
 		return
+	}
+
+	if ($UseDefaultSelection -and -not $SelectedCapabilityNamesProvided -and -not $CollectSelectionOnly)
+	{
+		$SelectedCapabilityNames = @(
+			$Capabilities |
+				Where-Object -FilterScript { Test-CapabilityPatternMatch -CapabilityName $_.Name -Patterns $CheckedCapabilities } |
+				ForEach-Object -Process { [string]$_.Name } |
+				Where-Object -FilterScript { -not [string]::IsNullOrWhiteSpace($_) }
+		)
+		$SelectedCapabilityNamesProvided = $true
+
+		if ($SelectedCapabilityNames.Count -eq 0)
+		{
+			LogWarning 'Skipping optional features because the default capability selection is empty on this system.'
+			Write-ConsoleStatus -Status warning
+			return
+		}
 	}
 
 	if ($SelectedCapabilityNamesProvided -and -not $CollectSelectionOnly)
@@ -712,34 +623,31 @@ function WindowsCapabilities
 		return
 	}
 
-	#region Sendkey function
-	# Emulate the Backspace key sending to prevent the console window to freeze
-	Start-Sleep -Milliseconds 500
-
-	Add-Type -AssemblyName System.Windows.Forms
-
-	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Utility for Windows"} | ForEach-Object -Process {
-		# Show window, if minimized
-		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
-
-		Start-Sleep -Milliseconds 150
-
-		# Force move the console window to the foreground
-		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
-
-		Start-Sleep -Milliseconds 150
-
-		# Emulate the Backspace key sending
-		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
-	}
-	#endregion Sendkey function
+	. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityDialogForegroundActivation.ps1')
 	$Button.IsEnabled = $false
 	$Window.Add_Loaded({$Capabilities | Add-CapabilityControl})
 	$Button.Content = $ButtonContent
+	$Button.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	$Button.FontSize = 12
+	try { GUICommon\Set-GuiPopupActionButtonStyle -Button $Button -Theme $Theme -UseDarkMode $UseDarkMode } catch { Write-SwallowedException -ErrorRecord $_ -Source 'WindowsCapabilities.SetPopupActionButtonStyle' }
+	$TextBlockSelectAll.Text = GUICommon\Get-GuiPopupLocalizedString -Key 'GuiSelectAll' -Fallback 'Select All'
+	$TextBlockSelectAll.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	if ($Form.Foreground) { $TextBlockSelectAll.Foreground = $Form.Foreground }
 	$Button.Add_Click({Confirm-WindowsCapabilitiesSelection})
+	$CheckBoxSelectAll.Add_Click({Invoke-CapabilitySelectAllClick})
 
-	$Window.Title = $Localization.OptionalFeaturesTitle
+	$windowsCapabilitiesTitle = GUICommon\Get-GuiPopupLocalizedString -Key 'Tweak_WindowsCapabilities' -Fallback 'Windows Capabilities'
+	$Form.Title = $windowsCapabilitiesTitle
+	if (Test-Path -Path Function:\Add-GuiPopupWindowChrome)
+	{
+		[void](GUICommon\Add-GuiPopupWindowChrome -Window $Form -RootBorder $RootBorder -PanelContainer $PanelContainer -Title $windowsCapabilitiesTitle -Theme $Theme -UseDarkMode $UseDarkMode)
+	}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\CapabilityDialogThemeCallback.ps1')
+	if (Test-Path -Path Function:\Register-GuiPopupThemeWindow)
+	{
+		[void](GUICommon\Register-GuiPopupThemeWindow -Window $Form -ThemeCallback $windowsCapabilitiesThemeCallback)
+	}
+	& $windowsCapabilitiesThemeCallback -Window $Form -Theme $Theme -UseDarkMode $UseDarkMode
 
 	if ($Global:GUIMode -and -not $CollectSelectionOnly)
 	{
@@ -756,6 +664,20 @@ function WindowsCapabilities
 		return $script:WindowsCapabilitiesSelectionResult
 	}
 
+	if ($Form.PSObject.Properties['GuiPopupOperationError'] -and $Form.GuiPopupOperationError)
+	{
+		$operationError = $Form.GuiPopupOperationError
+		Remove-HandledErrorRecord -ErrorRecord $operationError
+		LogError "Failed to $(if ($PSCmdlet.ParameterSetName -eq 'Uninstall') { 'uninstall' } else { 'install' }) optional features: $($operationError.Exception.Message)"
+		Write-ConsoleStatus -Status failed
+		throw $operationError
+	}
+
+	if ($SelectionState.Confirmed)
+	{
+		Write-ConsoleStatus -Status success
+	}
+
 	if (-not $SelectionState.Confirmed)
 	{
 		LogWarning 'Skipping optional features because no selection was confirmed.'
@@ -767,6 +689,11 @@ function WindowsCapabilities
 	.SYNOPSIS
 	Windows features
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows features.
 	.PARAMETER Disable
 	Disable Windows features
 
@@ -785,6 +712,7 @@ function WindowsCapabilities
 	.NOTES
 	Current user
 #>
+
 function WindowsFeatures
 {
 	[CmdletBinding(DefaultParameterSetName = "Disable")]
@@ -814,8 +742,15 @@ function WindowsFeatures
 
 		[Parameter(Mandatory = $false)]
 		[switch]
+		$UseDefaultSelection,
+
+		[Parameter(Mandatory = $false)]
+		[switch]
 		$NonInteractive
 	)
+
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsCapabilities\ModulePathResolution.ps1')
+	$guiCommonPath = Resolve-SystemPickerGuiCommonPath -ModulePath $modulePath
 
 	Add-Type -AssemblyName PresentationCore, PresentationFramework
 
@@ -827,86 +762,15 @@ function WindowsFeatures
 	}
 	$script:WindowsFeaturesSelectionResult = $null
 	$SelectedFeatureNamesProvided = $PSBoundParameters.ContainsKey('SelectedFeatureNames')
-	# The following Windows features will have their checkboxes checked
-	[string[]]$CheckedFeatures = @(
-		# Legacy Components
-		"LegacyComponents",
-
-		# PowerShell 2.0
-		"MicrosoftWindowsPowerShellV2",
-		"MicrosoftWindowsPowershellV2Root",
-
-		# Microsoft XPS Document Writer
-		"Printing-XPSServices-Features",
-
-		# Recall
-		"Recall"
-
-		# Work Folders Client
-		"WorkFolders-Client"
-	)
-
-	# The following Windows features will have their checkboxes unchecked
-	[string[]]$UncheckedFeatures = @(
-		# Media Features
-		# If you want to leave "Multimedia settings" in the advanced settings of Power Options do not disable this feature
-		"MediaPlayback",
-
-		# Windows Sandbox
-		"Containers-DisposableClientVM",
-
-		# Windows Defender Application Guard
-		"Windows-Defender-ApplicationGuard"
-	)
+	# Selection defaults are defined in SharedHelpers/WindowsFeatures.Helpers.ps1.
+	# (also fixes a missing-comma bug between "Recall" and "WorkFolders-Client").
+	[string[]]$CheckedFeatures = @(Get-WindowsFeatureCheckedDefaults)
+	[string[]]$UncheckedFeatures = @(Get-WindowsFeatureUncheckedDefaults)
 	#endregion Variables
 
 	#region XAML Markup
-	# The section defines the design of the upcoming dialog box
-	[xml]$XAML = @"
-	<Window
-		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Name="Window"
-		MinHeight="450" MinWidth="415"
-		SizeToContent="Width" WindowStartupLocation="CenterScreen"
-		TextOptions.TextFormattingMode="Display" SnapsToDevicePixels="True"
-		FontFamily="Candara" FontSize="16" ShowInTaskbar="True"
-		Background="#F1F1F1" Foreground="#262626">
-		<Window.Resources>
-			<Style TargetType="CheckBox">
-				<Setter Property="IsChecked" Value="True"/>
-			</Style>
-			<Style TargetType="Button">
-				<Setter Property="Margin" Value="20"/>
-				<Setter Property="Padding" Value="10"/>
-			</Style>
-			<Style TargetType="Border">
-				<Setter Property="Grid.Row" Value="1"/>
-				<Setter Property="CornerRadius" Value="0"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-			</Style>
-			<Style TargetType="ScrollViewer">
-				<Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-				<Setter Property="BorderBrush" Value="#000000"/>
-				<Setter Property="BorderThickness" Value="0, 1, 0, 1"/>
-			</Style>
-		</Window.Resources>
-		<Grid>
-			<Grid.RowDefinitions>
-				<RowDefinition Height="Auto"/>
-				<RowDefinition Height="*"/>
-				<RowDefinition Height="Auto"/>
-			</Grid.RowDefinitions>
-			<Border>
-				<ScrollViewer>
-					<StackPanel Name="PanelContainer" Orientation="Vertical"/>
-				</ScrollViewer>
-			</Border>
-			<Button Name="Button" Grid.Row="2"/>
-		</Grid>
-	</Window>
-"@
+	# This block defines the dialog XAML used at runtime.
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsFeatures\FeatureSelectionDialogXaml.ps1')
 	#endregion XAML Markup
 
 	$Form = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $XAML))
@@ -914,100 +778,54 @@ function WindowsFeatures
 		Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)
 	}
 
-	try {
-		if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue) {
-			$useDark = $false
-			if (Test-Path -Path Variable:\Script:CurrentThemeName) { $useDark = ($Script:CurrentThemeName -eq 'Dark') }
-			[void](Set-GuiWindowChromeTheme -Window $Form -UseDarkMode:$useDark)
-		}
-	} catch { $null = $_ }
+	$pickerBrushConverter = New-Object System.Windows.Media.BrushConverter
+
+	# Apply theme styling
+	$Theme = Get-SystemPickerTheme
+	$UseDarkMode = Resolve-SystemPickerUseDarkMode
+	$repairGuiThemePalette = Get-Command -Name 'GUICommon\Repair-GuiThemePalette' -CommandType Function -ErrorAction SilentlyContinue
+	if ($repairGuiThemePalette)
+	{
+		$Theme = & $repairGuiThemePalette -Theme $Theme -ThemeName $(if ($UseDarkMode) { 'Dark' } else { 'Light' })
+	}
+	$windowBgDefault = if ($UseDarkMode) { [string]$Script:DarkTheme.WindowBg } else { [string]$Script:LightTheme.WindowBg }
+	$borderColorDefault = if ($UseDarkMode) { [string]$Script:DarkTheme.BorderColor } else { [string]$Script:LightTheme.BorderColor }
+	$windowBg = Get-SystemPickerResolvedThemeColor -Theme $Theme -ColorName 'WindowBg' -DefaultColor $windowBgDefault -BrushConverter $pickerBrushConverter -UseDarkMode $UseDarkMode -ErrorSource 'System.WindowsFeatures.WindowsFeaturesPicker.WindowBg'
+	$borderColor = Get-SystemPickerResolvedThemeColor -Theme $Theme -ColorName 'BorderColor' -DefaultColor $borderColorDefault -BrushConverter $pickerBrushConverter -UseDarkMode $UseDarkMode -ErrorSource 'System.WindowsFeatures.WindowsFeaturesPicker.BorderColor'
+	$RootBorder.Background = [System.Windows.Media.Brush]($pickerBrushConverter.ConvertFromString($windowBg))
+	$RootBorder.BorderBrush = [System.Windows.Media.Brush]($pickerBrushConverter.ConvertFromString($borderColor))
+	$RootBorder.BorderThickness = '1'
+	if (Get-Command -Name 'Set-GuiWindowChromeTheme' -CommandType Function -ErrorAction SilentlyContinue)
+	{
+		Set-GuiWindowChromeTheme -Window $Form -UseDarkMode $UseDarkMode
+	}
 
 	#region Functions
 
-	function Test-FeaturePatternMatch
-	{
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			[string]
-			$FeatureName,
+	<#
+	    .SYNOPSIS
+	    Checks feature pattern match.
 
-			[string[]]
-			$Patterns
-		)
+		#>
 
-		foreach ($Pattern in $Patterns)
-		{
-			if ($FeatureName -like $Pattern)
-			{
-				return $true
-			}
-		}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsFeatures\FeaturePatternMatching.ps1')
 
-		return $false
-	}
+	<#
+	    .SYNOPSIS
+	    Gets selected feature list.
 
-	function Get-CheckboxClicked
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$CheckBox
-		)
-
-		$Feature = $CheckBox.Tag
-
-		if ($CheckBox.IsChecked)
-		{
-			if ($Feature -and ($Feature -notin $SelectedFeatures))
-			{
-				[void]$SelectedFeatures.Add($Feature)
-			}
-		}
-		else
-		{
-			if ($Feature)
-			{
-				[void]$SelectedFeatures.Remove($Feature)
-			}
-		}
-		if ($SelectedFeatures.Count -gt 0)
-		{
-			$Button.IsEnabled = $true
-		}
-		else
-		{
-			$Button.IsEnabled = $false
-		}
-	}
-
-	function Test-FeatureSeedSelected
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(Mandatory = $true)]
-			$Feature
-		)
-
-		if ($SelectedFeatureNamesProvided)
-		{
-			return [bool](@($SelectedFeatureNames | Where-Object -FilterScript {$_ -eq $Feature.FeatureName}).Count -gt 0)
-		}
-
-		return Test-FeaturePatternMatch -FeatureName $Feature.FeatureName -Patterns $CheckedFeatures
-	}
+		#>
 
 	function Get-SelectedFeatureList
 	{
 		return @($SelectedFeatures | Where-Object { $_ })
 	}
 
+	<#
+	    .SYNOPSIS
+	    Gets selected feature names.
+
+		#>
 	function Get-SelectedFeatureNames
 	{
 		return @(
@@ -1017,283 +835,36 @@ function WindowsFeatures
 		)
 	}
 
-	function DisableButton
-	{
-		param
-		(
-			[object[]]
-			$FeatureList = @(Get-SelectedFeatureList)
-		)
+	<#
+	    .SYNOPSIS
+	    Runs check box select all click.
 
-		try
-		{
-			$ResolvedFeatureList = @($FeatureList | Where-Object { $_ })
+	#>
 
-			Write-ConsoleStatus -Action "Disabling Windows features"
-			LogInfo "Disabling Windows features"
-			LogInfo "Windows features selected for disable: $($ResolvedFeatureList.Count)"
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsFeatures\SelectAllFeatureHandler.ps1')
 
-			if ($ResolvedFeatureList.Count -eq 0)
-			{
-				throw "No Windows features were selected."
-			}
+	<#
+	    .SYNOPSIS
+	    Creates feature info icon.
 
-			foreach ($Feature in $ResolvedFeatureList)
-			{
-				LogInfo "Disabling Windows feature: $($Feature.FeatureName)"
-				Invoke-SilencedProgress {
-					Disable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				}
-				LogInfo "Disabled Windows feature: $($Feature.FeatureName)"
-			}
-				Write-ConsoleStatus -Status success
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogError "Failed to disable Windows features: $($_.Exception.Message)"
-			Write-ConsoleStatus -Status failed
-		}
-	}
-
-	function EnableButton
-	{
-		param
-		(
-			[object[]]
-			$FeatureList = @(Get-SelectedFeatureList)
-		)
-
-		try
-		{
-			$ResolvedFeatureList = @($FeatureList | Where-Object { $_ })
-
-			Write-ConsoleStatus -Action "Enabling Windows features"
-			LogInfo "Enabling Windows features"
-			LogInfo "Windows features selected for enable: $($ResolvedFeatureList.Count)"
-
-			if ($ResolvedFeatureList.Count -eq 0)
-			{
-				throw "No Windows features were selected."
-			}
-
-			foreach ($Feature in $ResolvedFeatureList)
-			{
-				LogInfo "Enabling Windows feature: $($Feature.FeatureName)"
-				Invoke-SilencedProgress {
-					Enable-WindowsOptionalFeature -FeatureName $Feature.FeatureName -Online -NoRestart -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
-				}
-				LogInfo "Enabled Windows feature: $($Feature.FeatureName)"
-			}
-				Write-ConsoleStatus -Status success
-		}
-		catch
-		{
-			Remove-HandledErrorRecord -ErrorRecord $_
-			LogError "Failed to enable Windows features: $($_.Exception.Message)"
-			Write-ConsoleStatus -Status failed
-		}
-	}
-
-	function Confirm-WindowsFeaturesSelection
-	{
-		$SelectedFeatureList = @(Get-SelectedFeatureList)
-		$SelectionState.Confirmed = $true
-
-		if ($CollectSelectionOnly)
-		{
-			$script:WindowsFeaturesSelectionResult = [PSCustomObject]@{
-				Mode = $PSCmdlet.ParameterSetName
-				SelectedFeatureNames = @(Get-SelectedFeatureNames)
-			}
-			if ($null -ne $Window)
-			{
-				[void]$Window.Close()
-			}
-			return
-		}
-
-		if ($null -ne $Window)
-		{
-			[void]$Window.Close()
-		}
-
-		& $ButtonAdd_Click -FeatureList $SelectedFeatureList
-	}
-
-	# Friendly display names for features whose DisplayName is empty or is just the internal name
-	$FeatureFriendlyNames = @{
-		'LegacyComponents'                       = 'Legacy Components'
-		'MicrosoftWindowsPowerShellV2'            = 'PowerShell 2.0 Engine'
-		'MicrosoftWindowsPowershellV2Root'        = 'PowerShell 2.0'
-		'Printing-XPSServices-Features'           = 'Microsoft XPS Document Writer'
-		'Recall'                                  = 'Recall'
-		'WorkFolders-Client'                      = 'Work Folders Client'
-		'MediaPlayback'                           = 'Media Features'
-		'Containers-DisposableClientVM'           = 'Windows Sandbox'
-		'Windows-Defender-ApplicationGuard'       = 'Windows Defender Application Guard'
-		'Microsoft-Hyper-V-All'                   = 'Hyper-V'
-		'VirtualMachinePlatform'                  = 'Virtual Machine Platform'
-		'HypervisorPlatform'                      = 'Windows Hypervisor Platform'
-		'Microsoft-Windows-Subsystem-Linux'       = 'Windows Subsystem for Linux'
-		'Printing-PrintToPDFServices-Features'    = 'Microsoft Print to PDF'
-		'NetFx3'                                  = '.NET Framework 3.5'
-		'TelnetClient'                            = 'Telnet Client'
-		'TFTP'                                    = 'TFTP Client'
-		'SMB1Protocol'                            = 'SMB 1.0/CIFS File Sharing'
-		'SearchEngine-Client-Package'             = 'Windows Search'
-		'SmbDirect'                               = 'SMB Direct'
-		'DirectPlay'                              = 'DirectPlay'
-	}
-
-	function Get-FeatureFriendlyName
-	{
-		param ([string]$FeatureName, [string]$DisplayName)
-
-		if (-not [string]::IsNullOrWhiteSpace($DisplayName))
-		{
-			return $DisplayName
-		}
-
-		if ($FeatureFriendlyNames.ContainsKey($FeatureName))
-		{
-			return $FeatureFriendlyNames[$FeatureName]
-		}
-
-		return $FeatureName
-	}
+		#>
 
 	function New-FeatureInfoIcon
 	{
 		param ([string]$TooltipText)
 
-		$icon = New-Object -TypeName System.Windows.Controls.TextBlock
-		$icon.Text = [char]0x24D8  # info icon
-		$icon.FontSize = 14
-		$icon.Foreground = [System.Windows.Media.Brushes]::DodgerBlue
-		$icon.VerticalAlignment = 'Center'
-		$icon.Margin = [System.Windows.Thickness]::new(4, 0, 4, 0)
-		$icon.Cursor = [System.Windows.Input.Cursors]::Arrow
-		$icon.ToolTip = $(if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'Windows feature' } else { $TooltipText })
-		[System.Windows.Controls.ToolTipService]::SetPlacement($icon, [System.Windows.Controls.Primitives.PlacementMode]::Right)
-		[System.Windows.Controls.ToolTipService]::SetShowDuration($icon, 20000)
-		[System.Windows.Controls.ToolTipService]::SetInitialShowDelay($icon, 150)
-		return $icon
+		return GUICommon\New-GuiPopupInfoIcon -TooltipText $(if ([string]::IsNullOrWhiteSpace($TooltipText)) { 'Windows feature' } else { $TooltipText }) -Theme $Theme -UseDarkMode $UseDarkMode
 	}
 
-	function Add-FeatureControl
-	{
-		[CmdletBinding()]
-		param
-		(
-			[Parameter(
-				Mandatory = $true,
-				ValueFromPipeline = $true
-			)]
-			[ValidateNotNull()]
-			$Feature
-		)
+	<#
+	    .SYNOPSIS
+	    Adds feature control.
 
-		process
-		{
-			$CheckBox = New-Object -TypeName System.Windows.Controls.CheckBox
-			$CheckBox.Add_Click({Get-CheckboxClicked -CheckBox $_.Source})
-			$CheckBox.Tag = $Feature
-			$CheckBox.VerticalAlignment = 'Center'
-			$CheckBox.Margin = [System.Windows.Thickness]::new(10, 10, 5, 10)
+		#>
 
-			$FeatureLabel = Get-FeatureFriendlyName -FeatureName $Feature.FeatureName -DisplayName $Feature.DisplayName
-			$tooltipText = if (-not [string]::IsNullOrWhiteSpace($Feature.Description))
-			{
-				[string]$Feature.Description
-			}
-			elseif (-not [string]::IsNullOrWhiteSpace($Feature.DisplayName))
-			{
-				"Windows feature: $($Feature.DisplayName)"
-			}
-			else
-			{
-				"Windows feature: $FeatureLabel"
-			}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsFeatures\FeatureControlFactory.ps1')
 
-			$TextBlock = New-Object -TypeName System.Windows.Controls.TextBlock
-			$TextBlock.Text = $FeatureLabel
-			$TextBlock.VerticalAlignment = 'Center'
-			$TextBlock.Margin = [System.Windows.Thickness]::new(0, 0, 8, 0)
-
-			$infoIcon = New-FeatureInfoIcon -TooltipText $tooltipText
-
-			$rowPanel = New-Object -TypeName System.Windows.Controls.DockPanel
-			$rowPanel.LastChildFill = $true
-			$rowPanel.HorizontalAlignment = 'Stretch'
-			$rowPanel.Margin = [System.Windows.Thickness]::new(0, 2, 0, 2)
-
-			[System.Windows.Controls.DockPanel]::SetDock($CheckBox, [System.Windows.Controls.Dock]::Left)
-			[void]$rowPanel.Children.Add($CheckBox)
-
-			$infoPanel = New-Object -TypeName System.Windows.Controls.StackPanel
-			$infoPanel.Orientation = 'Horizontal'
-			$infoPanel.VerticalAlignment = 'Center'
-			$infoPanel.HorizontalAlignment = 'Right'
-			$infoPanel.Margin = [System.Windows.Thickness]::new(8, 0, 10, 0)
-			[void]$infoPanel.Children.Add($infoIcon)
-
-			[System.Windows.Controls.DockPanel]::SetDock($infoPanel, [System.Windows.Controls.Dock]::Right)
-			[void]$rowPanel.Children.Add($infoPanel)
-
-			[void]$rowPanel.Children.Add($TextBlock)
-			[void]$PanelContainer.Children.Add($rowPanel)
-
-			if (Test-FeatureSeedSelected -Feature $Feature)
-			{
-				[void]$SelectedFeatures.Add($Feature)
-			}
-			else
-			{
-				$CheckBox.IsChecked = $false
-			}
-
-			if ($null -ne $Button)
-			{
-				$Button.IsEnabled = ($SelectedFeatures.Count -gt 0)
-			}
-		}
-	}
-	#endregion Functions
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			$State           = @("Disabled", "DisablePending")
-			$ButtonContent   = $Localization.Enable
-			$ButtonAdd_Click = {
-				param
-				(
-					[object[]]
-					$FeatureList
-				)
-
-				EnableButton -FeatureList $FeatureList
-			}
-		}
-		"Disable"
-		{
-			$State           = @("Enabled", "EnablePending")
-			$ButtonContent   = $Localization.Disable
-			$ButtonAdd_Click = {
-				param
-				(
-					[object[]]
-					$FeatureList
-				)
-
-				DisableButton -FeatureList $FeatureList
-			}
-		}
-	}
-
-	if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedFeatureNamesProvided)
+	if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedFeatureNamesProvided -and -not $UseDefaultSelection)
 	{
 		$selectionResult = Request-GuiSystemSelection -RequestType 'WindowsFeatures' -Mode $PSCmdlet.ParameterSetName -SelectedNames @($SelectedFeatureNames)
 		if ($null -ne $selectionResult)
@@ -1303,7 +874,7 @@ function WindowsFeatures
 		}
 	}
 
-	if ($NonInteractive -and -not $SelectedFeatureNamesProvided)
+	if ($NonInteractive -and -not $SelectedFeatureNamesProvided -and -not $UseDefaultSelection)
 	{
 		LogWarning 'Skipping Windows features because no preselected features were provided for noninteractive execution.'
 		Write-ConsoleStatus -Status warning
@@ -1311,23 +882,7 @@ function WindowsFeatures
 	}
 
 	# Getting list of all optional features according to the conditions
-	try
-	{
-		$Features = Get-WindowsOptionalFeature -Online -ErrorAction Stop |
-			Where-Object -FilterScript {
-				($_.State -in $State) -and
-				(
-					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $UncheckedFeatures) -or
-					(Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $CheckedFeatures)
-				)
-			} |
-			Sort-Object -Property DisplayName, FeatureName
-	}
-	catch
-	{
-		Remove-HandledErrorRecord -ErrorRecord $_
-		$Features = $null
-	}
+		. (Join-Path $PSScriptRoot 'WindowsFeatures\WindowsFeatures\FeatureQuery.ps1')
 
 	if (-not $Features)
 	{
@@ -1339,9 +894,27 @@ function WindowsFeatures
 			}
 		}
 		LogInfo "Windows Features:"
-		LogInfo "No preset-matched Windows features were found. Moving on."
-		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'Disabling Windows features' } else { 'Enabling Windows features' })" -Status success
+		LogInfo "Skipping Windows features because no preset-matched Windows features were found."
+		Write-ConsoleStatus -Action "$(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'Disabling Windows features' } else { 'Enabling Windows features' })" -Status warning
 		return
+	}
+
+	if ($UseDefaultSelection -and -not $SelectedFeatureNamesProvided -and -not $CollectSelectionOnly)
+	{
+		$SelectedFeatureNames = @(
+			$Features |
+				Where-Object -FilterScript { Test-FeaturePatternMatch -FeatureName $_.FeatureName -Patterns $CheckedFeatures } |
+				ForEach-Object -Process { [string]$_.FeatureName } |
+				Where-Object -FilterScript { -not [string]::IsNullOrWhiteSpace($_) }
+		)
+		$SelectedFeatureNamesProvided = $true
+
+		if ($SelectedFeatureNames.Count -eq 0)
+		{
+			LogWarning 'Skipping Windows features because the default feature selection is empty on this system.'
+			Write-ConsoleStatus -Status warning
+			return
+		}
 	}
 
 	if ($SelectedFeatureNamesProvided -and -not $CollectSelectionOnly)
@@ -1353,34 +926,42 @@ function WindowsFeatures
 		return
 	}
 
-	#region Sendkey function
-	# Emulate the Backspace key sending to prevent the console window to freeze
-	Start-Sleep -Milliseconds 500
-
-	Add-Type -AssemblyName System.Windows.Forms
-
-	# We cannot use Get-Process -Id $PID as script might be invoked via Terminal with different $PID
-	Get-Process -Name powershell, WindowsTerminal -ErrorAction Ignore | Where-Object -FilterScript {$_.MainWindowTitle -match "Baseline \| Utility for Windows"} | ForEach-Object -Process {
-		# Show window, if minimized
-		[WinAPI.ForegroundWindow]::ShowWindowAsync($_.MainWindowHandle, 10)
-
-		Start-Sleep -Milliseconds 150
-
-		# Force move the console window to the foreground
-		[WinAPI.ForegroundWindow]::SetForegroundWindow($_.MainWindowHandle)
-
-		Start-Sleep -Milliseconds 150
-
-		# Emulate the Backspace key sending
-		[System.Windows.Forms.SendKeys]::SendWait("{BACKSPACE 1}")
-	}
-	#endregion Sendkey function
 	$Button.IsEnabled = $false
 	$Window.Add_Loaded({$Features | Add-FeatureControl})
 	$Button.Content = $ButtonContent
+	$Button.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	$Button.FontSize = 12
+	try { GUICommon\Set-GuiPopupActionButtonStyle -Button $Button -Theme $Theme -UseDarkMode $UseDarkMode } catch { Write-SwallowedException -ErrorRecord $_ -Source 'WindowsFeatures.SetPopupActionButtonStyle' }
+	$TextBlockSelectAll.Text = GUICommon\Get-GuiPopupLocalizedString -Key 'GuiSelectAll' -Fallback 'Select All'
+	$TextBlockSelectAll.FontFamily = [System.Windows.Media.FontFamily]::new('Segoe UI')
+	if ($Form.Foreground) { $TextBlockSelectAll.Foreground = $Form.Foreground }
 	$Button.Add_Click({Confirm-WindowsFeaturesSelection})
+	$CheckBoxSelectAll.Add_Click({Invoke-FeatureSelectAllClick})
 
-	$Window.Title = $Localization.WindowsFeaturesTitle
+	$windowsFeaturesTitle = GUICommon\Get-GuiPopupLocalizedString -Key 'Tweak_WindowsFeatures' -Fallback 'Windows Features'
+	$Form.Title = $windowsFeaturesTitle
+	if (Test-Path -Path Function:\Add-GuiPopupWindowChrome)
+	{
+		[void](GUICommon\Add-GuiPopupWindowChrome -Window $Form -RootBorder $RootBorder -PanelContainer $PanelContainer -Title $windowsFeaturesTitle -Theme $Theme -UseDarkMode $UseDarkMode)
+	}
+	$windowsFeaturesThemeCallback = {
+		param($Window, $Theme, $UseDarkMode)
+
+		if ($Button)
+		{
+			try { GUICommon\Set-GuiPopupActionButtonStyle -Button $Button -Theme $Theme -UseDarkMode $UseDarkMode } catch { Write-SwallowedException -ErrorRecord $_ -Source 'WindowsFeatures.ThemeCallback.SetPopupActionButtonStyle' }
+		}
+
+		if ($TextBlockSelectAll -and $Window.Foreground)
+		{
+			$TextBlockSelectAll.Foreground = $Window.Foreground
+		}
+	}.GetNewClosure()
+	if (Test-Path -Path Function:\Register-GuiPopupThemeWindow)
+	{
+		[void](GUICommon\Register-GuiPopupThemeWindow -Window $Form -ThemeCallback $windowsFeaturesThemeCallback)
+	}
+	& $windowsFeaturesThemeCallback -Window $Form -Theme $Theme -UseDarkMode $UseDarkMode
 
 	if ($Global:GUIMode -and -not $CollectSelectionOnly)
 	{
@@ -1397,10 +978,35 @@ function WindowsFeatures
 		return $script:WindowsFeaturesSelectionResult
 	}
 
+	if ($Form.PSObject.Properties['GuiPopupOperationError'] -and $Form.GuiPopupOperationError)
+	{
+		$operationError = $Form.GuiPopupOperationError
+		Remove-HandledErrorRecord -ErrorRecord $operationError
+		LogError "Failed to $(if ($PSCmdlet.ParameterSetName -eq 'Disable') { 'disable' } else { 'enable' }) Windows features: $($operationError.Exception.Message)"
+		Write-ConsoleStatus -Status failed
+		throw $operationError
+	}
+
+	if ($SelectionState.Confirmed)
+	{
+		Write-ConsoleStatus -Status success
+	}
+
 	if (-not $SelectionState.Confirmed)
 	{
 		LogWarning 'Skipping Windows features because no selection was confirmed.'
 		Write-ConsoleStatus -Status warning
 	}
 }
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'Get-SystemPickerResolvedThemeColor',
+    'Get-SystemPickerTheme',
+    'Invoke-WindowsCapabilityDismOperation',
+    'Request-GuiSystemSelection',
+    'Resolve-SystemPickerGuiCommonPath',
+    'Resolve-SystemPickerSharedHelpersPath',
+    'Resolve-SystemPickerUseDarkMode',
+    'WindowsCapabilities',
+    'WindowsFeatures'
+)
+Export-ModuleMember -Function $ExportedFunctions

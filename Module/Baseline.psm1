@@ -1,36 +1,91 @@
 <#
     .SYNOPSIS
-    Loader module for Baseline.
- 
-    .VERSION
-	3.1.0 (beta)
+    Internal loader module for Baseline.
 
-	.DATE
-	17.03.2026 - initial beta version
-	21.03.2026 - Added GUI
-	06.04.2026 - Major changes to the GUI, and added more features
-	26.04.2026 - Minor Fixes
+    .VERSION
+    1.0.0
+
+    .DATE
+    21.03.2026 - Initial Release
+    06.04.2026 - Major changes to the GUI, and added more features
+    25.05.2026
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
 
     .DESCRIPTION
     Imports shared modules and region modules, then exports their functions.
-    This Script is a PowerShell module for Windows 10 & Windows 11 for fine-tuning and automating the routine tasks
+    This module exists for the internal Baseline runtime and should be treated
+    as implementation detail, not end-user documentation.
 #>
 
-# Logging and helper functions are shared across all region modules, so we import them first to ensure they are available for use in the region modules.
-# Import shared modules used by all region modules
-Import-Module -Name "$PSScriptRoot\Logging.psm1" -Force -Global
-Import-Module -Name "$PSScriptRoot\SharedHelpers.psm1" -Force -Global
-Import-Module -Name "$PSScriptRoot\GUIExecution.psm1" -Force -Global
+# Logging and helper functions are shared across all region modules, so import
+# logging first, then fail fast on every remaining core module.
+$coreModuleImports = @(
+    @{ Name = 'Logging.psm1';     Path = Join-Path $PSScriptRoot 'Logging.psm1';     CanLog = $false }
+    @{ Name = 'SharedHelpers.psm1'; Path = Join-Path $PSScriptRoot 'SharedHelpers.psm1'; CanLog = $true  }
+    @{ Name = 'GUICommon.psm1';   Path = Join-Path $PSScriptRoot 'GUICommon.psm1';   CanLog = $true  }
+    @{ Name = 'GUIExecution.psm1';  Path = Join-Path $PSScriptRoot 'GUIExecution.psm1';  CanLog = $true  }
+)
+
+foreach ($coreImport in $coreModuleImports)
+{
+    try
+    {
+        Import-Module -Name $coreImport.Path -Force -Global -DisableNameChecking -WarningAction SilentlyContinue -ErrorAction Stop
+    }
+    catch
+    {
+        $message = "Failed to import core module '$($coreImport.Name)': $($_.Exception.Message)"
+        if ([bool]$coreImport.CanLog -and (Get-Command -Name 'LogError' -CommandType Function -ErrorAction SilentlyContinue))
+        {
+            LogError $message
+        }
+        else
+        {
+            Write-Error -Message $message
+        }
+        throw [System.InvalidOperationException]::new($message, $_.Exception)
+    }
+}
+
+# Optional supply-chain hardening. When BASELINE_INTEGRITY_MODE is set to
+# Strict or Audit, every script file under Module/ is hashed and compared
+# against Module/integrity.manifest.json before any region modules load.
+# Default mode is Off (no overhead, no behaviour change).
+if (Get-Command -Name 'Invoke-BaselineModuleIntegrityGate' -ErrorAction SilentlyContinue)
+{
+    Invoke-BaselineModuleIntegrityGate -ModuleRoot $PSScriptRoot
+}
 
 # Detect the OS version once through the shared helper so every module uses the same logic.
 $osName = (Get-OSInfo).OSName
-# Initialize logging and write to an OS-specific log file in %TEMP%
-$global:LogFilePath = Join-Path $env:TEMP "Baseline - Utility for $osName.txt"
+
+# Initialize logging in the disposable temp storage root. BASELINE_STATE_ROOT is
+# reserved for persistent user state such as profiles and saved sessions.
+$logDirectory = Get-BaselineLogDirectory -FallbackRoot $env:TEMP
+$logDirectory = Get-BaselineConfiguredLogDirectory -DefaultDirectory $logDirectory -FallbackRoot $env:TEMP
+
+$resolvedLogPath = [string]$global:LogFilePath
+if ([string]::IsNullOrWhiteSpace($resolvedLogPath))
+{
+    $resolvedLogPath = New-BaselineSessionLogPath -LogDirectory $logDirectory -OsName $osName
+}
+$previousLogPath = [string]$global:LogFilePath
+$hadPreviousLogPath = -not [string]::IsNullOrWhiteSpace([string]$previousLogPath)
+$alreadyInitialized = $hadPreviousLogPath -and $previousLogPath -eq $resolvedLogPath
+$global:LogFilePath = $resolvedLogPath
 Set-LogFile -Path $global:LogFilePath
-Initialize-SessionStatistics
+$existingSessionStats = Get-SessionStatistics
+$statisticsInitialized = ($existingSessionStats -and $existingSessionStats.ContainsKey('SessionStartTime') -and $existingSessionStats.SessionStartTime)
+if ((-not $alreadyInitialized) -or (-not $statisticsInitialized))
+{
+    Initialize-SessionStatistics
+    if ($hadPreviousLogPath -and -not $alreadyInitialized)
+    {
+        LogWarning ("Baseline loader reset session statistics after module reload because the log path changed from '{0}' to '{1}'." -f $previousLogPath, $resolvedLogPath)
+    }
+}
 
 <#
     .SYNOPSIS
@@ -51,7 +106,7 @@ foreach ($core in $coreFiles) {
     $corePath = Join-Path $RegionDir $core
     if (Test-Path -LiteralPath $corePath) {
         try {
-            Import-Module -Name $corePath -Force -Global -ErrorAction Stop
+            Import-Module -Name $corePath -Force -Global -DisableNameChecking -WarningAction SilentlyContinue -ErrorAction Stop
         }
         catch {
             LogError "Failed to import region module '$core': $($_.Exception.Message)"
@@ -65,7 +120,7 @@ Get-ChildItem -Path $RegionDir -Filter '*.psm1' -File |
     Sort-Object Name |
     ForEach-Object {
         try {
-            Import-Module -Name $_.FullName -Force -Global -ErrorAction Stop
+            Import-Module -Name $_.FullName -Force -Global -DisableNameChecking -WarningAction SilentlyContinue -ErrorAction Stop
         }
         catch {
             LogError "Failed to import region module '$($_.Name)': $($_.Exception.Message)"
@@ -76,4 +131,3 @@ Get-ChildItem -Path $RegionDir -Filter '*.psm1' -File |
 # Region modules are imported with -Global so their functions are available
 # directly. Do not export with wildcard to avoid leaking internal helpers.
 Export-ModuleMember -Function @()
-

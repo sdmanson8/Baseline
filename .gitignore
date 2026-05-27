@@ -1,0 +1,44 @@
+# Build and packaging outputs
+.artifacts/
+dist/*
+!dist/Baseline-Setup.iss
+_net48ref/
+*.zip
+*.exe
+!Assets/BaselinePolicyTool.exe
+*.msi
+*.nupkg
+*.snupkg
+vendor/
+scripts/
+
+# .NET build folders
+**/bin/
+**/obj/
+Launcher/_build/
+Launcher/publish/
+.dotnet-home/
+
+# Logs and test output
+*.log
+testResults.xml
+*.trx
+*.coverage
+*.coveragexml
+pester-full.log
+
+# Local agent metadata
+.claude/
+.vscode/
+.codex*/
+AGENTS.md
+/dev_docs/*
+!/dev_docs/
+!/dev_docs/Installer-Signing-Policy.md
+# todo.md carries audited project contracts used by tests.
+!todo.md
+.DS_Store
+*.zip.sha256.json
+*.exe.sha256.json
+/.dotnet-home 
+Baseline-4.0.0-beta-setup.exe.sha256.json

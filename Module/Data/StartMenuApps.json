@@ -32,7 +32,13 @@
       "WhyThisMatters": "Most used apps in Start",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu app sections are not surfaced on Windows Server."
+      }
     },
     {
       "Name": "Recently Added Apps in Start",
@@ -65,7 +71,13 @@
       "WhyThisMatters": "Recently added apps in Start",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu app sections are not surfaced on Windows Server."
+      }
     },
     {
       "Name": "Start Menu All Section Categories",
@@ -98,7 +110,14 @@
       "WhyThisMatters": "All section with categories in Start (24H2+)",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": false,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 26100,
+        "UnavailableReason": "The categorized All section requires Windows 11 24H2 (build 26100) or newer."
+      }
     },
     {
       "Name": "Most Used Apps (Start)",
@@ -132,7 +151,13 @@
       "WhyThisMatters": "Shows your most frequently launched apps at the top of the Start Menu app list for quick access.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu app sections are not surfaced on Windows Server."
+      }
     },
     {
       "Name": "Recently Added Apps (Start)",
@@ -166,7 +191,13 @@
       "WhyThisMatters": "Shows a list of recently installed apps in the Start Menu. Disable to keep the Start Menu app list cleaner.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Start Menu app sections are not surfaced on Windows Server."
+      }
     }
   ]
 }

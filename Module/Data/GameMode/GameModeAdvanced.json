@@ -2,6 +2,11 @@
   "Name": "GameModeAdvanced",
   "Version": 1,
   "Description": "Optional advanced Game Mode tweaks shown only in the advanced expander.",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
   "Entries": [
     {
       "Function": "FullscreenOptimizations",
@@ -112,6 +117,177 @@
       "DefaultCheckedByProfile": {
         "Casual": false,
         "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "Win32PrioritySeparation",
+      "Type": "Choice",
+      "ApplyValue": "Programs",
+      "Category": "Performance",
+      "Label": "Prefer programs over background services",
+      "Description": "Gives foreground programs the scheduler preference instead of background services.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "SystemResponsiveness",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Performance",
+      "Label": "Lower multimedia background load",
+      "Description": "Reduces background multimedia load so games get more CPU time.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "GamingCpuPriority",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Performance",
+      "Label": "Raise game CPU priority",
+      "Description": "Raises the multimedia priority used by games for more consistent CPU scheduling.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "GamingSchedulingCategory",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Performance",
+      "Label": "Use High scheduling category",
+      "Description": "Uses the High multimedia scheduling category instead of Medium.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "GamingGpuPriority",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Performance",
+      "Label": "Raise game GPU priority",
+      "Description": "Raises the multimedia GPU priority used by games.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "DirectXFlipModel",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Overlay",
+      "Label": "Enable flip-model optimizations",
+      "Description": "Uses the DirectX flip presentation model to reduce latency in windowed games.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": true,
+        "Competitive": true,
+        "Streaming": true,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "DirectXVrrOptimizations",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Overlay",
+      "Label": "Enable VRR optimizations",
+      "Description": "Enables VRR presentation optimizations for compatible displays.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": true,
+        "Streaming": false,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "DirectXAutoHdr",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Overlay",
+      "Label": "Enable Auto HDR",
+      "Description": "Converts supported SDR games to HDR output on compatible displays.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": true,
+        "Competitive": false,
+        "Streaming": false,
+        "Troubleshooting": false
+      }
+    },
+    {
+      "Function": "NvidiaSharpening",
+      "Type": "Toggle",
+      "ApplyValue": "Enable",
+      "Category": "Overlay",
+      "Label": "Enable legacy NVIDIA sharpening",
+      "Description": "Uses the legacy NVIDIA sharpening flag that older driver stacks can still honor.",
+      "Risk": "Low",
+      "RecoveryLevel": "Direct",
+      "RequiresRestart": false,
+      "TroubleshootingOnly": false,
+      "AdvancedOnly": true,
+      "DefaultCheckedByProfile": {
+        "Casual": false,
+        "Competitive": false,
         "Streaming": false,
         "Troubleshooting": false
       }

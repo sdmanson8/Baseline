@@ -1,5 +1,10 @@
 {
   "Tab": "Security",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": true
+  },
   "Entries": [
     {
       "Name": "Account Protection Warning",
@@ -30,10 +35,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Windows Security shows a warning if you are not signed in with a Microsoft account. Disabling hides this recurring notification.",
+      "WhyThisMatters": "Hides the recurring Windows Security nag to sign into a Microsoft account. Security posture is unchanged; this only removes the notification.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Security account-protection prompts are a Windows client UI feature."
+      }
     },
     {
       "Name": "Apps SmartScreen",
@@ -64,10 +75,16 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "SmartScreen checks downloaded files and apps against a cloud reputation database and warns you before running unknown executables. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "When you run an unfamiliar executable, SmartScreen checks its reputation against Microsoft's cloud database and blocks or warns if it is unknown or flagged. Disabling means no reputation check runs before execution.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Security SmartScreen prompts are a Windows client UI feature."
+      }
     },
     {
       "Name": "Boot Recovery",
@@ -99,7 +116,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Controls whether Windows automatically enters recovery mode after consecutive failed boot attempts. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Without automatic recovery, a machine that fails to boot consecutively will stay at the boot menu rather than entering WinRE automatically. Useful on headless systems where WinRE loops are harder to interrupt.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
@@ -134,7 +151,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Hypervisor-protected code integrity runs Windows kernel code in a virtualized environment to prevent kernel-level malware and rootkits. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Runs kernel code integrity checks inside a hypervisor-protected environment so kernel-level malware cannot tamper with driver signing verification. Incompatible drivers will be blocked from loading after enabling.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
@@ -159,6 +176,7 @@
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "Defender",
+      "TimeoutSeconds": 600,
       "WinDefaultDesc": "Windows Defender Application Guard is disabled",
       "Risk": "Medium",
       "Tags": [
@@ -169,10 +187,17 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Opens Edge browser tabs in an isolated virtual machine to prevent malicious websites from accessing the host system or its files. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Runs untrusted Edge tabs inside an isolated VM so a compromised tab cannot read host files or credentials. Requires hardware virtualization and adds per-tab startup latency.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Medium"
+      "CompatibilitySensitivity": "Medium",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 16299,
+        "UnavailableReason": "Windows Defender Application Guard is not available on Windows Server."
+      }
     },
     {
       "Name": "Defender Cloud",
@@ -204,14 +229,14 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Enables Microsoft Defender's cloud-based protection for real-time threat lookups using Microsoft's global threat intelligence database. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Submits unknown files to Microsoft's threat intelligence backend for real-time analysis. Without it, Defender relies only on local signatures and heuristics, which can miss novel malware until the next definition update.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Defender Exploit Guard Policy",
-      "Function": "Set-DefenderExploitGuardPolicy",
+      "Function": "DefenderExploitGuardPolicy",
       "Type": "Action",
       "Options": null,
       "DisplayOptions": null,
@@ -238,7 +263,7 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Applies additional Exploit Guard attack surface reduction rules via Windows Defender to block common malware techniques. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Applies a set of Attack Surface Reduction rules that block common malware execution patterns — macro abuse, Office child processes, script injection, and others. Individual rules can be audited or excluded if they conflict with legitimate software.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "RestorePoint",
       "CompatibilitySensitivity": "High"
@@ -272,10 +297,80 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Runs the Microsoft Defender antivirus engine inside an isolated sandbox process for extra protection. Adds a small performance overhead. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Runs the Defender scanning engine in an isolated process so a vulnerability in the scanner itself cannot be exploited to reach the rest of the OS. Adds a modest CPU overhead.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
+    },
+    {
+      "Name": "Defender Scan CPU Limit",
+      "Function": "DefenderScanCPULimit",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Cap Defender scheduled-scan CPU at 25%",
+      "Detail": "Limits the average CPU load Microsoft Defender uses during scheduled scans. Reduces interactive responsiveness impact while still allowing scans to complete.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Defender",
+      "WinDefaultDesc": "Defender uses up to 50% CPU for scheduled scans",
+      "Risk": "Low",
+      "Tags": [
+        "security",
+        "defender",
+        "performance"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Caps scheduled scans at 25% average CPU so Defender stays out of your way during interactive use. Scans simply take longer instead of monopolising the machine.",
+      "PresetTier": "Safe",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
+    },
+    {
+      "Name": "Defender Signature Update Interval",
+      "Function": "DefenderSignatureUpdateInterval",
+      "Type": "Toggle",
+      "Options": null,
+      "DisplayOptions": null,
+      "Default": true,
+      "WinDefault": false,
+      "Description": "Check Defender signatures hourly",
+      "Detail": "Forces Microsoft Defender to check for signature updates every hour instead of relying on the default Windows Update cadence.",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
+      "ExtraArgs": null,
+      "SubCategory": null,
+      "SourceRegion": "Defender",
+      "WinDefaultDesc": "Defender signatures update on the default Windows Update cadence (~8 hours)",
+      "Risk": "Low",
+      "Tags": [
+        "security",
+        "defender",
+        "updates"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Hourly signature checks shrink the window between a new threat being identified and your machine recognising it. Adds a small bandwidth cost.",
+      "PresetTier": "Balanced",
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low"
     },
     {
       "Name": "Defender Tray Icon",
@@ -306,10 +401,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Shows or hides the Windows Security (Defender) icon in the system tray. Hiding it does not disable Defender protection.",
+      "WhyThisMatters": "Cosmetic only — removing the tray icon does not disable or weaken Defender protection.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "The Windows Security tray icon is a Windows client UI feature."
+      }
     },
     {
       "Name": "DEP OptOut",
@@ -340,7 +441,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Sets Data Execution Prevention to OptOut mode, enabling DEP protection for all processes except those you explicitly exclude. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Enables Data Execution Prevention for every process on the system except those you explicitly exempt. OptOut means DEP is on by default and you opt individual programs out rather than having to opt them in.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
@@ -374,10 +475,16 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Removes the recurring prompt in Windows Security asking you to sign in with a Microsoft account for additional protection.",
+      "WhyThisMatters": "Suppresses the persistent Windows Security prompt to link a Microsoft account. Does not affect authentication or security policy.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Manual",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Security Microsoft-account prompts are a Windows client UI feature."
+      }
     },
     {
       "Name": "Dismiss SmartScreen Filter Offer",
@@ -408,28 +515,54 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Removes the recurring prompt in Windows Security asking you to enable the SmartScreen reputation filter.",
+      "WhyThisMatters": "Suppresses the persistent Windows Security prompt to turn on SmartScreen. Does not change whether SmartScreen is actually enabled.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Manual",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "UnavailableReason": "Windows Security SmartScreen prompts are a Windows client UI feature."
+      }
     },
     {
       "Name": "DNS over HTTPS",
       "Function": "DNSoverHTTPS",
-      "Type": "Toggle",
-      "Options": null,
-      "DisplayOptions": null,
-      "Default": false,
-      "WinDefault": false,
-      "Description": "DNS-over-HTTPS for IPv4",
-      "Detail": "Encrypts DNS lookups by sending them over HTTPS instead of plain UDP. Prevents your ISP or network from monitoring or tampering with DNS traffic.",
+      "Type": "Choice",
+      "Options": [
+        "Disable",
+        "Google",
+        "Cloudflare",
+        "CloudflareMalware",
+        "CloudflareMalwareAdult",
+        "Quad9",
+        "AdGuardAdsTrackers",
+        "AdGuardAdsTrackersMalwareAdult",
+        "OpenDNS"
+      ],
+      "DisplayOptions": [
+        "Disable",
+        "Google",
+        "Cloudflare",
+        "Cloudflare (Malware)",
+        "Cloudflare (Malware+Adult)",
+        "Quad9",
+        "AdGuard (Ads+Trackers)",
+        "AdGuard (Ads+Trackers+Malware+Adult)",
+        "OpenDNS"
+      ],
+      "Default": "Disable",
+      "WinDefault": "Disable",
+      "Description": "DNS-over-HTTPS provider presets",
+      "Detail": "Encrypts DNS lookups by sending them over HTTPS instead of plain UDP. Choose a provider preset or call the function directly with a custom known DNS-over-HTTPS server pair.",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
       "Scannable": null,
       "Restorable": true,
-      "OnParam": "Enable",
-      "OffParam": "Disable",
+      "OnParam": null,
+      "OffParam": null,
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "Defender",
@@ -444,7 +577,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Encrypts DNS lookups by sending them over HTTPS instead of plain UDP. Prevents your ISP or network from monitoring or tampering with DNS traffic. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Routes DNS queries over an encrypted HTTPS connection instead of plaintext UDP port 53. Prevents ISPs and network observers from reading your lookup traffic. Requires a DoH-capable resolver — choose a preset or enter a custom server URL.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "High"
@@ -478,7 +611,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Controls whether Windows Security marks downloaded files as potentially unsafe using the Zone.Identifier alternate data stream.",
+      "WhyThisMatters": "Controls whether Windows stamps downloaded files with a Zone.Identifier ADS marking them as coming from the internet. Removing this mark bypasses 'Open file – security warning' prompts but also silences warnings on genuinely risky files.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -512,7 +645,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Creates a custom view in Event Viewer filtered to show process creation events, making it easier to audit what programs have been launched.",
+      "WhyThisMatters": "Registers a pre-built Event Viewer filter scoped to process creation events. Useful when investigating what ran on a machine without writing a custom query.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -547,7 +680,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "Enables the legacy F8 key boot menu that lets you select Safe Mode and other startup options during the Windows boot process.",
+      "WhyThisMatters": "Restores the pre-Windows 8 behavior where tapping F8 during POST opens the advanced boot menu. Modern UEFI fast boot makes this menu unreachable without explicitly re-enabling it.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -582,14 +715,14 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Enables or disables Windows Defender Firewall across all network profiles. Disabling leaves all inbound ports completely unfiltered. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Windows Defender Firewall applies to all network profiles. Disabling it leaves every listening port exposed with no inbound filtering. Only disable if a third-party firewall is running in its place.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "High"
     },
     {
       "Name": "Import Exploit Protection Policy",
-      "Function": "Import-ExploitProtectionPolicy",
+      "Function": "ExploitProtectionPolicy",
       "Type": "Action",
       "Options": null,
       "DisplayOptions": null,
@@ -616,7 +749,7 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Downloads and imports a pre-built exploit mitigation policy file into Windows Defender Exploit Guard, applying custom process mitigations. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Downloads and imports a community-maintained exploit mitigation policy file that configures per-process mitigations beyond the system defaults. Policies may need adjustment for software that conflicts with specific mitigations.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "RestorePoint",
       "CompatibilitySensitivity": "High"
@@ -650,31 +783,32 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Runs the Windows LSA process in protected mode to prevent credential theft by tools like Mimikatz. Recommended for all systems. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Runs the LSA process in isolated protected mode so credential-dumping tools like Mimikatz cannot read LSASS memory directly. Recommended on any system where credential theft is a realistic concern.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "LOLBin Firewall Rules",
-      "Function": "Set-LOLBinFirewallRules",
-      "Type": "Action",
+      "Function": "LOLBinFirewallRules",
+      "Type": "Toggle",
       "Options": null,
       "DisplayOptions": null,
       "Default": false,
       "WinDefault": false,
-      "Description": "Configure LOLBin outbound firewall block rules",
-      "Detail": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads.",
+      "Description": "Block outbound LOLBin firewall connections",
+      "Detail": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads. All rules are tagged with the Baseline-LOLBin-Block group so disabling removes them in one shot.",
       "Caution": true,
       "CautionReason": "May break VPN or enterprise connectivity. Blocks outbound network access for LOLBins (certutil, mshta, wscript, cscript, etc.). May break administrative scripts, installers, certificate enrollment, troubleshooting tools, and enterprise deployment workflows that use these binaries.",
       "LinkedWith": null,
       "Scannable": null,
-      "Restorable": false,
-      "OnParam": null,
-      "OffParam": null,
+      "Restorable": true,
+      "OnParam": "Enable",
+      "OffParam": "Disable",
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "Defender",
+      "WinDefaultDesc": "LOLBin binaries are not blocked at the firewall",
       "Risk": "High",
       "Tags": [
         "security",
@@ -684,9 +818,9 @@
       "Impact": "High",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Adds outbound firewall block rules for built-in Windows binaries commonly abused by malware (LOLBins) to phone home or download payloads. This is a high-risk change that may be difficult or impossible to reverse.",
+      "WhyThisMatters": "Adds outbound block rules for built-in Windows binaries routinely abused to download payloads or phone home — certutil, bitsadmin, mshta, and similar. Verify that none of these binaries are required by your legitimate automation before applying.",
       "PresetTier": "Advanced",
-      "RecoveryLevel": "RestorePoint",
+      "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "High"
     },
     {
@@ -719,7 +853,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Microsoft Defender's network protection blocks connections to known malicious domains and IP addresses at the network level. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Blocks connections to known malicious domains and IPs at the network driver level using Defender's threat intelligence. Operates system-wide, not just within a browser.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "High"
@@ -754,7 +888,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Logs every command run by PowerShell modules to the Windows event log. Useful for security auditing and investigating incidents.",
+      "WhyThisMatters": "Writes every command executed by PowerShell modules to the Windows event log (Event ID 4103). Expands visibility for incident response but can produce high log volume on systems that run automation.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -789,7 +923,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Logs the full content of every PowerShell script block that executes to the Windows event log. Helps with post-incident investigations.",
+      "WhyThisMatters": "Captures the full decoded content of every script block PowerShell executes (Event ID 4104), including dynamically constructed code. Essential for post-incident forensics; volume scales with script activity.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -823,7 +957,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Enables Defender to detect and quarantine potentially unwanted applications such as adware, bundleware, and browser hijackers. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Tells Defender to flag and quarantine potentially unwanted applications — adware, bundleware, browser hijackers, and coin miners. Can produce false positives on gray-area utilities like system cleaners.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
@@ -857,7 +991,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "When you download a file from the internet, Windows tags it with a zone marker. Keeping this enabled allows security warnings when running downloaded files.",
+      "WhyThisMatters": "Keeps the Zone.Identifier ADS on downloaded files so Windows can show security prompts before running them. Removing this mark means no zone-based warning will appear even for files downloaded from the internet.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low"
@@ -891,14 +1025,14 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": false,
-      "WhyThisMatters": "Allows mapped network drives to be visible to elevated (administrator) processes as well as the current logged-in user. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "When disabled (the UAC default), elevated processes see drive letters differently from the user session, which can break scripts that assume mapped drives are visible under elevation. Enabling this makes them consistent.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"
     },
     {
       "Name": "Windows Firewall Logging",
-      "Function": "Set-WindowsFirewallLogging",
+      "Function": "WindowsFirewallLogging",
       "Type": "Action",
       "Options": null,
       "DisplayOptions": null,
@@ -925,7 +1059,7 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": false,
-      "WhyThisMatters": "Enables logging of dropped and allowed connections to the Windows Firewall log file so you can audit network activity.",
+      "WhyThisMatters": "Writes allowed and dropped connection records to the Windows Firewall log file. Provides a network-level audit trail without requiring a full packet capture.",
       "PresetTier": "Safe",
       "RecoveryLevel": "Manual",
       "CompatibilitySensitivity": "Low"
@@ -950,6 +1084,7 @@
       "ExtraArgs": null,
       "SubCategory": null,
       "SourceRegion": "Defender",
+      "TimeoutSeconds": 600,
       "WinDefaultDesc": "Windows Sandbox is disabled",
       "Risk": "Low",
       "Tags": [
@@ -959,10 +1094,17 @@
       "Impact": "Low",
       "Safe": true,
       "RequiresRestart": true,
-      "WhyThisMatters": "A lightweight isolated virtual machine for safely running untrusted applications without risking your main system. Requires Windows Pro or higher.",
+      "WhyThisMatters": "Provisions a lightweight throwaway VM you can spin up on demand for testing untrusted software. Requires Windows Pro or higher and hardware virtualization. Everything inside is discarded when the sandbox window closes.",
       "PresetTier": "Advanced",
       "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low"
+      "CompatibilitySensitivity": "Low",
+      "PlatformSupport": {
+        "Windows10": true,
+        "Windows11": true,
+        "Server": false,
+        "MinBuild": 18362,
+        "UnavailableReason": "Windows Sandbox is not available on Windows Server."
+      }
     },
     {
       "Name": "Windows Script Host",
@@ -993,7 +1135,7 @@
       "Impact": "Medium",
       "Safe": false,
       "RequiresRestart": true,
-      "WhyThisMatters": "Controls whether Windows can run .vbs and .js script files. Disabling prevents these script types from executing when double-clicked. This change carries moderate risk and may affect some workflows.",
+      "WhyThisMatters": "Controls execution of .vbs and .js script files via wscript.exe and cscript.exe. Disabling blocks these script types from running when double-clicked or invoked without a full interpreter path — a common malware delivery path.",
       "PresetTier": "Balanced",
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Medium"

@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     $modulePath = Join-Path $PSScriptRoot '../../Module/SharedHelpers.psm1'
@@ -91,20 +91,56 @@ Describe 'Get-DirectUndoCommandForEntry' {
         $result | Should -Be 'Enable'
     }
 
-    It 'returns null for Choice type entries' {
+    It 'returns WinDefault for Choice entries with a direct undo path' {
         $entry = [pscustomobject]@{
             Restorable = $true
             RecoveryLevel = 'Direct'
-            ToggleParam = 'Option1'
+            Value = 'Google'
         }
         $manifest = [pscustomobject]@{
             Type = 'Choice'
-            Options = @('Option1', 'Option2', 'Option3')
+            Options = @('Disable', 'Google', 'Cloudflare')
+            Default = 'Disable'
+            WinDefault = 'Disable'
         }
 
         $result = Get-DirectUndoCommandForEntry -Entry $entry -ManifestEntry $manifest
 
+        $result | Should -Be 'Disable'
+    }
+
+    It 'returns null for Choice entries without a manifest default' {
+        $entry = [pscustomobject]@{
+            Restorable = $true
+            RecoveryLevel = 'Direct'
+            Value = 'Google'
+        }
+        $manifest = [pscustomobject]@{
+            Type = 'Choice'
+            Options = @('Google', 'Cloudflare')
+        }
+
+        $result = Get-DirectUndoCommandForEntry -Entry $entry -ManifestEntry $manifest 3>$null
+
         $result | Should -BeNullOrEmpty
+    }
+
+    It 'returns AC and DC values for NumericRange entries with direct rollback' {
+        $entry = [pscustomobject]@{
+            Restorable = $true
+            RecoveryLevel = 'Direct'
+        }
+        $manifest = [pscustomobject]@{
+            Type = 'NumericRange'
+            WinDefault = [ordered]@{
+                ACValue = 80
+                DCValue = 60
+            }
+        }
+
+        $result = Get-DirectUndoCommandForEntry -Entry $entry -ManifestEntry $manifest
+
+        $result | Should -Be 'ACValue 80 -DCValue 60'
     }
 
     It 'returns OffParam via WinDefault $true fallback when selectedParam is unrecognized' {
@@ -158,6 +194,56 @@ Describe 'Get-DirectUndoCommandForEntry' {
         $result = Get-DirectUndoCommandForEntry -Entry $entry -ManifestEntry $manifest 3>$null
 
         $result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-DirectUndoCommandLineForEntry' {
+    It 'returns the explicit counterpart command line when CounterpartFunction is declared' {
+        $manifest = @(
+            [pscustomobject]@{
+                Function = 'EnableFeature'
+                Type = 'Toggle'
+                OnParam = 'Enable'
+                OffParam = 'Disable'
+                CounterpartFunction = 'DisableFeature'
+                Default = $true
+            },
+            [pscustomobject]@{
+                Function = 'DisableFeature'
+                Type = 'Toggle'
+                OnParam = 'Enable'
+                OffParam = 'Disable'
+                Default = $false
+            }
+        )
+        $entry = [pscustomobject]@{
+            Restorable = $true
+            RecoveryLevel = 'Direct'
+            ToggleParam = 'Enable'
+        }
+
+        $result = Get-DirectUndoCommandLineForEntry -Entry $entry -ManifestEntry $manifest[0] -Manifest $manifest
+
+        $result | Should -Be 'DisableFeature -Disable'
+    }
+
+    It 'falls back to the legacy same-function inverse command line when no counterpart exists' {
+        $manifest = [pscustomobject]@{
+            Function = 'EnableFeature'
+            Type = 'Toggle'
+            OnParam = 'Enable'
+            OffParam = 'Disable'
+            Default = $true
+        }
+        $entry = [pscustomobject]@{
+            Restorable = $true
+            RecoveryLevel = 'Direct'
+            ToggleParam = 'Enable'
+        }
+
+        $result = Get-DirectUndoCommandLineForEntry -Entry $entry -ManifestEntry $manifest -Manifest @($manifest)
+
+        $result | Should -Be 'EnableFeature -Disable'
     }
 }
 

@@ -1,8 +1,72 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
+    <#
+        .SYNOPSIS
+    #>
+
     function Test-GuiObjectField { param([object]$Object, [string]$FieldName) if ($null -eq $Object) { return $false }; if ($Object -is [System.Collections.IDictionary]) { return $Object.Contains($FieldName) }; return [bool]($Object.PSObject -and $Object.PSObject.Properties[$FieldName]) }
-    # Extract inner functions from the dot-sourced file via AST.
+    <#
+        .SYNOPSIS
+    #>
+    function Get-UxLocalizedString {
+        param(
+            [string]$Key,
+            [string]$Fallback,
+            [object[]]$FormatArgs = @()
+        )
+
+        if ($FormatArgs.Count -gt 0)
+        {
+            return ($Fallback -f $FormatArgs)
+        }
+
+        return $Fallback
+    }
+
+    <#
+        .SYNOPSIS
+    #>
+
+    function Get-UxBilingualLocalizedString {
+        param(
+            [string]$Key,
+            [string]$Fallback,
+            [object[]]$FormatArgs = @()
+        )
+
+        if ($FormatArgs.Count -gt 0)
+        {
+            return ($Fallback -f $FormatArgs)
+        }
+
+        return $Fallback
+    }
+
+    function Get-UxString {
+        param(
+            [string]$Key,
+            [string]$Fallback
+        )
+
+        return $Fallback
+    }
+
+    function Get-OSInfo {
+        [pscustomobject]@{
+            IsWindowsServer = $true
+        }
+    }
+
+    function Get-BaselineValidationMatrixSummary {
+        [pscustomobject]@{
+            ServerValidationSummary = 'CI only: Windows Server 2022 (CI only)'
+            ServerCIOnly = $true
+            HasServerCoverage = $true
+        }
+    }
+
+    # Read inner functions from the loaded file via AST.
     # Uses Invoke-Expression on function definition AST nodes - safe because
     # ParseFile only parses (no execution) and we only evaluate FunctionDefinitionAst
     # nodes, which merely define functions without side effects.
@@ -145,7 +209,7 @@ Describe 'Get-ExecutionSummaryClassification' {
     It 'classifies restore-mode already-at-default skips correctly' {
         $result = Get-ExecutionSummaryClassification -Status 'Skipped' -Detail 'already at windows default' -Mode 'Defaults'
 
-        $result.OutcomeState | Should -Be 'Already at Windows default'
+        $result.OutcomeState | Should -Be 'Already at recorded default'
         $result.FailureCode | Should -Be 'already_at_default'
     }
 
@@ -170,6 +234,20 @@ Describe 'Get-ExecutionSummaryClassification' {
         $result.FailureCode | Should -Be 'general_failure'
     }
 
+    It 'classifies Timed Out' {
+        $result = Get-ExecutionSummaryClassification -Status 'Timed Out' -Detail 'Timed out after 60 second(s), continuing to the next item.'
+
+        $result.OutcomeState | Should -Be 'Timed Out'
+        $result.FailureCode | Should -Be 'timed_out'
+    }
+
+    It 'classifies Timed Out / Unknown Final State' {
+        $result = Get-ExecutionSummaryClassification -Status 'Timed Out / Unknown Final State' -Detail 'Baseline could not verify the final state after the timeout.'
+
+        $result.OutcomeState | Should -Be 'Timed Out / Unknown Final State'
+        $result.FailureCode | Should -Be 'timed_out_unknown_final_state'
+    }
+
     It 'returns Pending for unknown status' {
         $result = Get-ExecutionSummaryClassification -Status '' -Detail ''
 
@@ -181,7 +259,7 @@ Describe 'Get-RestoreDefaultsOutcomeText' {
     It 'returns restore-specific success text' {
         $result = Get-RestoreDefaultsOutcomeText -OutcomeState 'Success'
 
-        $result | Should -Be 'Restored to Windows default.'
+        $result | Should -Be 'Restored to recorded default.'
     }
 
     It 'returns package follow-up wording for package restore failures' {
@@ -194,6 +272,32 @@ Describe 'Get-RestoreDefaultsOutcomeText' {
         $result = Get-RestoreDefaultsOutcomeText -FailureCode 'manual_intervention_required' -TypeKind 'Toggle'
 
         $result | Should -Be 'Manual recovery required to finish restoring this item.'
+    }
+}
+
+Describe 'Get-ExecutionSummaryDialogCards' {
+    It 'adds a server validation card on Windows Server' {
+        $summaryPayload = [pscustomobject]@{
+            AppliedCount = 2
+            RestartPendingCount = 0
+        }
+        $insights = [pscustomobject]@{
+            NeedsAttentionCount = 1
+            AlreadyDesiredCount = 0
+            NotApplicableCount = 0
+            PolicySkippedCount = 0
+            PackageOperationCount = 0
+            PackageFailedCount = 0
+            RecoverableFailedCount = 0
+            ManualFailedCount = 0
+            PartialSuccessCount = 0
+            CancelledCount = 0
+        }
+
+        $cards = @(Get-ExecutionSummaryDialogCards -Mode 'Run' -SummaryPayload $summaryPayload -Insights $insights)
+
+        $cards.Label | Should -Contain 'Server validation'
+        ($cards | Where-Object Label -eq 'Server validation').Value | Should -Be 'CI only'
     }
 }
 
@@ -240,9 +344,41 @@ Describe 'Get-ExecutionResultLiveLogEntry' {
         $entry.Level | Should -Be 'SUCCESS'
     }
 
+    It 'prefixes the live log line with the selected action when the tweak name is neutral' {
+        $record = [pscustomobject]@{
+            Name = 'Diagnostics Tracking Tasks'
+            Selection = 'Disable'
+            Status = 'Success'
+            Detail = $null
+            OutcomeState = 'Success'
+            OutcomeReason = 'Baseline applied the requested change successfully.'
+        }
+
+        $entry = Get-ExecutionResultLiveLogEntry -Record $record
+
+        $entry.Message | Should -Be 'Disable Diagnostics Tracking Tasks - success'
+        $entry.Level | Should -Be 'SUCCESS'
+    }
+
+    It 'does not duplicate the selected action when the tweak name already starts with it' {
+        $record = [pscustomobject]@{
+            Name = 'Disable IPv6'
+            Selection = 'Disable'
+            Status = 'Success'
+            Detail = $null
+            OutcomeState = 'Success'
+            OutcomeReason = 'Baseline applied the requested change successfully.'
+        }
+
+        $entry = Get-ExecutionResultLiveLogEntry -Record $record
+
+        $entry.Message | Should -Be 'Disable IPv6 - success'
+        $entry.Level | Should -Be 'SUCCESS'
+    }
+
     It 'formats failed records with the failure reason' {
         $record = [pscustomobject]@{
-            Name = 'Install PowerShell 7'
+            Name = 'Check WinGet'
             Status = 'Failed'
             Detail = 'winget executable was not found'
             OutcomeState = 'Failed and manual intervention required'
@@ -251,7 +387,7 @@ Describe 'Get-ExecutionResultLiveLogEntry' {
 
         $entry = Get-ExecutionResultLiveLogEntry -Record $record
 
-        $entry.Message | Should -Be 'Install PowerShell 7 - failed (winget executable was not found)'
+        $entry.Message | Should -Be 'Check WinGet - failed (winget executable was not found)'
         $entry.Level | Should -Be 'ERROR'
     }
 
@@ -282,6 +418,21 @@ Describe 'Get-ExecutionResultLiveLogEntry' {
         $entry = Get-ExecutionResultLiveLogEntry -Record $record
 
         $entry.Message | Should -Be 'Device Sensors - success (Baseline applied this change, but Windows still needs a restart before it is fully finished.)'
+        $entry.Level | Should -Be 'WARNING'
+    }
+
+    It 'formats timed out records as warnings with the timeout detail' {
+        $record = [pscustomobject]@{
+            Name = 'Disable scheduled tasks'
+            Status = 'Timed Out'
+            Detail = 'Timed out after 60 second(s), continuing to the next item.'
+            OutcomeState = 'Timed Out'
+            OutcomeReason = 'The action exceeded its timeout window.'
+        }
+
+        $entry = Get-ExecutionResultLiveLogEntry -Record $record
+
+        $entry.Message | Should -Be 'Disable scheduled tasks - timed out (Timed out after 60 second(s), continuing to the next item.)'
         $entry.Level | Should -Be 'WARNING'
     }
 }

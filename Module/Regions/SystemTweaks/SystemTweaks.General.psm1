@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Run the remaining legacy system/bootstrap optimizations.
+Configures remaining legacy system/bootstrap optimizations.
 
 .DESCRIPTION
 Runs the old Performance Tuning system-only actions directly inside
@@ -20,6 +20,7 @@ PerformanceTuning -Modules System
 .NOTES
 Current user
 #>
+
 function PerformanceTuning
 {
 	[CmdletBinding()]
@@ -113,6 +114,11 @@ function PerformanceTuning
 	.SYNOPSIS
 	Enable or disable Adobe Network Block
 
+
+
+.DESCRIPTION
+
+Enables or disables Adobe Network Block in GUI and headless runs.
 	.PARAMETER Enable
 	Enable Adobe Network Block
 
@@ -138,6 +144,7 @@ function PerformanceTuning
 
 	Use only if you understand the implications.
 #>
+
 function AdobeNetworkBlock
 {
 	[CmdletBinding()]
@@ -152,6 +159,8 @@ function AdobeNetworkBlock
 
 	$hosts = "$Env:SystemRoot\System32\drivers\etc\hosts"
 	$hostsUrl = "https://github.com/Ruddernation-Designs/Adobe-URL-Block-List/raw/refs/heads/master/hosts"
+	$markerBegin = '# BEGIN BASELINE-AdobeBlock'
+	$markerEnd = '# END BASELINE-AdobeBlock'
 
 	switch ($PSCmdlet.ParameterSetName)
 	{
@@ -159,6 +168,7 @@ function AdobeNetworkBlock
 		{
 			Write-ConsoleStatus -Action "Enabling Adobe Network Block"
 			LogInfo "Enabling Adobe Network Block"
+			$tempFile = $null
 			try
 			{
 				if (Test-Path $hosts)
@@ -166,8 +176,69 @@ function AdobeNetworkBlock
 					Copy-Item $hosts "$hosts.bak" -Force -ErrorAction Stop | Out-Null
 					LogInfo "Backed up original hosts file to $hosts.bak"
 				}
-				Invoke-WebRequest $hostsUrl -OutFile $hosts -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
-				LogInfo "Downloaded and applied Adobe block list"
+
+				# Merge instead of clobber: keep existing entries from other
+				# present, wrapped in BEGIN/END markers so re-runs are idempotent.
+				$tempFile = Join-Path $Env:TEMP "BaselineAdobeBlock_$([guid]::NewGuid().ToString('N')).hosts"
+				Invoke-WebRequest $hostsUrl -OutFile $tempFile -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop | Out-Null
+				LogInfo "Downloaded Adobe block list to $tempFile"
+
+				$existingLines = if (Test-Path $hosts) { @(Get-Content -Path $hosts -ErrorAction Stop) } else { @() }
+				$blockLines = @(Get-Content -Path $tempFile -ErrorAction Stop)
+
+				$cleanedExisting = New-Object System.Collections.Generic.List[string]
+				$inOurBlock = $false
+				foreach ($line in $existingLines)
+				{
+					if ($line.Trim() -eq $markerBegin) { $inOurBlock = $true; continue }
+					if ($line.Trim() -eq $markerEnd)   { $inOurBlock = $false; continue }
+					if (-not $inOurBlock) { [void]$cleanedExisting.Add($line) }
+				}
+
+				# Dedup key = hostname token (second whitespace-separated field, stripped of trailing
+				# comments). Lets us recognize "0.0.0.0 ads.example.com" as already covered by an
+				# existing "0.0.0.0     ads.example.com   # StevenBlack entry" line.
+				$getHostKey = {
+					param($line)
+					$noComment = ($line -split '#', 2)[0].Trim()
+					if (-not $noComment) { return $null }
+					$tokens = $noComment -split '\s+'
+					if ($tokens.Count -lt 2) { return $null }
+					return $tokens[1].ToLowerInvariant()
+				}
+
+				$existingHosts = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+				foreach ($line in $cleanedExisting)
+				{
+					$key = & $getHostKey $line
+					if ($key) { [void]$existingHosts.Add($key) }
+				}
+
+				$additions = New-Object System.Collections.Generic.List[string]
+				foreach ($line in $blockLines)
+				{
+					$key = & $getHostKey $line
+					if (-not $key) { continue }
+					if (-not $existingHosts.Contains($key))
+					{
+						[void]$additions.Add($line.Trim())
+						[void]$existingHosts.Add($key)  # protect against duplicates within the block list itself
+					}
+				}
+
+				$merged = New-Object System.Collections.Generic.List[string]
+				foreach ($line in $cleanedExisting) { [void]$merged.Add($line) }
+				if ($additions.Count -gt 0)
+				{
+					if ($merged.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($merged[$merged.Count - 1])) { [void]$merged.Add('') }
+					[void]$merged.Add($markerBegin)
+					foreach ($line in $additions) { [void]$merged.Add($line) }
+					[void]$merged.Add($markerEnd)
+				}
+
+				Set-Content -Path $hosts -Value ([string[]]$merged) -Encoding ASCII -Force -ErrorAction Stop
+				LogInfo "Merged $($additions.Count) Adobe block-list entries into hosts (existing entries preserved)"
+
 				ipconfig /flushdns 2>$null | Out-Null
 				if ($LASTEXITCODE -ne 0)
 				{
@@ -180,6 +251,10 @@ function AdobeNetworkBlock
 			{
 				LogError "Failed to enable Adobe Network Block: $_"
 				Write-ConsoleStatus -Status failed
+			}
+			finally
+			{
+				if ($tempFile -and (Test-Path $tempFile)) { Remove-Item $tempFile -Force -ErrorAction SilentlyContinue | Out-Null }
 			}
 		}
 		"Disable"
@@ -215,6 +290,11 @@ function AdobeNetworkBlock
 .SYNOPSIS
 Enable or disable Brave Debloat
 
+
+
+.DESCRIPTION
+
+Enables or disables Brave Debloat in GUI and headless runs.
 .PARAMETER Enable
 Enable Brave Debloat
 
@@ -254,11 +334,11 @@ function BraveDebloat
 			{
 				New-Item -Path $BravePath -Force -ErrorAction SilentlyContinue | Out-Null
 			}
-			Set-ItemProperty -Path $BravePath -Name "BraveRewardsDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $BravePath -Name "BraveWalletDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $BravePath -Name "BraveVPNDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $BravePath -Name "BraveAIChatEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
-			Set-ItemProperty -Path $BravePath -Name "BraveStatsPingEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -LiteralPath $BravePath -Name "BraveRewardsDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -LiteralPath $BravePath -Name "BraveWalletDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -LiteralPath $BravePath -Name "BraveVPNDisabled" -Type DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -LiteralPath $BravePath -Name "BraveAIChatEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
+			Set-ItemProperty -LiteralPath $BravePath -Name "BraveStatsPingEnabled" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue | Out-Null
 			LogInfo "Brave debloat policies applied"
 			Write-ConsoleStatus -Status success
 		}
@@ -281,6 +361,11 @@ function BraveDebloat
 .SYNOPSIS
 Enable or disable Cross-Device Resume
 
+
+
+.DESCRIPTION
+
+Enables or disables Cross-Device Resume in GUI and headless runs.
 .PARAMETER Enable
 Enable Cross-Device Resume (default value)
 
@@ -340,7 +425,7 @@ function CrossDeviceResume
 				if (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name "IsResumeAllowed" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name "IsResumeAllowed" -Type DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -366,7 +451,7 @@ function CrossDeviceResume
 				if (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name "IsResumeAllowed" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration" -Name "IsResumeAllowed" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -383,6 +468,11 @@ function CrossDeviceResume
 .SYNOPSIS
 Enable or disable Explorer Automatic Folder Discovery
 
+
+
+.DESCRIPTION
+
+Enables or disables Explorer Automatic Folder Discovery in GUI and headless runs.
 .PARAMETER Enable
 Enable Explorer Automatic Folder Discovery
 
@@ -466,7 +556,7 @@ function ExplorerAutoDiscovery
 					New-Item -Path $allFolders -Force -ErrorAction Stop | Out-Null
 				}
 
-				Set-ItemProperty -Path $allFolders -Name "FolderType" -Value "NotSpecified" -Type String -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath $allFolders -Name "FolderType" -Value "NotSpecified" -Type String -Force -ErrorAction Stop | Out-Null
 				LogInfo "Please sign out and back in, or restart your computer to apply the changes."
 				Write-ConsoleStatus -Status success
 			}
@@ -483,6 +573,11 @@ function ExplorerAutoDiscovery
 .SYNOPSIS
 Enable or disable Modern Standby fix
 
+
+
+.DESCRIPTION
+
+Enables or disables Modern Standby fix in GUI and headless runs.
 .PARAMETER Enable
 Enable Modern Standby fix (default value)
 
@@ -529,7 +624,7 @@ function StandbyFix
 				{
 					New-Item -Path "HKCU:\SOFTWARE\Policies\Microsoft\Power\PowerSettings\f15576e8-98b7-4186-b944-eafa664402d9" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\SOFTWARE\Policies\Microsoft\Power\PowerSettings\f15576e8-98b7-4186-b944-eafa664402d9" -Name "ACSettingIndex" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKCU:\SOFTWARE\Policies\Microsoft\Power\PowerSettings\f15576e8-98b7-4186-b944-eafa664402d9" -Name "ACSettingIndex" -Type DWord -Value 0 -Force -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -555,5 +650,12 @@ function StandbyFix
 		}
 	}
 }
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'AdobeNetworkBlock',
+    'BraveDebloat',
+    'CrossDeviceResume',
+    'ExplorerAutoDiscovery',
+    'PerformanceTuning',
+    'StandbyFix'
+)
+Export-ModuleMember -Function $ExportedFunctions

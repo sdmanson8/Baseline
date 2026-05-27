@@ -1,7 +1,6 @@
 Set-StrictMode -Version Latest
 
 BeforeAll {
-    # Extract functions from GuiContext.ps1 via AST - safe because ParseFile
     # only parses (no execution) and we only evaluate FunctionDefinitionAst
     # nodes, which merely define functions without side effects.
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/GuiContext.ps1'
@@ -27,10 +26,30 @@ Describe 'New-GuiContext' {
         $ctx.Keys | Should -Contain 'Config'
     }
 
+    It 'initializes the interrupted run slot in state' {
+        $ctx = New-GuiContext
+
+        $ctx.State.Keys | Should -Contain 'InterruptedRunProfile'
+        $ctx.State.InterruptedRunProfile | Should -Be $null
+    }
+
     It 'initializes Run.InProgress to false' {
         $ctx = New-GuiContext
 
         $ctx.Run.InProgress | Should -Be $false
+    }
+
+    It 'initializes the audit retention default in UI state' {
+        $ctx = New-GuiContext
+
+        $ctx.UI.AuditRetentionDays | Should -Be 90
+    }
+
+    It 'initializes Design Mode defaults in UI and Mode state' {
+        $ctx = New-GuiContext
+
+        $ctx.UI.DesignMode | Should -Be $false
+        $ctx.Mode.Design | Should -Be $false
     }
 
     It 'initializes Filter defaults' {
@@ -148,7 +167,7 @@ Describe 'Set-GuiStatusText' {
             CautionText = '#B45309'
             RiskMediumBadge = '#DC2626'
             AccentBlue = '#2563EB'
-            TextSecondary = '#6B7280'
+            TextSecondary = '#4B5563'
         }
     }
 

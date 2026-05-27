@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 # NOTE: Tests in the Get-ScenarioProfilePlan and Get-ScenarioProfileCommandList
 # Describe blocks depend on the live production manifest (via Import-TweakManifestFromData).

@@ -2,6 +2,11 @@
   "Name": "GameModeAllowlist",
   "Version": 1,
   "Description": "Reviewed cross-category items allowed to participate in Game Mode profile building.",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
   "Entries": [
     {
       "Function": "PowerPlan",

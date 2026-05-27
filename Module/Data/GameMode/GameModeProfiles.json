@@ -2,6 +2,11 @@
   "Name": "GameModeProfiles",
   "Version": 1,
   "Description": "Game Mode profile definitions. Each profile provides a focused gaming plan with its own decision prompts and default selections.",
+  "PlatformSupportDefault": {
+    "Windows10": true,
+    "Windows11": true,
+    "Server": false
+  },
   "Entries": [
     {
       "Name": "Casual",

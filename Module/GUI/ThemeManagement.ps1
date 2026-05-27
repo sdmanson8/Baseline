@@ -1,120 +1,164 @@
 # Theme palette definitions, fallback/repair, and brush conversion utilities
 
 	$Script:DarkTheme = @{
-		WindowBg      = "#1E1E2E"
-		HeaderBg      = "#181825"
-		PanelBg       = "#1E1E2E"
-		CardBg        = "#272B3A"
-		TabBg         = "#2F3445"
-		TabActiveBg   = "#3670B8"
-		TabHoverBg    = "#3670B8"
-		BorderColor   = "#4C556D"
-		TextPrimary   = "#CDD6F4"
-		TextSecondary = "#B6BED8"
-		TextMuted     = "#828AA2"
-		AccentBlue    = "#89B4FA"
-		AccentHover   = "#74C7EC"
-		AccentPress   = "#94E2D5"
-		FocusRing     = "#C9DEFF"
-		CautionBg     = "#3B2028"
-		CautionBorder = "#F38BA8"
-		CautionText   = "#F38BA8"
-		ImpactBadge   = "#F38BA8"
-		ImpactBadgeBg = "#3B2028"
-		LowRiskBadge     = "#B8E6C1"
-		LowRiskBadgeBg   = "#213326"
-		RiskMediumBadge   = "#F9E2AF"
-		RiskMediumBadgeBg = "#3B3020"
-		RiskHighBadge     = "#F38BA8"
-		RiskHighBadgeBg   = "#3B2028"
-		DestructiveBg = "#C0325A"
-		DestructiveHover = "#A6294E"
-		SectionLabel  = "#89B4FA"
-		ScrollBg      = "#313244"
-		ScrollThumb   = "#585B70"
-		ToggleOn      = "#A6E3A1"
-		ToggleOff     = "#F38BA8"
-		StateEnabled  = "#9FD6AA"
-		StateDisabled = "#98A0B7"
-		SearchBg      = "#313244"
-		SearchBorder  = "#585B70"
-		SearchPlaceholder = "#8188A0"
-		InputBg       = "#313244"
-		InputHoverBg  = "#383D52"
-		CardBorder    = "#394256"
-		CardHoverBg   = "#323A4E"
-		SecondaryButtonBg = "#30374A"
-		SecondaryButtonHoverBg = "#39415A"
-		SecondaryButtonPressBg = "#262D3E"
-		SecondaryButtonBorder = "#5F6984"
-		SecondaryButtonFg = "#E5EAF7"
-		PresetPanelBg = "#23283A"
-		PresetPanelBorder = "#52607E"
-		StatusPillBg = "#20385C"
-		StatusPillBorder = "#5C86C7"
-		StatusPillText = "#D6E7FF"
-		ActiveTabBorder = "#89B4FA"
-		ActiveTabIndicator = "#4ADE80"
+		WindowBg      = "#0E111A"
+		HeaderBg      = "#121624"
+		PanelBg       = "#161A26"
+		CardBg        = "#1E2433"
+		TabBg         = "#00FFFFFF"
+		TabActiveBg   = "#262D40"
+		TabHoverBg    = "#202638"
+		BorderColor   = "#2430445A"
+		BorderStrong  = "#3C4A66"
+		TextPrimary   = "#F4F7FF"
+		TextSecondary = "#CDD6EA"
+		TextMuted     = "#A3ADC6"
+		TextDisabled  = "#7E89A8"
+		AccentBlue    = "#7CB7FF"
+		AccentHover   = "#9ACAFF"
+		AccentPress   = "#4D9CFF"
+		FocusRing     = "#9ACAFF"
+		CautionBg     = "#14D6A84A"
+		CautionBorder = "#4DD6A84A"
+		CautionText   = "#D6A84A"
+		ImpactBadge   = "#D6A84A"
+		ImpactBadgeBg = "#1FD6A84A"
+		LowRiskBadge     = "#35D07F"
+		LowRiskBadgeBg   = "#1F35D07F"
+		RiskMediumBadge   = "#D6A84A"
+		RiskMediumBadgeBg = "#1FD6A84A"
+		RiskHighBadge     = "#FF6B8A"
+		RiskHighBadgeBg   = "#1FFF6B8A"
+		DestructiveSubtleBorder = "#33FF6B8A"
+		DestructiveSubtleHoverBg = "#10FF6B8A"
+		DestructiveSubtlePressBg = "#18FF6B8A"
+		DestructiveBg = "#B93D5B"
+		DestructiveHover = "#D64B6D"
+		SectionLabel  = "#7CB7FF"
+		ScrollBg          = "#121624"
+		ScrollThumb       = "#3A4561"
+		ScrollThumbHover  = "#4D5875"
+		ScrollThumbActive = "#5E6C8E"
+		ToggleOn      = "#7CB7FF"
+		ToggleOff     = "#586178"
+		StateEnabled  = "#35D07F"
+		StateDisabled = "#586178"
+		SearchBg      = "#262D40"
+		SearchBorder  = "#2430445A"
+		SearchPlaceholder = "#8F99B2"
+		InputBg       = "#262D40"
+		InputHoverBg  = "#30384E"
+		CardBorder    = "#354057"
+		CardHoverBg   = "#252D40"
+		SecondaryButtonBg = "#00FFFFFF"
+		SecondaryButtonHoverBg = "#252D40"
+		SecondaryButtonPressBg = "#262D40"
+		SecondaryButtonBorder = "#1FFFFFFF"
+		SecondaryButtonFg = "#B8C1D9"
+		PresetPanelBg = "#1E2433"
+		PresetPanelBorder = "#293044"
+		StatusPillBg = "#202638"
+		StatusPillBorder = "#293044"
+		StatusPillText = "#B8C1D9"
+		ActiveTabBorder = "#7CB7FF"
+		ActiveTabIndicator = "#7CB7FF"
+		StateAccent = "#B34FD1A5"
+		StateAccentStrong = "#4FD1A5"
+		ProgressGreen      = "#35D07F"
+		ProgressGreenTrack = "#2A3146"
+		LogBg = "#1E2433"
+		LogDefault = "#F4F7FF"
+		LogInfo = "#7CB7FF"
+		LogDebug = "#C084FC"
+		LogSuccess = "#35D07F"
+		LogWarning = "#D6A84A"
+		LogError = "#FF6B8A"
+		SearchHighlightBg = "#FDE68A"
+		SearchHighlightText = "#111827"
 	}
 	$Script:LightTheme = @{
-		WindowBg      = "#E4E8F0"
-		HeaderBg      = "#D6DBE5"
-		PanelBg       = "#E4E8F0"
+		WindowBg      = "#F3F5F8"
+		HeaderBg      = "#F7F8FA"
+		PanelBg       = "#F3F5F8"
 		CardBg        = "#FFFFFF"
-		TabBg         = "#D4D9E4"
-		TabActiveBg   = "#3670B8"
-		TabHoverBg    = "#3670B8"
-		BorderColor   = "#A7B0C0"
-		TextPrimary   = "#1A1C2E"
-		TextSecondary = "#31384A"
-		TextMuted     = "#646C7F"
-		AccentBlue    = "#1550AA"
-		AccentHover   = "#1A60C4"
-		AccentPress   = "#104090"
-		FocusRing     = "#0D63E0"
-		CautionBg     = "#F5D0D0"
-		CautionBorder = "#A02040"
-		CautionText   = "#A02040"
-		ImpactBadge   = "#A02040"
-		ImpactBadgeBg = "#F5D0D0"
-		LowRiskBadge     = "#245A2D"
-		LowRiskBadgeBg   = "#DDEFD9"
-		RiskMediumBadge   = "#7A5A00"
+		TabBg         = "#EEF2F7"
+		TabActiveBg   = "#2563EB"
+		TabHoverBg    = "#1D4ED8"
+		BorderColor   = "#D8DEE8"
+		BorderStrong  = "#B8C2D0"
+		TextPrimary   = "#111827"
+		TextSecondary = "#4B5563"
+		TextMuted     = "#5F6B7A"
+		TextDisabled  = "#6B7788"
+		AccentBlue    = "#2563EB"
+		AccentHover   = "#1D4ED8"
+		AccentPress   = "#1E40AF"
+		FocusRing     = "#1D4ED8"
+		CautionBg     = "#FEE4E2"
+		CautionBorder = "#FDA29B"
+		CautionText   = "#B42318"
+		ImpactBadge   = "#B42318"
+		ImpactBadgeBg = "#FEE4E2"
+		LowRiskBadge     = "#1F7A4C"
+		LowRiskBadgeBg   = "#DDEDE5"
+		RiskMediumBadge   = "#9A6700"
 		RiskMediumBadgeBg = "#FFF3D0"
-		RiskHighBadge     = "#A02040"
-		RiskHighBadgeBg   = "#F5D0D0"
-		DestructiveBg = "#C0304E"
-		DestructiveHover = "#A02840"
-		SectionLabel  = "#1550AA"
-		ScrollBg      = "#D0D2DE"
-		ScrollThumb   = "#A0A2AE"
-		ToggleOn      = "#1A7A2A"
+		RiskHighBadge     = "#B42318"
+		RiskHighBadgeBg   = "#FEE4E2"
+		DestructiveSubtleBorder = "#33B42318"
+		DestructiveSubtleHoverBg = "#10B42318"
+		DestructiveSubtlePressBg = "#18B42318"
+		DestructiveBg = "#B42318"
+		DestructiveHover = "#991B1B"
+		SectionLabel  = "#2563EB"
+		ScrollBg          = "#E8EDF4"
+		ScrollThumb       = "#B4B6C2"
+		ScrollThumbHover  = "#8D8FA0"
+		ScrollThumbActive = "#6C6E80"
+		ToggleOn      = "#2563EB"
 		ToggleOff     = "#B02040"
-		StateEnabled  = "#2F6E38"
-		StateDisabled = "#778096"
+		StateEnabled  = "#1F7A4C"
+		StateDisabled = "#8B95A6"
 		SearchBg      = "#FFFFFF"
-		SearchBorder  = "#98A2B4"
-		SearchPlaceholder = "#7A8296"
+		SearchBorder  = "#D8DEE8"
+		SearchPlaceholder = "#7A8494"
 		InputBg       = "#FFFFFF"
-		InputHoverBg  = "#F5F8FD"
-		CardBorder    = "#B2BBCB"
-		CardHoverBg   = "#F2F6FC"
+		InputHoverBg  = "#F6F8FB"
+		CardBorder    = "#D8DEE8"
+		CardHoverBg   = "#EEF2F7"
 		SecondaryButtonBg = "#FFFFFF"
-		SecondaryButtonHoverBg = "#F4F7FC"
-		SecondaryButtonPressBg = "#E7EDF8"
-		SecondaryButtonBorder = "#98A7BF"
+		SecondaryButtonHoverBg = "#F2F5FA"
+		SecondaryButtonPressBg = "#E9EEF6"
+		SecondaryButtonBorder = "#D8DEE8"
 		SecondaryButtonFg = "#263248"
 		PresetPanelBg = "#FFFFFF"
-		PresetPanelBorder = "#AAB7CC"
-		StatusPillBg = "#E6F0FF"
-		StatusPillBorder = "#8FAAD8"
-		StatusPillText = "#0F4EA8"
-		ActiveTabBorder = "#89B4FA"
-		ActiveTabIndicator = "#22C55E"
+		PresetPanelBorder = "#D8DEE8"
+		StatusPillBg = "#EEF4FF"
+		StatusPillBorder = "#D7E5FF"
+		StatusPillText = "#1D4ED8"
+		ActiveTabBorder = "#2563EB"
+		ActiveTabIndicator = "#2563EB"
+		StateAccent = "#1F7A4C"
+		StateAccentStrong = "#1F7A4C"
+		ProgressGreen      = "#1F7A4C"
+		ProgressGreenTrack = "#DDEDE5"
+		LogBg = "#F7F8FA"
+		LogDefault = "#1F2937"
+		LogInfo = "#1D4ED8"
+		LogDebug = "#6D28D9"
+		LogSuccess = "#1F7A4C"
+		LogWarning = "#9A6700"
+		LogError = "#B42318"
+		SearchHighlightBg = "#FDE68A"
+		SearchHighlightText = "#111827"
 	}
 
 	$Script:GuiThemeFallbackWarnings = [System.Collections.Generic.HashSet[string]]::new()
 	$Script:GuiRuntimeWarnings = [System.Collections.Generic.HashSet[string]]::new()
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Write-GuiThemeFallbackWarning
 	{
@@ -133,7 +177,9 @@
 		$shouldLog = $true
 		if ($Script:GuiThemeFallbackWarnings)
 		{
-			try { $shouldLog = $Script:GuiThemeFallbackWarnings.Add($warningKey) } catch { $shouldLog = $true }
+			try { $shouldLog = $Script:GuiThemeFallbackWarnings.Add($warningKey) } catch {
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ThemeManagement.Write-GuiThemeFallbackWarning:catch180' -Severity Debug }
+			 $shouldLog = $true }
 		}
 		if (-not $shouldLog) { return }
 
@@ -147,6 +193,10 @@
 			Write-Warning $warningText
 		}
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function Get-GuiFallbackColor
 	{
@@ -162,85 +212,255 @@
 			return [string]$Script:DarkTheme.AccentBlue
 		}
 
-		return '#89B4FA'
+		return '#7CB7FF'
 	}
 
-	function Repair-GuiThemePalette
+	<#
+	    .SYNOPSIS
+	#>
+
+	function ConvertTo-GuiRgbColorTriplet
+	{
+		param ([object]$Color)
+
+		$colorText = ([string]$Color).Trim()
+		if ([string]::IsNullOrWhiteSpace($colorText)) { return $null }
+
+		if ($colorText -match '^#(?<R>[0-9a-fA-F])(?<G>[0-9a-fA-F])(?<B>[0-9a-fA-F])$')
+		{
+			$rHex = $matches['R'] + $matches['R']
+			$gHex = $matches['G'] + $matches['G']
+			$bHex = $matches['B'] + $matches['B']
+		}
+		elseif ($colorText -match '^#(?<R>[0-9a-fA-F]{2})(?<G>[0-9a-fA-F]{2})(?<B>[0-9a-fA-F]{2})$')
+		{
+			$rHex = $matches['R']
+			$gHex = $matches['G']
+			$bHex = $matches['B']
+		}
+		elseif ($colorText -match '^#(?<A>[0-9a-fA-F]{2})(?<R>[0-9a-fA-F]{2})(?<G>[0-9a-fA-F]{2})(?<B>[0-9a-fA-F]{2})$')
+		{
+			$rHex = $matches['R']
+			$gHex = $matches['G']
+			$bHex = $matches['B']
+		}
+		else
+		{
+			return $null
+		}
+
+		return [pscustomobject]@{
+			R = [int]([Convert]::ToByte($rHex, 16))
+			G = [int]([Convert]::ToByte($gHex, 16))
+			B = [int]([Convert]::ToByte($bHex, 16))
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GuiRelativeColorLuminance
+	{
+		param ([object]$Color)
+
+		$rgb = if ($Color -and $Color.PSObject.Properties['R'] -and $Color.PSObject.Properties['G'] -and $Color.PSObject.Properties['B'])
+		{
+			$Color
+		}
+		else
+		{
+			ConvertTo-GuiRgbColorTriplet -Color $Color
+		}
+		if (-not $rgb) { return $null }
+
+		$getLinearChannel = {
+			param ([int]$Channel)
+
+			$scaled = [double]$Channel / 255.0
+			if ($scaled -le 0.03928)
+			{
+				return ($scaled / 12.92)
+			}
+
+			return [Math]::Pow((($scaled + 0.055) / 1.055), 2.4)
+		}
+
+		$r = & $getLinearChannel ([int]$rgb.R)
+		$g = & $getLinearChannel ([int]$rgb.G)
+		$b = & $getLinearChannel ([int]$rgb.B)
+
+		return ((0.2126 * $r) + (0.7152 * $g) + (0.0722 * $b))
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Get-GuiReadableForegroundColor
+	{
+		param (
+			[object]$BackgroundColor,
+			[string[]]$CandidateColors = @('#FFFFFF', '#111827')
+		)
+
+		if (-not $CandidateColors -or $CandidateColors.Count -eq 0)
+		{
+			$CandidateColors = @('#FFFFFF', '#111827')
+		}
+
+		$backgroundLuminance = Get-GuiRelativeColorLuminance -Color $BackgroundColor
+		if ($null -eq $backgroundLuminance)
+		{
+			return [string]$CandidateColors[0]
+		}
+
+		$bestColor = $null
+		$bestContrast = [double]::NegativeInfinity
+		foreach ($candidateColor in @($CandidateColors))
+		{
+			if ([string]::IsNullOrWhiteSpace([string]$candidateColor)) { continue }
+
+			$candidateLuminance = Get-GuiRelativeColorLuminance -Color $candidateColor
+			if ($null -eq $candidateLuminance) { continue }
+
+			$lighter = [Math]::Max([double]$backgroundLuminance, [double]$candidateLuminance)
+			$darker = [Math]::Min([double]$backgroundLuminance, [double]$candidateLuminance)
+			$contrast = ($lighter + 0.05) / ($darker + 0.05)
+			if ($contrast -gt $bestContrast)
+			{
+				$bestContrast = $contrast
+				$bestColor = [string]$candidateColor
+			}
+		}
+
+		if ([string]::IsNullOrWhiteSpace($bestColor))
+		{
+			return [string]$CandidateColors[0]
+		}
+
+		return $bestColor
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Repair-GuiThemePaletteWithReferences
 	{
 		param (
 			[hashtable]$Theme,
 			[string]$ThemeName = 'Dark'
 		)
 
-		$repairedTheme = @{}
-		if ($Theme)
-		{
-			foreach ($key in $Theme.Keys)
-			{
-				$repairedTheme[$key] = $Theme[$key]
-			}
-		}
-
-		# Ensure core interactive colors always exist before downstream theme repair runs.
-		$defaultColors = @{
-			'TabHoverBg' = '#3670B8'
-			'TextPrimary' = '#CDD6F4'
-			'FocusRing' = '#C9DEFF'
-			'AccentBlue' = '#89B4FA'
-			'AccentHover' = '#74C7EC'
-			'AccentPress' = '#94E2D5'
-			'HeaderBg' = '#181825'
-			'TextSecondary' = '#B6BED8'
-		}
-		foreach ($key in $defaultColors.Keys)
-		{
-			if (-not $repairedTheme.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$repairedTheme[$key]))
-			{
-				$repairedTheme[$key] = $defaultColors[$key]
-				Write-GuiThemeFallbackWarning -Context "Repair-GuiThemePalette/$ThemeName" -Message "Added missing color '$key' with $($defaultColors[$key])."
-			}
-		}
-
 		$primaryTheme = if ($ThemeName -eq 'Light') { $Script:LightTheme } else { $Script:DarkTheme }
 		$secondaryTheme = if ($ThemeName -eq 'Light') { $Script:DarkTheme } else { $Script:LightTheme }
-		$requiredKeys = [System.Collections.Generic.HashSet[string]]::new()
-		foreach ($sourceTheme in @($primaryTheme, $secondaryTheme))
-		{
-			if (-not $sourceTheme) { continue }
-			foreach ($key in $sourceTheme.Keys)
-			{
-				[void]$requiredKeys.Add([string]$key)
-			}
+		$warningHandler = {
+			param(
+				[string]$Context,
+				[string]$Message
+			)
+
+			Write-GuiThemeFallbackWarning -Context $Context -Message $Message
 		}
 
-		foreach ($key in $requiredKeys)
-		{
-			$currentValue = if ($repairedTheme.ContainsKey($key)) { [string]$repairedTheme[$key] } else { $null }
-			if (-not [string]::IsNullOrWhiteSpace($currentValue))
-			{
-				continue
-			}
-
-			$fallbackValue = $null
-			if ($primaryTheme -and $primaryTheme.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$primaryTheme[$key]))
-			{
-				$fallbackValue = [string]$primaryTheme[$key]
-			}
-			elseif ($secondaryTheme -and $secondaryTheme.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$secondaryTheme[$key]))
-			{
-				$fallbackValue = [string]$secondaryTheme[$key]
-			}
-			else
-			{
-				$fallbackValue = '#89B4FA'
-			}
-
-			$repairedTheme[$key] = $fallbackValue
-			Write-GuiThemeFallbackWarning -Context "Repair-GuiThemePalette/$ThemeName" -Message "Filled missing color '$key' with $fallbackValue."
-		}
-
-		return $repairedTheme
+		return (GUICommon\Repair-GuiThemePalette -Theme $Theme -ThemeName $ThemeName -ReferenceThemes @($primaryTheme, $secondaryTheme) -WarningHandler $warningHandler)
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Resolve-GuiThemeResourcePath
+	{
+		param (
+			[ValidateSet('Dark', 'Light')]
+			[string]$ThemeName
+		)
+
+		$themeRoot = if (-not [string]::IsNullOrWhiteSpace([string]$Script:GuiExtractedRoot))
+		{
+			[string]$Script:GuiExtractedRoot
+		}
+		else
+		{
+			$PSScriptRoot
+		}
+
+		return (Join-Path -Path $themeRoot -ChildPath ('Themes\{0}.xaml' -f $ThemeName))
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Import-GuiThemeResourceDictionary
+	{
+		param (
+			[ValidateSet('Dark', 'Light')]
+			[string]$ThemeName
+		)
+
+		$themePath = Resolve-GuiThemeResourcePath -ThemeName $ThemeName
+		if (-not (Test-Path -LiteralPath $themePath -PathType Leaf))
+		{
+			throw "Theme resource dictionary not found: $themePath"
+		}
+
+		$reader = $null
+		try
+		{
+			$reader = [System.Xml.XmlReader]::Create($themePath)
+			$dictionary = [System.Windows.Markup.XamlReader]::Load($reader)
+			if (-not ($dictionary -is [System.Windows.ResourceDictionary]))
+			{
+				throw "Theme resource file did not load as a ResourceDictionary: $themePath"
+			}
+			$dictionary['Baseline.ThemeDictionaryMarker'] = $ThemeName
+			return $dictionary
+		}
+		finally
+		{
+			if ($reader) { $reader.Close() }
+		}
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
+
+	function Set-GuiThemeResources
+	{
+		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+		param (
+			[object]$Target,
+			[ValidateSet('Dark', 'Light')]
+			[string]$ThemeName
+		)
+
+		if (-not $Target) { throw 'Cannot apply theme resources because the target is null.' }
+		if (-not ($Target.PSObject.Properties['Resources'] -or $Target.GetType().GetProperty('Resources'))) { throw 'Cannot apply theme resources because the target has no Resources property.' }
+
+		$resources = $Target.Resources
+		if (-not $resources) { throw 'Cannot apply theme resources because the target Resources property is null.' }
+
+		$oldThemeDictionaries = @(
+			$resources.MergedDictionaries |
+				Where-Object { $_ -is [System.Windows.ResourceDictionary] -and $_.Contains('Baseline.ThemeDictionaryMarker') }
+		)
+		foreach ($dict in $oldThemeDictionaries)
+		{
+			[void]$resources.MergedDictionaries.Remove($dict)
+		}
+
+		$newDictionary = Import-GuiThemeResourceDictionary -ThemeName $ThemeName
+		[void]$resources.MergedDictionaries.Add($newDictionary)
+		return $true
+	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function ConvertTo-GuiBrush
 	{
@@ -273,7 +493,7 @@
 		if (-not $converter) { $converter = [System.Windows.Media.BrushConverter]::new() }
 		try
 		{
-			$brush = $converter.ConvertFromString($resolvedColor)
+			$brush = [System.Windows.Media.Brush]$converter.ConvertFromString($resolvedColor)
 		}
 		catch
 		{
@@ -281,13 +501,17 @@
 			$resolvedColor = $resolvedFallback
 			$cached = $Script:BrushCache[$resolvedColor]
 			if ($cached) { return $cached }
-			$brush = $converter.ConvertFromString($resolvedFallback)
+			$brush = [System.Windows.Media.Brush]$converter.ConvertFromString($resolvedFallback)
 		}
 
 		if ($brush -and $brush.CanFreeze) { $brush.Freeze() }
 		$Script:BrushCache[$resolvedColor] = $brush
 		return $brush
 	}
+
+	<#
+	    .SYNOPSIS
+	#>
 
 	function New-SafeBrushConverter
 	{
@@ -308,7 +532,7 @@
 			if (-not [string]::IsNullOrWhiteSpace($key))
 			{
 				$hit = $cacheRef[$key]
-				if ($hit) { return $hit }
+				if ($hit) { return [System.Windows.Media.Brush]$hit }
 			}
 			else
 			{
@@ -316,29 +540,32 @@
 			}
 			try
 			{
-				$brush = $rawConverter.ConvertFromString($key)
+				$brush = [System.Windows.Media.Brush]$rawConverter.ConvertFromString($key)
 				if ($brush -and $brush.CanFreeze) { $brush.Freeze() }
 				if ($brush) { $cacheRef[$key] = $brush }
-				return $brush
+				return [System.Windows.Media.Brush]$brush
 			}
 			catch
 			{
+				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ThemeManagement.New-SafeBrushConverter:catch546' -Severity Debug }
+
 				if ($fallbackCapture -and $fallbackCapture -ne $key)
 				{
 					$fb = $cacheRef[$fallbackCapture]
-					if ($fb) { return $fb }
+					if ($fb) { return [System.Windows.Media.Brush]$fb }
 					try
 					{
-						$fb = $rawConverter.ConvertFromString($fallbackCapture)
+						$fb = [System.Windows.Media.Brush]$rawConverter.ConvertFromString($fallbackCapture)
 						if ($fb -and $fb.CanFreeze) { $fb.Freeze() }
 						if ($fb) { $cacheRef[$fallbackCapture] = $fb }
-						return $fb
+						return [System.Windows.Media.Brush]$fb
 					}
-					catch { return $null }
+					catch {
+						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'ThemeManagement.New-SafeBrushConverter:catch559' -Severity Debug }
+					 return $null }
 				}
 				return $null
 			}
 		}.GetNewClosure()
 		return $converter
 	}
-

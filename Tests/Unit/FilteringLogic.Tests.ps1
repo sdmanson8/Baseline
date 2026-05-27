@@ -1,6 +1,45 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
+    <#
+        .SYNOPSIS
+    #>
+
+    function Get-UxLocalizedString {
+        param(
+            [string]$Key,
+            [string]$Fallback,
+            [object[]]$FormatArgs = @()
+        )
+
+        if ($FormatArgs.Count -gt 0)
+        {
+            return ($Fallback -f $FormatArgs)
+        }
+
+        return $Fallback
+    }
+
+    <#
+        .SYNOPSIS
+    #>
+
+    function Resolve-GuiPrimaryTabForTweak {
+        param([object]$Tweak)
+
+        if ($null -eq $Tweak)
+        {
+            return $null
+        }
+
+        if ($Tweak.PSObject.Properties['Category'] -and $Script:CategoryToPrimary.ContainsKey([string]$Tweak.Category))
+        {
+            return $Script:CategoryToPrimary[[string]$Tweak.Category]
+        }
+
+        return [string]$Tweak.Category
+    }
+
     $filePath = Join-Path $PSScriptRoot '../../Module/GUI/FilteringLogic.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
     $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
@@ -11,10 +50,26 @@ BeforeAll {
     }
 
     # Stub helper functions referenced by FilteringLogic
+    <#
+        .SYNOPSIS
+    #>
+
     function script:Test-GuiObjectField { param([object]$Object, [string]$FieldName) return ($null -ne $Object -and $Object.PSObject.Properties[$FieldName]) }
+    <#
+        .SYNOPSIS
+    #>
     function script:Test-TweakRemovalOperation { param([object]$Tweak) return ($Tweak.Tags -contains 'removal') }
+    <#
+        .SYNOPSIS
+    #>
     function script:Test-TweakIsSelected { param([object]$Tweak, [object]$StateSource) return ($StateSource.IsChecked -eq $true) }
+    <#
+        .SYNOPSIS
+    #>
     function script:Test-TweakIsRestorable { param([object]$Tweak) return ($Tweak.Restorable -eq $true) }
+    <#
+        .SYNOPSIS
+    #>
     function script:Test-TweakIsGamingRelated { param([object]$Tweak) return ($Tweak.Tags -contains 'gaming') }
 
     # Initialize $Script: filter state so functions can resolve them under StrictMode
@@ -120,6 +175,12 @@ Describe 'Test-TweakVisibleInCurrentMode' {
         Test-TweakVisibleInCurrentMode -Tweak $tweak | Should -Be $true
     }
 
+    It 'honors VisibleIf before expert-mode visibility' {
+        $Script:AdvancedMode = $true
+        $tweak = [pscustomobject]@{ Risk = 'Low'; PresetTier = 'Basic'; Safe = $true; Type = 'Action'; Restorable = $false; Tags = @(); Function = 'CheckWinGet'; VisibleIf = { $false } }
+        Test-TweakVisibleInCurrentMode -Tweak $tweak | Should -Be $false
+    }
+
     It 'delegates to safe mode filter when safe mode is on' {
         $Script:SafeMode = $true
         $safetweak = [pscustomobject]@{ Risk = 'Low'; PresetTier = 'Basic'; Safe = $true; Type = 'Toggle'; Restorable = $true; Tags = @(); Function = 'SafeFunc' }
@@ -209,6 +270,7 @@ Describe 'Test-TweakMatchesCurrentFilters' {
         $Script:TweakSearchHaystacks = @{}
         $Script:GameMode = $false
         $Script:GameModeAllowlist = @()
+        $Script:GamingModeActive = $false
         $Script:CategoryToPrimary = @{ 'System' = 'System'; 'Privacy' = 'Privacy' }
     }
 
@@ -217,9 +279,26 @@ Describe 'Test-TweakMatchesCurrentFilters' {
         Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab 'System' -SearchQuery '' | Should -Be $true
     }
 
+    It 'does not match hidden VisibleIf entries used by startup hooks' {
+        $Script:CategoryToPrimary = @{ 'Initial Setup' = 'Initial Setup' }
+        $Script:AdvancedMode = $true
+        $tweak = [pscustomobject]@{ Risk = 'Low'; PresetTier = 'Basic'; Category = 'Initial Setup'; Tags = @(); Function = 'CheckWinGet'; Name = 'Check WinGet'; Description = ''; Detail = ''; WhyThisMatters = ''; SubCategory = ''; Safe = $true; Impact = ''; RequiresRestart = $false; Type = 'Action'; Restorable = $false; VisibleIf = { $false } }
+        Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab 'Initial Setup' -SearchQuery '' | Should -Be $false
+    }
+
     It 'rejects tweak in wrong tab' {
         $tweak = [pscustomobject]@{ Risk = 'Low'; PresetTier = 'Basic'; Category = 'Privacy'; Tags = @(); Function = 'Test'; Name = 'Test'; Description = ''; Detail = ''; WhyThisMatters = ''; SubCategory = ''; Safe = $true; Impact = ''; RequiresRestart = $false; Type = 'Toggle'; Restorable = $true }
         Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab 'System' -SearchQuery '' | Should -Be $false
+    }
+
+    It 'hides Gaming tweaks outside the standalone Gaming mode' {
+        $Script:CategoryToPrimary = @{ 'Gaming' = 'Gaming' }
+        $tweak = [pscustomobject]@{ Risk = 'Low'; PresetTier = 'Basic'; Category = 'Gaming'; Tags = @(); Function = 'GameOptimize'; Name = 'Game Optimize'; Description = ''; Detail = ''; WhyThisMatters = ''; SubCategory = ''; Safe = $true; Impact = ''; RequiresRestart = $false; Type = 'Toggle'; Restorable = $true }
+
+        Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab 'Gaming' -SearchQuery '' | Should -Be $false
+
+        $Script:GamingModeActive = $true
+        Test-TweakMatchesCurrentFilters -Tweak $tweak -PrimaryTab 'Gaming' -SearchQuery '' | Should -Be $true
     }
 
     It 'filters by risk level' {

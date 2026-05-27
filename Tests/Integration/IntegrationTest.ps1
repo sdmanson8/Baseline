@@ -1,4 +1,4 @@
-﻿<#
+<#
     .SYNOPSIS
     VM-based integration test runner for Baseline.
 
@@ -23,10 +23,10 @@
     restore points are unavailable on Server SKUs).
 
     .EXAMPLE
-    pwsh -File .\Tests\Integration\IntegrationTest.ps1
+    powershell -File .\Tests\Integration\IntegrationTest.ps1
 
     .EXAMPLE
-    pwsh -File .\Tests\Integration\IntegrationTest.ps1 -Category Registry -DryRun
+    powershell -File .\Tests\Integration\IntegrationTest.ps1 -Category Registry -DryRun
 #>
 
 [CmdletBinding()]
@@ -54,6 +54,10 @@ $script:Results  = [System.Collections.Generic.List[pscustomobject]]::new()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Write-TestResult
 {
     param (
@@ -82,9 +86,13 @@ function Write-TestResult
 
     $line = "  $symbol [$Category] $Name"
     if ($Detail) { $line += " -- $Detail" }
-    # Write-Host: intentional — test/tooling console output
+    # Write-Host: intentional - test/tooling console output
     Write-Host $line
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Assert-IsAdministrator
 {
@@ -96,6 +104,9 @@ function Assert-IsAdministrator
     }
 }
 
+<#
+    .SYNOPSIS
+#>
 function Assert-IsWindows
 {
     if ($env:OS -ne 'Windows_NT')
@@ -107,6 +118,10 @@ function Assert-IsWindows
 # ---------------------------------------------------------------------------
 # Module import
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Import-BaselineModules
 {
     $modulePath = Join-Path $script:RepoRoot 'Module'
@@ -126,6 +141,10 @@ function Import-BaselineModules
 # ---------------------------------------------------------------------------
 # System restore point
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function New-IntegrationRestorePoint
 {
     if ($SkipRestorePoint)
@@ -148,8 +167,275 @@ function New-IntegrationRestorePoint
 }
 
 # ---------------------------------------------------------------------------
+# Registry assertion helpers
+# ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
+function Get-RegistryValueSnapshot
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $snapshot = [ordered]@{
+        Path   = $Path
+        Name   = $Name
+        Exists = $false
+        Value  = $null
+        Type   = $null
+    }
+
+    try
+    {
+        if (-not (Test-Path -Path $Path))
+        {
+            return [pscustomobject]$snapshot
+        }
+
+        $registryKey = Get-Item -Path $Path -ErrorAction Stop
+        $properties = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
+        if ($properties -and $properties.PSObject.Properties[$Name])
+        {
+            $snapshot.Exists = $true
+            $snapshot.Value = $properties.PSObject.Properties[$Name].Value
+            $snapshot.Type = $registryKey.GetValueKind($Name).ToString()
+        }
+    }
+    catch
+    {
+        # Treat missing or unreadable values as absent; callers verify writes explicitly.
+    }
+
+    return [pscustomobject]$snapshot
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Restore-RegistryValueSnapshot
+{
+    param (
+        [Parameter(Mandatory)]
+        [psobject]$Snapshot
+    )
+
+    if ($Snapshot.Exists)
+    {
+        if (-not (Test-Path -Path $Snapshot.Path))
+        {
+            New-Item -Path $Snapshot.Path -Force -ErrorAction Stop | Out-Null
+        }
+
+        New-ItemProperty -Path $Snapshot.Path -Name $Snapshot.Name -PropertyType $Snapshot.Type -Value $Snapshot.Value -Force -ErrorAction Stop | Out-Null
+
+        return
+    }
+
+    if (Test-Path -Path $Snapshot.Path)
+    {
+        Remove-ItemProperty -Path $Snapshot.Path -Name $Snapshot.Name -Force -ErrorAction SilentlyContinue
+    }
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Restore-RegistryValueSnapshots
+{
+    param (
+        [Parameter(Mandatory)]
+        [object[]]$Snapshots,
+
+        [Parameter(Mandatory)]
+        [string]$Category,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    try
+    {
+        foreach ($snapshot in $Snapshots)
+        {
+            if ($null -ne $snapshot)
+            {
+                Restore-RegistryValueSnapshot -Snapshot $snapshot
+            }
+        }
+
+        Write-TestResult -Category $Category -Name $Name -Result Pass
+    }
+    catch
+    {
+        Write-TestResult -Category $Category -Name $Name -Result Fail -Detail $_.Exception.Message
+    }
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Get-CompositeRegistryValueEntry
+{
+    param (
+        [AllowEmptyString()]
+        [string]$Value,
+
+        [Parameter(Mandatory)]
+        [string]$CompositeStringKey
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value))
+    {
+        return $null
+    }
+
+    foreach ($segment in $Value.Split(';'))
+    {
+        $token = $segment.Trim()
+        if ([string]::IsNullOrWhiteSpace($token))
+        {
+            continue
+        }
+
+        $equalsIndex = $token.IndexOf('=')
+        if ($equalsIndex -lt 0)
+        {
+            continue
+        }
+
+        $segmentKey = $token.Substring(0, $equalsIndex).Trim()
+        if ($segmentKey.Equals($CompositeStringKey, [System.StringComparison]::OrdinalIgnoreCase))
+        {
+            return $token.Substring($equalsIndex + 1).Trim()
+        }
+    }
+
+    return $null
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Test-RegistryValueMatches
+{
+    param (
+        [Parameter(Mandatory)]
+        [string]$Category,
+
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$ValueName,
+
+        [Parameter(Mandatory)]
+        [object]$ExpectedValue,
+
+        [string]$CompositeStringKey
+    )
+
+    try
+    {
+        $current = Get-RegistryValueSnapshot -Path $Path -Name $ValueName
+        if (-not $current.Exists)
+        {
+            Write-TestResult -Category $Category -Name $Name -Result Fail -Detail "Value '$ValueName' is not set at '$Path'"
+            return $false
+        }
+
+        $actualValue = $current.Value
+        if ($PSBoundParameters.ContainsKey('CompositeStringKey'))
+        {
+            $actualValue = Get-CompositeRegistryValueEntry -Value ([string]$current.Value) -CompositeStringKey $CompositeStringKey
+        }
+
+        $matches = if ($PSBoundParameters.ContainsKey('CompositeStringKey'))
+        {
+            ([string]$actualValue -eq [string]$ExpectedValue)
+        }
+        else
+        {
+            ($actualValue -eq $ExpectedValue)
+        }
+
+        if ($matches)
+        {
+            Write-TestResult -Category $Category -Name $Name -Result Pass
+            return $true
+        }
+
+        $detail = if ($PSBoundParameters.ContainsKey('CompositeStringKey'))
+        {
+            "Expected $CompositeStringKey=$ExpectedValue, got '$actualValue' in '$($current.Value)'"
+        }
+        else
+        {
+            "Expected $ExpectedValue, got $actualValue"
+        }
+
+        Write-TestResult -Category $Category -Name $Name -Result Fail -Detail $detail
+        return $false
+    }
+    catch
+    {
+        Write-TestResult -Category $Category -Name $Name -Result Fail -Detail $_.Exception.Message
+        return $false
+    }
+}
+
+<#
+    .SYNOPSIS
+#>
+
+function Get-GpuSchedulingSupportStatus
+{
+    try
+    {
+        $adapters = @(
+            Get-CimInstance -ClassName CIM_VideoController -ErrorAction Stop |
+                Where-Object { ($_.AdapterDACType -ne 'Internal') -and ($null -ne $_.AdapterDACType) }
+        )
+        $computerSystem = Get-CimInstance -ClassName CIM_ComputerSystem -ErrorAction Stop
+        $wddmVersionMin = [Microsoft.Win32.Registry]::GetValue(
+            'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\FeatureSetUsage',
+            'WddmVersion_Min',
+            $null
+        )
+
+        return [pscustomobject]@{
+            Supported = ($adapters.Count -gt 0) -and ($computerSystem.Model -notmatch 'Virtual') -and ($wddmVersionMin -ge 2700)
+            Detail    = "Adapters=$($adapters.Count); Model=$($computerSystem.Model); WddmVersion_Min=$wddmVersionMin"
+        }
+    }
+    catch
+    {
+        return [pscustomobject]@{
+            Supported = $false
+            Detail    = "Unable to determine hardware support: $($_.Exception.Message)"
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Category: Registry
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-RegistryTests
 {
     Write-Host "`n=== Registry Tests ===" -ForegroundColor Cyan
@@ -307,6 +593,10 @@ function Invoke-RegistryTests
 # ---------------------------------------------------------------------------
 # Category: Services
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-ServiceTests
 {
     Write-Host "`n=== Service Tests ===" -ForegroundColor Cyan
@@ -380,6 +670,10 @@ function Invoke-ServiceTests
 # ---------------------------------------------------------------------------
 # Category: Packages
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-PackageTests
 {
     Write-Host "`n=== Package Tests ===" -ForegroundColor Cyan
@@ -428,11 +722,14 @@ function Invoke-PackageTests
 # ---------------------------------------------------------------------------
 # Category: Group Policy
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-GroupPolicyTests
 {
     Write-Host "`n=== Group Policy Tests ===" -ForegroundColor Cyan
 
-    # Test: LanmanWorkstationGuestAuthPolicy (LGPO-backed toggle)
     # This uses Set-Policy under the hood.
     # Verify the registry side-effect at:
     #   HKLM:\SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation
@@ -451,11 +748,10 @@ function Invoke-GroupPolicyTests
     }
     catch { }
 
-    # Check if Set-Policy / LGPO is available
     $setPolicyAvailable = Get-Command -Name 'Set-Policy' -ErrorAction SilentlyContinue
     if (-not $setPolicyAvailable)
     {
-        Write-TestResult -Category 'GroupPolicy' -Name 'Set-Policy command available' -Result Skip -Detail 'Set-Policy not loaded; LGPO infrastructure may not be present'
+        Write-TestResult -Category 'GroupPolicy' -Name 'Set-Policy command available' -Result Skip -Detail 'Set-Policy not loaded; Baseline policy infrastructure may not be present'
         return
     }
 
@@ -525,6 +821,10 @@ function Invoke-GroupPolicyTests
 # ---------------------------------------------------------------------------
 # Category: Game Mode
 # ---------------------------------------------------------------------------
+<#
+    .SYNOPSIS
+#>
+
 function Invoke-GameModeTests
 {
     Write-Host "`n=== Game Mode Tests ===" -ForegroundColor Cyan
@@ -534,27 +834,29 @@ function Invoke-GameModeTests
     if (-not $getProfiles)
     {
         Write-TestResult -Category 'GameMode' -Name 'Get-GameModeProfileDefinitions available' -Result Skip -Detail 'Function not loaded'
-        return
     }
-
-    try
+    else
     {
-        $profiles = Get-GameModeProfileDefinitions
-        if ($profiles.Count -ge 4)
+        try
         {
-            Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Pass -Detail "$($profiles.Count) profiles"
+            $profiles = Get-GameModeProfileDefinitions
+            if ($profiles.Count -ge 4)
+            {
+                Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Pass -Detail "$($profiles.Count) profiles"
+            }
+            else
+            {
+                Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Fail -Detail "Expected >= 4, got $($profiles.Count)"
+            }
         }
-        else
+        catch
         {
-            Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Fail -Detail "Expected >= 4, got $($profiles.Count)"
+            Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Fail -Detail $_.Exception.Message
         }
-    }
-    catch
-    {
-        Write-TestResult -Category 'GameMode' -Name 'Profile definitions load' -Result Fail -Detail $_.Exception.Message
     }
 
     # Verify allowlist loads
+    $allowlist = $null
     try
     {
         $allowlist = Get-GameModeAllowlist
@@ -577,37 +879,156 @@ function Invoke-GameModeTests
     if (-not $mergeCmd)
     {
         Write-TestResult -Category 'GameMode' -Name 'Merge-GameModeSelectionState available' -Result Skip -Detail 'Function not loaded'
-        return
+    }
+    elseif ($null -eq $allowlist)
+    {
+        Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Skip -Detail 'Allowlist unavailable'
+    }
+    else
+    {
+        try
+        {
+            # Load full manifest to test merge
+            $dataDir  = Join-Path $script:RepoRoot 'Module/Data'
+            $manifest = @()
+            foreach ($jsonFile in Get-ChildItem -Path $dataDir -Filter '*.json' -File)
+            {
+                $data = Get-Content -LiteralPath $jsonFile.FullName -Raw | ConvertFrom-Json
+                if ($data -and $data.PSObject.Properties['Entries'])
+                {
+                    $manifest += @($data.Entries)
+                }
+            }
+
+            $selectionState = Merge-GameModeSelectionState -Manifest $manifest -ProfileName 'Casual' -Allowlist $allowlist
+            if ($selectionState -is [System.Collections.IDictionary])
+            {
+                Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Pass -Detail "$($selectionState.Count) selections"
+            }
+            else
+            {
+                Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Fail -Detail 'Result is not a dictionary'
+            }
+        }
+        catch
+        {
+            Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Fail -Detail $_.Exception.Message
+        }
+    }
+
+    $gameBarPath = 'HKCU:\Software\Microsoft\GameBar'
+    $autoGameModeSnapshot = Get-RegistryValueSnapshot -Path $gameBarPath -Name 'AutoGameModeEnabled'
+    $allowAutoGameModeSnapshot = Get-RegistryValueSnapshot -Path $gameBarPath -Name 'AllowAutoGameMode'
+
+    try
+    {
+        WindowsGameMode -Enable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'WindowsGameMode -Enable sets AutoGameModeEnabled=1' -Path $gameBarPath -ValueName 'AutoGameModeEnabled' -ExpectedValue 1 | Out-Null
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'WindowsGameMode -Enable sets AllowAutoGameMode=1' -Path $gameBarPath -ValueName 'AllowAutoGameMode' -ExpectedValue 1 | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'WindowsGameMode -Enable executes' -Result Fail -Detail $_.Exception.Message
     }
 
     try
     {
-        # Load full manifest to test merge
-        $dataDir  = Join-Path $script:RepoRoot 'Module/Data'
-        $manifest = @()
-        foreach ($jsonFile in Get-ChildItem -Path $dataDir -Filter '*.json' -File)
-        {
-            $data = Get-Content -LiteralPath $jsonFile.FullName -Raw | ConvertFrom-Json
-            if ($data.Entries)
-            {
-                $manifest += $data.Entries
-            }
-        }
-
-        $selectionState = Merge-GameModeSelectionState -Manifest $manifest -ProfileName 'Casual' -Allowlist $allowlist
-        if ($selectionState -is [System.Collections.IDictionary])
-        {
-            Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Pass -Detail "$($selectionState.Count) selections"
-        }
-        else
-        {
-            Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Fail -Detail 'Result is not a dictionary'
-        }
+        WindowsGameMode -Disable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'WindowsGameMode -Disable sets AutoGameModeEnabled=0' -Path $gameBarPath -ValueName 'AutoGameModeEnabled' -ExpectedValue 0 | Out-Null
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'WindowsGameMode -Disable sets AllowAutoGameMode=0' -Path $gameBarPath -ValueName 'AllowAutoGameMode' -ExpectedValue 0 | Out-Null
     }
     catch
     {
-        Write-TestResult -Category 'GameMode' -Name 'Casual profile selection state builds' -Result Fail -Detail $_.Exception.Message
+        Write-TestResult -Category 'GameMode' -Name 'WindowsGameMode -Disable executes' -Result Fail -Detail $_.Exception.Message
     }
+
+    Restore-RegistryValueSnapshots -Snapshots @(
+        $autoGameModeSnapshot
+        $allowAutoGameModeSnapshot
+    ) -Category 'GameMode' -Name 'WindowsGameMode restored original state'
+
+    $cpuPriorityPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games'
+    $cpuPrioritySnapshot = Get-RegistryValueSnapshot -Path $cpuPriorityPath -Name 'Priority'
+
+    try
+    {
+        GamingCpuPriority -Enable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'GamingCpuPriority -Enable sets Priority=6' -Path $cpuPriorityPath -ValueName 'Priority' -ExpectedValue 6 | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'GamingCpuPriority -Enable executes' -Result Fail -Detail $_.Exception.Message
+    }
+
+    try
+    {
+        GamingCpuPriority -Disable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'GamingCpuPriority -Disable sets Priority=2' -Path $cpuPriorityPath -ValueName 'Priority' -ExpectedValue 2 | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'GamingCpuPriority -Disable executes' -Result Fail -Detail $_.Exception.Message
+    }
+
+    Restore-RegistryValueSnapshots -Snapshots @($cpuPrioritySnapshot) -Category 'GameMode' -Name 'GamingCpuPriority restored original state'
+
+    $directXPath = 'HKCU:\Software\Microsoft\DirectX\UserGpuPreferences'
+    $directXSnapshot = Get-RegistryValueSnapshot -Path $directXPath -Name 'DirectXUserGlobalSettings'
+
+    try
+    {
+        DirectXFlipModel -Enable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'DirectXFlipModel -Enable sets SwapEffectUpgradeEnable=1' -Path $directXPath -ValueName 'DirectXUserGlobalSettings' -ExpectedValue 1 -CompositeStringKey 'SwapEffectUpgradeEnable' | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'DirectXFlipModel -Enable executes' -Result Fail -Detail $_.Exception.Message
+    }
+
+    try
+    {
+        DirectXFlipModel -Disable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'DirectXFlipModel -Disable sets SwapEffectUpgradeEnable=0' -Path $directXPath -ValueName 'DirectXUserGlobalSettings' -ExpectedValue 0 -CompositeStringKey 'SwapEffectUpgradeEnable' | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'DirectXFlipModel -Disable executes' -Result Fail -Detail $_.Exception.Message
+    }
+
+    Restore-RegistryValueSnapshots -Snapshots @($directXSnapshot) -Category 'GameMode' -Name 'DirectXFlipModel restored original state'
+
+    $gpuSchedulingPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
+    $gpuSchedulingSnapshot = Get-RegistryValueSnapshot -Path $gpuSchedulingPath -Name 'HwSchMode'
+
+    try
+    {
+        GPUScheduling -Disable
+        Test-RegistryValueMatches -Category 'GameMode' -Name 'GPUScheduling -Disable sets HwSchMode=1' -Path $gpuSchedulingPath -ValueName 'HwSchMode' -ExpectedValue 1 | Out-Null
+    }
+    catch
+    {
+        Write-TestResult -Category 'GameMode' -Name 'GPUScheduling -Disable executes' -Result Fail -Detail $_.Exception.Message
+    }
+
+    $gpuSchedulingSupport = Get-GpuSchedulingSupportStatus
+    if ($gpuSchedulingSupport.Supported)
+    {
+        try
+        {
+            GPUScheduling -Enable
+            Test-RegistryValueMatches -Category 'GameMode' -Name 'GPUScheduling -Enable sets HwSchMode=2' -Path $gpuSchedulingPath -ValueName 'HwSchMode' -ExpectedValue 2 | Out-Null
+        }
+        catch
+        {
+            Write-TestResult -Category 'GameMode' -Name 'GPUScheduling -Enable executes' -Result Fail -Detail $_.Exception.Message
+        }
+    }
+    else
+    {
+        Write-TestResult -Category 'GameMode' -Name 'GPUScheduling -Enable sets HwSchMode=2' -Result Skip -Detail $gpuSchedulingSupport.Detail
+    }
+
+    Restore-RegistryValueSnapshots -Snapshots @($gpuSchedulingSnapshot) -Category 'GameMode' -Name 'GPUScheduling restored original state'
 }
 
 # ---------------------------------------------------------------------------

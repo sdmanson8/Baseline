@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 BeforeAll {
     $Script:FixtureRoot = Join-Path $PSScriptRoot '../Fixtures/ExecutionSummary'
@@ -21,6 +21,10 @@ BeforeAll {
         'Pending', 'Running', 'Success', 'Failed',
         'Skipped', 'NotApplicable', 'NotRun'
     )
+
+    <#
+        .SYNOPSIS
+    #>
 
     function Load-Fixture {
         param ([string]$Name)
@@ -230,7 +234,7 @@ Describe 'RestoreDefaults fixture invariants' {
 
     It 'every record has restore-specific OutcomeReason wording' {
         foreach ($record in @($Script:RestoreRecords)) {
-            $record.OutcomeReason | Should -BeLike '*Restored to Windows default*' -Because "RestoreDefaults record '$($record.Key)' should use restore wording"
+            $record.OutcomeReason | Should -BeLike '*Restored to recorded default*' -Because "RestoreDefaults record '$($record.Key)' should use restore wording"
         }
     }
 }

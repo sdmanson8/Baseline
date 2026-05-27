@@ -1,7 +1,13 @@
 Set-StrictMode -Version Latest
 
 BeforeAll {
+    $sourceContentHelperPath = Join-Path $PSScriptRoot 'Support/SourceContent.Helpers.ps1'
+    if (-not (Test-Path -LiteralPath $sourceContentHelperPath)) { $sourceContentHelperPath = Join-Path $PSScriptRoot '../Support/SourceContent.Helpers.ps1' }
+    . $sourceContentHelperPath
+
+
     $filePath = Join-Path $PSScriptRoot '../../Module/SharedHelpers/Taskbar.Helpers.ps1'
+    $script:taskbarHelpersContent = Get-BaselineTestSourceText -Path $filePath
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($filePath, [ref]$null, [ref]$null)
     $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
     foreach ($fn in $functions) {
@@ -33,9 +39,22 @@ namespace WinAPI {
 "@
     }
 
+    <#
+        .SYNOPSIS
+    #>
+
     function LogWarning { param([string]$Message) $script:lastTaskbarWarning = $Message }
+    <#
+        .SYNOPSIS
+    #>
     function LogInfo {}
+    <#
+        .SYNOPSIS
+    #>
     function Set-RegistryValueSafe {}
+    <#
+        .SYNOPSIS
+    #>
     function Invoke-UCPDBypassed {
         param([scriptblock]$ScriptBlock)
         & $ScriptBlock
@@ -91,6 +110,16 @@ Describe 'Get-NewsInterestsTaskbarHashValue' {
         $result = Get-NewsInterestsTaskbarHashValue -MachineId 'machine-id' -ViewMode 2
 
         $result | Should -Be 67305985
+    }
+}
+
+Describe 'Invoke-ARM64ShellUnpin cleanup' {
+    It 'routes ARM64 shell unpin cleanup failures through Write-SwallowedException' {
+        $script:taskbarHelpersContent | Should -Match 'Write-SwallowedException -ErrorRecord \$_ -Source ''TaskbarHelpers\.Invoke-ARM64ShellUnpin\.DoIt'''
+        $script:taskbarHelpersContent | Should -Match 'Write-SwallowedException -ErrorRecord \$_ -Source ''TaskbarHelpers\.Invoke-ARM64ShellUnpin\.StopPowerShell'''
+        $script:taskbarHelpersContent | Should -Match 'Write-SwallowedException -ErrorRecord \$_ -Source ''TaskbarHelpers\.Invoke-ARM64ShellUnpin\.EndInvokePowerShell'''
+        $script:taskbarHelpersContent | Should -Match 'Write-SwallowedException -ErrorRecord \$_ -Source ''TaskbarHelpers\.Invoke-ARM64ShellUnpin\.DisposePowerShell'''
+        $script:taskbarHelpersContent | Should -Match 'Write-SwallowedException -ErrorRecord \$_ -Source ''TaskbarHelpers\.Invoke-ARM64ShellUnpin\.DisposeRunspace'''
     }
 }
 

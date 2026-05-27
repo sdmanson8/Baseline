@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run source smoke tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\Tools\Test-SmokeTest.ps1
+
+      - name: Run manifest validation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\Tools\Validate-ManifestData.ps1
+
+  release-readiness:
+    runs-on: windows-latest
+    needs: validate
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Audit launcher dependencies
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = & dotnet list .\Launcher\RunLauncher.csproj package --vulnerable --include-transitive 2>&1
+          $output | Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (($output -join "`n") -match 'has the following vulnerable packages') {
+            throw 'Vulnerable launcher package dependencies were reported.'
+          }
+
+      - name: Build launcher
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\Tools\Build-Launcher.ps1 -CopyToRepoRoot
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          choco install innosetup --no-progress -y
+          $isccPath = $null
+          $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $isccPath = $cmd.Source }
+          if (-not $isccPath) {
+            foreach ($p in @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe','C:\Program Files\Inno Setup 6\ISCC.exe')) {
+              if (Test-Path -LiteralPath $p) { $isccPath = $p; break }
+            }
+          }
+          if ($isccPath) {
+            Write-Host "ISCC located at: $isccPath"
+            $ver = (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion
+            Write-Host "ISCC ProductVersion: $ver"
+          } else {
+            Write-Host "ISCC.exe not found after choco install" -ForegroundColor Red
+          }
+
+      - name: Build release package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            & .\Tools\New-ReleasePackage.ps1 -Force -RefreshInstallerTranslations
+          } catch {
+            Write-Host "=== New-ReleasePackage.ps1 failed: $_ ===" -ForegroundColor Red
+            Write-Host "=== Searching for persisted ISCC diagnostics ===" -ForegroundColor Yellow
+            $temp = $env:TEMP
+            $persistDirs = Get-ChildItem -Path $temp -Filter 'BaselineInstaller-failed-*' -Directory -ErrorAction SilentlyContinue
+            foreach ($d in $persistDirs) {
+              Write-Host "--- $($d.FullName) ---"
+              Get-ChildItem -LiteralPath $d.FullName | ForEach-Object {
+                Write-Host "  >> $($_.Name) ($($_.Length) bytes)"
+                if ($_.Extension -in '.iss','.log') {
+                  Write-Host "--- content of $($_.Name) ---"
+                  Get-Content -LiteralPath $_.FullName | Out-Host
+                }
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $env:GITHUB_WORKSPACE "failed-$($_.Name)") -Force -ErrorAction SilentlyContinue
+              }
+            }
+            Write-Host "=== Staged source-root listing (if any) ===" -ForegroundColor Yellow
+            $stageDirs = Get-ChildItem -Path $temp -Filter 'BaselineInstaller_*' -Directory -ErrorAction SilentlyContinue
+            foreach ($d in $stageDirs) {
+              foreach ($extract in @(
+                (Join-Path $d.FullName 'x\B'),
+                (Join-Path $d.FullName 'extract\Baseline')
+              )) {
+                if (Test-Path -LiteralPath $extract) {
+                  Write-Host "--- $extract ---"
+                  Get-ChildItem -LiteralPath $extract -Force | Select-Object Mode,Name | Out-Host
+                  $ico = Join-Path $extract 'Assets\baseline-setup.ico'
+                  Write-Host "baseline-setup.ico exists: $(Test-Path -LiteralPath $ico)"
+                  break
+                }
+              }
+            }
+            throw
+          }
+
+      - name: Regenerate release test report
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\Tools\Export-TestReport.ps1
+
+      - name: Upload failed ISCC diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-iscc-diagnostics
+          path: failed-*
+          if-no-files-found: ignore
+
+      - name: Verify release contract (zip + manifest 1:1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipPattern      = '^Baseline(?:-portable)?-(v?\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+)?)\.zip$'
+          $manifestPattern = '^Baseline(?:-portable)?-(v?\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+)?)\.zip\.sha256\.json$'
+          $zip = @(Get-ChildItem -Path .\dist -File | Where-Object { $_.Name -match $zipPattern })
+          $manifest = @(Get-ChildItem -Path .\dist -File | Where-Object { $_.Name -match $manifestPattern })
+          if ($zip.Count -ne 1 -or $manifest.Count -ne 1) {
+            Write-Error "Release contract violation: expected exactly one zip and one SHA-256 manifest under .\dist. Found zips=$($zip.Count), manifests=$($manifest.Count)."
+            exit 1
+          }
+          Write-Host "OK: release contract satisfied -> $($zip[0].Name) / $($manifest[0].Name)"
+
+      - name: Validate release artifact layout
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Get-ChildItem -Path .\dist -Filter 'Baseline-*.zip' -File | Select-Object -First 1
+          if (-not $zip) { throw 'No release zip produced under .\dist' }
+          $stage = Join-Path $env:RUNNER_TEMP 'release-validate'
+          if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $stage -Force
+          $setup = Get-ChildItem -Path $stage -Filter 'Baseline-*-setup.exe' -Recurse -File -Depth 3 | Select-Object -First 1
+          if (-not $setup) { throw "Release zip $($zip.FullName) does not contain Baseline-*-setup.exe (bootstrap would fail)." }
+          $bootstrapInstall = Get-ChildItem -Path $stage -Filter 'Bootstrap.Install.ps1' -Recurse -File -Depth 4 | Select-Object -First 1
+          if (-not $bootstrapInstall) { throw "Release zip $($zip.FullName) does not contain Bootstrap.Install.ps1 (verified bootstrap handoff would fail)." }
+          $bootstrapHelpers = Join-Path (Split-Path -Path $bootstrapInstall.FullName -Parent) 'Helpers\Bootstrap.Helpers.ps1'
+          if (-not (Test-Path -LiteralPath $bootstrapHelpers -PathType Leaf)) { throw "Release zip $($zip.FullName) does not contain Bootstrap\Helpers\Bootstrap.Helpers.ps1 beside Bootstrap.Install.ps1." }
+          Write-Host "OK: $($zip.Name) -> $($setup.FullName) and $($bootstrapInstall.FullName)"
+
+      - name: Validate bootstrap verified handoff probe matches artifact layout
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'release-validate'
+          $bootstrapPath = Join-Path (Get-Location) 'Bootstrap\Bootstrap.ps1'
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile($bootstrapPath, [ref]$null, [ref]$null)
+          $fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Find-BootstrapInstallScript' }, $true) | Select-Object -First 1
+          if (-not $fn) { throw 'Find-BootstrapInstallScript is missing from Bootstrap.ps1' }
+          Invoke-Expression $fn.Extent.Text
+          $resolved = Find-BootstrapInstallScript -ExtractRoot $stage
+          if (-not $resolved) { throw "Bootstrap probe could not find Bootstrap.Install.ps1 under $stage" }
+          $helper = Join-Path (Split-Path -Path $resolved -Parent) 'Helpers\Bootstrap.Helpers.ps1'
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw "Bootstrap handoff helper was not found beside $resolved" }
+          Write-Host "OK: bootstrap resolves verified handoff script $resolved"
+
+      - name: Run release smoke tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseSmokeArgs = @{}
+
+          & .\Tools\Test-ReleaseSmoke.ps1 @releaseSmokeArgs

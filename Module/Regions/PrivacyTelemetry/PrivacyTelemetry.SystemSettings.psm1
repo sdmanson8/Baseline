@@ -1,7 +1,12 @@
 <#
     .SYNOPSIS
-    Nightly wake-up for Automatic Maintenance and Windows Updates
+    Configures system maintenance and telemetry-related settings.
 
+
+
+.DESCRIPTION
+
+Applies Baseline's system maintenance and telemetry-related settings in GUI and headless runs.
     .PARAMETER Enable
     Enable the nightly wake-up for automatic maintenance and Windows updates (default value)
 
@@ -69,8 +74,8 @@ function MaintenanceWakeUp
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "AUPowerManagement" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance" -Name "WakeUp" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "AUPowerManagement" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance" -Name "WakeUp" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -86,6 +91,11 @@ function MaintenanceWakeUp
     .SYNOPSIS
     Manage the offering of Malicious Software Removal Tool through Windows Update settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for manage the offering of Malicious Software Removal Tool through Windows Update settings.
     .PARAMETER Enable
     Enable the offering of Malicious Software Removal Tool through Windows Update (default value)
 
@@ -149,7 +159,7 @@ function UpdateMSRT
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\MRT")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\MRT" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\MRT" -Name "DontOfferThroughWUAU" -Type DWord -Value 1 -ErrorAction Stop
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\MRT" -Name "DontOfferThroughWUAU" -Type DWord -Value 1 -ErrorAction Stop
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -183,6 +193,7 @@ function UpdateMSRT
     .NOTES
     Current user
 #>
+
 function Microphone
 {
 	param
@@ -231,7 +242,7 @@ function Microphone
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessMicrophone" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" -Name "LetAppsAccessMicrophone" -Type DWord -Value 2 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -247,6 +258,11 @@ function Microphone
 .SYNOPSIS
 Configure the setting to receive updates for other Microsoft products via Windows Update
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for configure the setting to receive updates for other Microsoft products via Windows Update.
 .PARAMETER Enable
 Enable receiving updates for other Microsoft products via Windows Update
 
@@ -306,6 +322,11 @@ function UpdateMSProducts
     .SYNOPSIS
     Updating of NTFS last access timestamps settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for updating of NTFS last access timestamps settings.
     .PARAMETER Enable
     Enable updating of NTFS last access timestamps (default value)
 
@@ -387,84 +408,17 @@ function NTFSLastAccess
 	}
 }
 
-<#
-.SYNOPSIS
-NTFS paths with length over 260 characters settings
-
-.PARAMETER Enable
-Enable NTFS paths with length over 260 characters
-
-.PARAMETER Disable
-Disable NTFS paths with length over 260 characters (default value)
-
-.EXAMPLE
-NTFSLongPaths -Enable
-
-.EXAMPLE
-NTFSLongPaths -Disable
-
-.NOTES
-Current user
 #>
-function NTFSLongPaths
-{
-	param
-	(
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Enable"
-		)]
-		[switch]
-		$Enable,
-
-		[Parameter(
-			Mandatory = $true,
-			ParameterSetName = "Disable"
-		)]
-		[switch]
-		$Disable
-	)
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"Enable"
-		{
-			Write-ConsoleStatus -Action "Enabling NTFS Long Paths"
-			LogInfo "Enabling NTFS Long Paths"
-			try
-			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable NTFS Long Paths: $($_.Exception.Message)"
-			}
-		}
-		"Disable"
-		{
-			Write-ConsoleStatus -Action "Disabling NTFS Long Paths"
-			LogInfo "Disabling NTFS Long Paths"
-			try
-			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable NTFS Long Paths: $($_.Exception.Message)"
-			}
-		}
-	}
-}
-
 
 <#
     .SYNOPSIS
     Shared Experiences feature settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for shared Experiences feature settings.
     .PARAMETER Enable
     Enable the Shared Experiences feature
 
@@ -499,6 +453,22 @@ function SharedExperiences
 		$Disable
 	)
 
+	$isServer = $false
+	if (Get-Command -Name 'Get-BaselineSystemPlatformInfo' -ErrorAction SilentlyContinue)
+	{
+		$isServer = [bool](Get-BaselineSystemPlatformInfo).IsServer
+	}
+	else
+	{
+		$isServer = ((Get-CimInstance Win32_OperatingSystem).ProductType -ne 1)
+	}
+
+	if ($isServer)
+	{
+		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
+		return
+	}
+
 	switch ($PSCmdlet.ParameterSetName)
 	{
 		"Enable"
@@ -507,7 +477,7 @@ function SharedExperiences
 			LogInfo "Enabling Shared Experiences"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name "RomeSdkChannelUserAuthzPolicy" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name "RomeSdkChannelUserAuthzPolicy" -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -525,7 +495,7 @@ function SharedExperiences
 				If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP")) {
 					New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name "RomeSdkChannelUserAuthzPolicy" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP" -Name "RomeSdkChannelUserAuthzPolicy" -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -541,6 +511,11 @@ function SharedExperiences
 	.SYNOPSIS
 	The sign-in info to automatically finish setting up device after an update
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for the sign-in info to automatically finish setting up device after an update.
 	.PARAMETER Disable
 	Do not use sign-in info to automatically finish setting up device after an update
 
@@ -627,6 +602,11 @@ function SigninInfo
     .SYNOPSIS
     Sleep start menu and keyboard button feature settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for sleep start menu and keyboard button feature settings.
     .PARAMETER Enable
     Enable the Sleep start menu and keyboard button (default value)
 
@@ -672,7 +652,7 @@ function SleepButton
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name "ShowSleepOption" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name "ShowSleepOption" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
 				powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_BUTTONS SBUTTONACTION 1 2>$null | Out-Null
 				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
 				powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_BUTTONS SBUTTONACTION 1 2>$null | Out-Null
@@ -694,7 +674,7 @@ function SleepButton
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name "ShowSleepOption" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings" -Name "ShowSleepOption" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				powercfg /SETACVALUEINDEX SCHEME_CURRENT SUB_BUTTONS SBUTTONACTION 0 2>$null | Out-Null
 				if ($LASTEXITCODE -ne 0) { throw "powercfg returned exit code $LASTEXITCODE" }
 				powercfg /SETDCVALUEINDEX SCHEME_CURRENT SUB_BUTTONS SBUTTONACTION 0 2>$null | Out-Null
@@ -714,6 +694,11 @@ function SleepButton
     .SYNOPSIS
     Superfetch service settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for superfetch service settings.
     .PARAMETER Enable
     Enable the Superfetch service (default value)
 
@@ -789,6 +774,11 @@ function Superfetch
 	.SYNOPSIS
 	Tailored experiences
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for tailored experiences.
 	.PARAMETER Disable
 	Do not let Microsoft use your diagnostic data for personalized tips, ads, and recommendations
 
@@ -824,7 +814,7 @@ function TailoredExperiences
 	)
 
 	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKCU:\Software\Policies\Microsoft\Windows\CloudContent -Name DisableTailoredExperiencesWithDiagnosticData -Force -ErrorAction Ignore | Out-Null
+	Remove-RegistryValueSafe -Path "HKCU:\Software\Policies\Microsoft\Windows\CloudContent" -Name "DisableTailoredExperiencesWithDiagnosticData" | Out-Null
 	Set-Policy -Scope User -Path Software\Policies\Microsoft\Windows\CloudContent -Name DisableTailoredExperiencesWithDiagnosticData -Type CLEAR | Out-Null
 
 	switch ($PSCmdlet.ParameterSetName)
@@ -835,7 +825,7 @@ function TailoredExperiences
 			LogInfo "Disabling Diagnostic data for personalized tips, ads, and recommendations"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy' -Name 'TailoredExperiencesWithDiagnosticDataEnabled' -Value 0 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name TailoredExperiencesWithDiagnosticDataEnabled -Type DWord -Value 0 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -850,7 +840,7 @@ function TailoredExperiences
 			LogInfo "Enabling Diagnostic data for personalized tips, ads, and recommendations"
 			try
 			{
-				Set-RegistryValueSafe -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy' -Name 'TailoredExperiencesWithDiagnosticDataEnabled' -Value 1 -Type DWord | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" -Name TailoredExperiencesWithDiagnosticDataEnabled -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -886,6 +876,7 @@ function TailoredExperiences
     .NOTES
     Current user
 #>
+
 function UWPSwapFile
 {
 	param
@@ -931,7 +922,7 @@ function UWPSwapFile
 			LogInfo "Disabling the UWP apps swap file"
 			try
 			{
-				Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "SwapfileControl" -Type Dword -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "SwapfileControl" -Type Dword -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -948,6 +939,11 @@ function UWPSwapFile
     .SYNOPSIS
     Location feature settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for location feature settings.
     .PARAMETER Enable
     Enable the setting "Let websites provide locally relevant content by accessing my language list"
 
@@ -1008,7 +1004,7 @@ function WebLangList
 			LogInfo "Disabling websites to show relevant content by accessing my language list"
 			try
 			{
-				Set-ItemProperty -Path "HKCU:\Control Panel\International\User Profile" -Name "HttpAcceptLanguageOptOut" -Type DWord -Value 1 -ErrorAction Stop | Out-Null
+				Set-RegistryValueSafe -Path "HKCU:\Control Panel\International\User Profile" -Name "HttpAcceptLanguageOptOut" -Type DWord -Value 1 | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1024,6 +1020,11 @@ function WebLangList
 	.SYNOPSIS
 	Wi-Fi Sense configuration
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for wi-Fi Sense configuration.
 	.PARAMETER Disable
 	Disable Wi-Fi Sense to prevent automatic connection to open hotspots and sharing of Wi-Fi networks.
 
@@ -1067,11 +1068,11 @@ function WiFiSense
 			If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting")) {
 				New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Force | Out-Null
 			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name "Value" -Type DWord -Value 1
+			Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name "Value" -Type DWord -Value 1
 			If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots")) {
 				New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Force | Out-Null
 			}
-			Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Name "Value" -Type DWord -Value 1 | Out-Null
+			Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Name "Value" -Type DWord -Value 1 | Out-Null
 			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "AutoConnectAllowedOEM" -ErrorAction SilentlyContinue | Out-Null
 			Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "WiFISenseAllowed" -ErrorAction SilentlyContinue | Out-Null
 			Write-ConsoleStatus -Status success
@@ -1085,16 +1086,16 @@ function WiFiSense
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name "Value" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" -Name "Value" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Name "Value" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" -Name "Value" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				If (!(Test-Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config")) {
 					New-Item -Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "AutoConnectAllowedOEM" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "WiFISenseAllowed" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "AutoConnectAllowedOEM" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\WcmSvc\wifinetworkmanager\config" -Name "WiFISenseAllowed" -Type DWord -Value 0 -ErrorAction Stop | Out-Null
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1111,6 +1112,11 @@ function WiFiSense
     .SYNOPSIS
     Windows Update automatic downloads settings
 
+
+
+.DESCRIPTION
+
+Applies the Baseline behavior for windows Update automatic downloads settings.
     .PARAMETER Enable
     Enable Windows Update automatic downloads (default value)
 
@@ -1174,7 +1180,7 @@ function UpdateAutoDownload
 				If (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")) {
 					New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Force -ErrorAction Stop | Out-Null
 				}
-				Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "AUOptions" -Type DWord -Value 2 -ErrorAction Stop
+				Set-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "AUOptions" -Type DWord -Value 2 -ErrorAction Stop
 				Write-ConsoleStatus -Status success
 			}
 			catch
@@ -1187,5 +1193,20 @@ function UpdateAutoDownload
 }
 
 #endregion Privacy & Telemetry
-
-Export-ModuleMember -Function '*'
+$ExportedFunctions = @(
+    'MaintenanceWakeUp',
+    'Microphone',
+    'NTFSLastAccess',
+    'SharedExperiences',
+    'SigninInfo',
+    'SleepButton',
+    'Superfetch',
+    'TailoredExperiences',
+    'UpdateAutoDownload',
+    'UpdateMSProducts',
+    'UpdateMSRT',
+    'UWPSwapFile',
+    'WebLangList',
+    'WiFiSense'
+)
+Export-ModuleMember -Function $ExportedFunctions

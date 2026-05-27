@@ -1,0 +1,7 @@
+{
+    "Schema": "Baseline.AddedInVersions",
+    "SchemaVersion": 1,
+    "_comment": "Map tweak Function name -> first Baseline version it shipped in. Tweaks present here whose version is greater than the user's NewBadgeBaseline render a NEW badge. Add an entry when shipping a new tweak, e.g. \"Disable-Recall\": \"4.1.0\".",
+    "Functions": {
+    }
+}

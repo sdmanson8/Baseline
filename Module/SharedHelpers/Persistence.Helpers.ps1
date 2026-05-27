@@ -1,7 +1,11 @@
-# Persistence helper slice for Baseline.
+# Persistence helpers for Baseline.
 # Provides standardized JSON document persistence with schema versioning.
 # All writes use UTF-8 no BOM (project convention from L-6 fix).
 # JSON serialization uses -Depth 16 (project convention from D-45 fix).
+
+<#
+    .SYNOPSIS
+#>
 
 function Get-BaselineDataDirectory
 {
@@ -29,6 +33,10 @@ function Get-BaselineDataDirectory
 	return $dataDir
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Write-BaselineDocument
 {
 	<#
@@ -51,10 +59,29 @@ function Write-BaselineDocument
 		[object]$Data
 	)
 
+	if (Get-Command -Name 'Assert-BaselineWriteAllowed' -ErrorAction SilentlyContinue)
+	{
+		Assert-BaselineWriteAllowed -Operation ("Write-BaselineDocument({0})" -f $Schema)
+	}
+
 	$baselineVersion = $null
 	if (Get-Command -Name 'Get-BaselineDisplayVersion' -ErrorAction SilentlyContinue)
 	{
-		try { $baselineVersion = Get-BaselineDisplayVersion } catch { }
+		try
+		{
+			$baselineVersion = Get-BaselineDisplayVersion
+		}
+		catch
+		{
+			if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue)
+			{
+				Write-SwallowedException -ErrorRecord $_ -Source 'Persistence.Write-BaselineDocument.BaselineVersion' -Severity Debug
+			}
+			else
+			{
+				Write-Verbose ("Persistence.Write-BaselineDocument.BaselineVersion: {0}" -f $_.Exception.Message)
+			}
+		}
 	}
 
 	$envelope = [ordered]@{
@@ -76,6 +103,10 @@ function Write-BaselineDocument
 	$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 	[System.IO.File]::WriteAllText($FilePath, $json, $utf8NoBom)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Read-BaselineDocument
 {
@@ -99,7 +130,7 @@ function Read-BaselineDocument
 	try
 	{
 		$content = [System.IO.File]::ReadAllText($FilePath, [System.Text.Encoding]::UTF8)
-		$document = $content | ConvertFrom-Json
+		$document = $content | ConvertFrom-BaselineJson -Depth 16
 	}
 	catch
 	{
@@ -118,6 +149,10 @@ function Read-BaselineDocument
 	return $document
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Add-BaselineAuditRecord
 {
 	<#
@@ -133,6 +168,11 @@ function Add-BaselineAuditRecord
 		[Parameter(Mandatory)]
 		[object]$Record
 	)
+
+	if (Get-Command -Name 'Assert-BaselineWriteAllowed' -ErrorAction SilentlyContinue)
+	{
+		Assert-BaselineWriteAllowed -Operation 'Add-BaselineAuditRecord'
+	}
 
 	$parentDir = Split-Path -Path $FilePath -Parent
 	if (-not [string]::IsNullOrWhiteSpace($parentDir) -and -not (Test-Path -LiteralPath $parentDir))
@@ -183,6 +223,10 @@ function Add-BaselineAuditRecord
 	}
 }
 
+<#
+    .SYNOPSIS
+#>
+
 function Read-BaselineAuditLog
 {
 	<#
@@ -215,7 +259,7 @@ function Read-BaselineAuditLog
 
 			try
 			{
-				$record = $line | ConvertFrom-Json
+				$record = $line | ConvertFrom-BaselineJson -Depth 16
 			}
 			catch
 			{
@@ -244,6 +288,10 @@ function Read-BaselineAuditLog
 
 	return @($results)
 }
+
+<#
+    .SYNOPSIS
+#>
 
 function Test-BaselineDocumentSchema
 {
