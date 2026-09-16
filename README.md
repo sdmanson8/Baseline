@@ -1,4 +1,4 @@
-# Baseline v1.0.0
+# Baseline v1.1.0
 
 <p align="center">
   <a href="https://github.com/sdmanson8/Baseline_dev/releases/latest">
