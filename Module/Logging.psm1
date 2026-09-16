@@ -3,11 +3,12 @@
     Internal logging module for Baseline.
 
     .VERSION
-    1.0.0
+    1.1.0
 
     .DATE
     21.03.2026 - Initial Release
     25.05.2026 - Major upgrades to GUI
+	16.09.2026 - Minor bugs and fixes
 
 	.AUTHOR
 	sdmanson8 - Copyright (c) 2026
