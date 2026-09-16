@@ -2,16 +2,6 @@
     .SYNOPSIS
     Admin utility for disabling and removing Windows AI features such as Copilot, Recall, and related packages.
 
-    .VERSION
-    1.0.0
-
-    .DATE
-    21.03.2026 - Initial Release
-    25.05.2026 - Major upgrades to GUI
-
-	.AUTHOR
-	sdmanson8 - Copyright (c) 2026
-
     .DESCRIPTION
     Validates the local Baseline files, enforces Windows PowerShell 5.1,
     relaunches as administrator when needed, initializes logging, and then
