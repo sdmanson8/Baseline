@@ -222,6 +222,7 @@ function EditWithClipchampContext
 
 	if (-not (Get-AppxPackage -Name Clipchamp.Clipchamp -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -313,6 +314,7 @@ function EditWithPaintContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.Paint -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -404,6 +406,7 @@ function EditWithPhotosContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.Windows.Photos -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -661,6 +664,7 @@ function OpenWindowsTerminalContext
 
 	if (-not (Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -945,6 +949,7 @@ function OpenWindowsTerminalAdminContext
 	$WindowsTerminalPackage = Get-AppxPackage -Name Microsoft.WindowsTerminal -WarningAction SilentlyContinue | Select-Object -First 1
 	if (-not $WindowsTerminalPackage)
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -954,6 +959,7 @@ function OpenWindowsTerminalAdminContext
 	if ([string]::IsNullOrWhiteSpace($TerminalSettingsPath))
 	{
 		LogWarning "Unable to resolve the Windows Terminal settings path. Skipping."
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -994,6 +1000,7 @@ function OpenWindowsTerminalAdminContext
 	if (-not (Test-Path -Path $TerminalSettingsPath))
 	{
 		LogWarning ("Windows Terminal settings file not found: {0}" -f $TerminalSettingsPath)
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -1001,19 +1008,15 @@ function OpenWindowsTerminalAdminContext
 
 	try
 	{
-		$Terminal = Get-Content -Path $TerminalSettingsPath -Encoding UTF8 -Force | ConvertFrom-BaselineJson -Depth 16
-	}
-	catch [System.ArgumentException]
-	{
-		LogError $_.Exception.Message
-
-		if (Test-Path -Path $TerminalLocalStatePath)
+		$Terminal = Get-Content -LiteralPath $TerminalSettingsPath -Raw -Encoding UTF8 -Force | ConvertFrom-BaselineJson -Depth 16 -ErrorAction Stop
+		if (-not $Terminal -or -not $Terminal.profiles -or -not $Terminal.profiles.defaults)
 		{
-			Invoke-Item -Path $TerminalLocalStatePath
+			throw 'Windows Terminal settings do not contain the required profiles.defaults object.'
 		}
-		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
-
-		return
+	}
+	catch
+	{
+		throw "Windows Terminal settings could not be read: $($_.Exception.Message)"
 	}
 
 	switch ($PSCmdlet.ParameterSetName)
@@ -1034,13 +1037,11 @@ function OpenWindowsTerminalAdminContext
 				{
 					$Terminal.profiles.defaults | Add-Member -MemberType NoteProperty -Name elevate -Value $true -Force | Out-Null
 				}
-				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
-				LogError "Failed to enable opening Windows Terminal as administrator from the context menu: $($_.Exception.Message)"
-				return
+				throw "Failed to enable opening Windows Terminal as administrator from the context menu: $($_.Exception.Message)"
 			}
 		}
 		"Disable"
@@ -1057,25 +1058,24 @@ function OpenWindowsTerminalAdminContext
 				{
 					$Terminal.profiles.defaults | Add-Member -MemberType NoteProperty -Name elevate -Value $false -Force | Out-Null
 				}
-				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
-				LogError "Failed to disable opening Windows Terminal as administrator from the context menu: $($_.Exception.Message)"
-				return
+				throw "Failed to disable opening Windows Terminal as administrator from the context menu: $($_.Exception.Message)"
 			}
 		}
 	}
 	try
 	{
-		# Save in UTF-8 with BOM despite JSON must not has the BOM: https://datatracker.ietf.org/doc/html/rfc8259#section-8.1. Unless Terminal profile names which contains non-Latin characters will have "?" instead of titles
-		ConvertTo-Json -InputObject $Terminal -Depth 4 | Set-Content -Path $TerminalSettingsPath -Encoding UTF8 -Force -ErrorAction Stop | Out-Null
+		# Serialize the complete settings document and preserve Unicode profile names.
+		[System.IO.File]::WriteAllText($TerminalSettingsPath, (ConvertTo-Json -InputObject $Terminal -Depth 100), [System.Text.UTF8Encoding]::new($false))
+        Write-ConsoleStatus -Status success
 	}
 	catch
 	{
 		Write-ConsoleStatus -Status failed
-		LogError "Failed to save Windows Terminal settings after updating context menu elevation: $($_.Exception.Message)"
+		throw "Failed to save Windows Terminal settings after updating context menu elevation: $($_.Exception.Message)"
 	}
 }
 
@@ -1140,22 +1140,24 @@ function TakeOwnershipContextMenu
 		{
 			Write-ConsoleStatus -Action "Adding 'Take Ownership' to context menu"
 			LogInfo "Adding 'Take Ownership' entry to context menu"
+			$registryBaseKey = $null
+			$menuKey = $null
+			$commandKey = $null
 			try
 			{
-				$path = "Registry::HKEY_CLASSES_ROOT\*\shell\TakeOwnership"
-				if (-not (Test-Path -Path $path))
-				{
-					New-Item -Path $path -Force -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -LiteralPath $path -Name "MUIVerb" -Type String -Value "Take Ownership" -Force -ErrorAction Stop | Out-Null
-				Set-ItemProperty -LiteralPath $path -Name "HasLUAShield" -Type String -Value "" -Force -ErrorAction Stop | Out-Null
-
-				$cmdPath = "$path\command"
-				if (-not (Test-Path -Path $cmdPath))
-				{
-					New-Item -Path $cmdPath -Force -ErrorAction Stop | Out-Null
-				}
-				Set-ItemProperty -LiteralPath $cmdPath -Name "(Default)" -Type String -Value "cmd /c takeown /F `"%1`" /A && icacls `"%1`" /grant:r admins:F /T /C /Q" -Force -ErrorAction Stop | Out-Null
+				# Use the registry API directly. The PowerShell Registry provider can
+				# block while resolving HKCR shell-extension notifications, which
+				# caused the action worker's 60-second timeout in the GUI.
+				$registryBaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+					[Microsoft.Win32.RegistryHive]::ClassesRoot,
+					[Microsoft.Win32.RegistryView]::Default)
+				$menuKey = $registryBaseKey.CreateSubKey('*\shell\TakeOwnership')
+				if (-not $menuKey) { throw "Unable to create the Take Ownership registry key." }
+				$menuKey.SetValue('MUIVerb', 'Take Ownership', [Microsoft.Win32.RegistryValueKind]::String)
+				$menuKey.SetValue('HasLUAShield', '', [Microsoft.Win32.RegistryValueKind]::String)
+				$commandKey = $menuKey.CreateSubKey('command')
+				if (-not $commandKey) { throw "Unable to create the Take Ownership command registry key." }
+				$commandKey.SetValue('', 'cmd /c takeown /F `"%1`" /A && icacls `"%1`" /grant:r admins:F /T /C /Q', [Microsoft.Win32.RegistryValueKind]::String)
 
 				Write-ConsoleStatus -Status success
 			}
@@ -1164,24 +1166,37 @@ function TakeOwnershipContextMenu
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to add Take Ownership to context menu: $($_.Exception.Message)"
 			}
+			finally
+			{
+				if ($commandKey) { $commandKey.Dispose() }
+				if ($menuKey) { $menuKey.Dispose() }
+				if ($registryBaseKey) { $registryBaseKey.Dispose() }
+			}
 		}
 		"Remove"
 		{
 			Write-ConsoleStatus -Action "Removing 'Take Ownership' from context menu"
 			LogInfo "Removing 'Take Ownership' entry from context menu"
+			$registryBaseKey = $null
+			$shellKey = $null
 			try
 			{
-				$path = "Registry::HKEY_CLASSES_ROOT\*\shell\TakeOwnership"
-				if (Test-Path -Path $path)
-				{
-					Remove-Item -Path $path -Recurse -Force -ErrorAction Stop | Out-Null
-				}
+				$registryBaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+					[Microsoft.Win32.RegistryHive]::ClassesRoot,
+					[Microsoft.Win32.RegistryView]::Default)
+				$shellKey = $registryBaseKey.OpenSubKey('*\shell', $true)
+				if ($shellKey) { $shellKey.DeleteSubKeyTree('TakeOwnership', $false) }
 				Write-ConsoleStatus -Status success
 			}
 			catch
 			{
 				Write-ConsoleStatus -Status failed
 				LogError "Failed to remove Take Ownership from context menu: $($_.Exception.Message)"
+			}
+			finally
+			{
+				if ($shellKey) { $shellKey.Dispose() }
+				if ($registryBaseKey) { $registryBaseKey.Dispose() }
 			}
 		}
 	}

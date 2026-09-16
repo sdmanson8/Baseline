@@ -243,11 +243,11 @@
 					}
 					else
 					{
-						$classification.OutcomeState = 'Skipped by preset or selection'
-						$classification.OutcomeReason = 'Baseline skipped this item because it was not included in the current preset, filter, or manual selection.'
-						$classification.FailureCategory = 'Skipped by preset policy'
-						$classification.FailureCode = 'skipped_by_policy'
-						$classification.RecoveryHint = 'This item was intentionally left out by the active preset, filter, or selection. Run it directly if you want to include it next time.'
+						$classification.OutcomeState = 'Skipped'
+						$classification.OutcomeReason = 'The operation reported that it was skipped. See its recorded reason.'
+						$classification.FailureCategory = 'Operation skipped'
+						$classification.FailureCode = 'operation_skipped'
+						$classification.RecoveryHint = 'Review the recorded reason before running this operation again.'
 					}
 				}
 				return [pscustomobject]$classification
@@ -363,7 +363,7 @@
 			'not_applicable'             { return 'Not applicable on this PC or this version of Windows.' }
 			'unsupported_environment'    { return 'Not applicable on this PC or this version of Windows.' }
 			'not_supported_restore'      { return 'This item is not supported by in-app restore.' }
-			'skipped_by_policy'          { return 'This item is not supported by in-app restore.' }
+			'operation_skipped'          { return 'Restore was skipped. Review the recorded reason.' }
 			'restart_required'           { return 'Restored to recorded default. Restart required to finish.' }
 			'timed_out'                 { return 'Restore timed out. Review the log and confirm the current end state before retrying.' }
 			'timed_out_unknown_final_state' { return 'Restore timed out and Baseline could not verify the final state.' }
@@ -1301,7 +1301,8 @@
 	function Sync-DefaultsControlsFromExecutionSummary
 	{
 		param ([object[]]$Results)
-
+		$selectionBulkPreviousState = Enter-GuiSelectionBulkUpdate
+		try {
 		foreach ($result in @($Results | Where-Object { $_.Status -in @('Success', 'Restart pending') }))
 		{
 			if ([string]::IsNullOrWhiteSpace([string]$result.Key)) { continue }
@@ -1321,4 +1322,5 @@
 				if ($winDefIdx -ge 0) { $ctl.SelectedIndex = [int]$winDefIdx }
 			}
 		}
+		} finally { Exit-GuiSelectionBulkUpdate -PreviousState $selectionBulkPreviousState }
 	}

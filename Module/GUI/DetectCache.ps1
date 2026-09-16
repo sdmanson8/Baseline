@@ -3,6 +3,9 @@ $Script:DetectCacheDirty = $false
 $Script:DetectCachePath = $null
 $Script:DetectCacheVersion = $null
 
+# Rollback checkpoint: background detection lifecycle is isolated in DetectionWorker.ps1.
+. (Join-Path $PSScriptRoot 'DetectionWorker.ps1')
+
 # Persistent cache of `$Tweak.Detect` results keyed by `$Tweak.Function`.
 # Detect scriptblocks read live system state (registry, services, files) and
 # can take 50-150 ms each — over 100+ rows that dominates the per-tab build

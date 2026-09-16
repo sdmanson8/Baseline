@@ -39,6 +39,18 @@ Describe 'CreateRestorePoint' {
             [void]$script:errorMessages.Add($Message)
         }
 
+        function Set-BaselineTweakOutcome { param($Function, $Status, $Detail) }
+        function Get-Item {
+            [CmdletBinding()]
+            param($LiteralPath)
+            $key = [pscustomobject]@{}
+            $key | Add-Member ScriptMethod GetValueNames { 'SystemRestorePointCreationFrequency' }
+            $key | Add-Member ScriptMethod GetValue { param($Name) 77 }
+            $key | Add-Member ScriptMethod GetValueKind { param($Name) [Microsoft.Win32.RegistryValueKind]::DWord }
+            $key | Add-Member ScriptMethod Close {}
+            return $key
+        }
+
         function Get-Service {
             [CmdletBinding()]
             param([string]$Name)
@@ -131,6 +143,7 @@ Describe 'CreateRestorePoint' {
             [CmdletBinding()]
             param()
             [void]$script:getComputerRestorePointCalls.Add($true)
+            if ($script:getComputerRestorePointCalls.Count -eq 1) { return @() }
             return @($script:restorePoints)
         }
 
@@ -151,6 +164,8 @@ Describe 'CreateRestorePoint' {
                 'LogInfo',
                 'LogWarning',
                 'LogError',
+                'Set-BaselineTweakOutcome',
+                'Get-Item',
                 'Get-Service',
                 'Set-Service',
                 'Start-Service',
@@ -174,31 +189,31 @@ Describe 'CreateRestorePoint' {
 
     It 'reports success only after the restore point is confirmed present' {
         $script:restorePoints = @(
-            [pscustomobject]@{ Description = 'Baseline | Utility for Windows 11 24H2' }
+            [pscustomobject]@{ Description = 'Baseline | Utility for Windows 11 24H2'; SequenceNumber = 2 }
         )
 
         CreateRestorePoint
 
         $script:consoleStatuses[-1] | Should -Be 'success'
         $script:errorMessages.Count | Should -Be 0
-        $script:getComputerRestorePointCalls.Count | Should -Be 1
+        $script:getComputerRestorePointCalls.Count | Should -Be 2
         $script:newItemPropertyCalls.Count | Should -Be 2
         $script:newItemPropertyCalls[0].Value | Should -Be 0
-        $script:newItemPropertyCalls[1].Value | Should -Be 1440
+        $script:newItemPropertyCalls[1].Value | Should -Be 77
     }
 
     It 'reports failed when no matching restore point is returned after creation' {
         $script:restorePoints = @(
-            [pscustomobject]@{ Description = 'Different restore point' }
+            [pscustomobject]@{ Description = 'Different restore point'; SequenceNumber = 2 }
         )
 
         CreateRestorePoint
 
         $script:consoleStatuses[-1] | Should -Be 'failed'
-        $script:errorMessages[0] | Should -Match 'was not found after creation'
-        $script:getComputerRestorePointCalls.Count | Should -Be 1
+        $script:errorMessages[0] | Should -Match 'did not create a new restore point'
+        $script:getComputerRestorePointCalls.Count | Should -Be 2
         $script:newItemPropertyCalls.Count | Should -Be 2
         $script:newItemPropertyCalls[0].Value | Should -Be 0
-        $script:newItemPropertyCalls[1].Value | Should -Be 1440
+        $script:newItemPropertyCalls[1].Value | Should -Be 77
     }
 }

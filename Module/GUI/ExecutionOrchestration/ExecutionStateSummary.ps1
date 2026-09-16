@@ -269,7 +269,8 @@
 
 	function Get-ActiveTweakRunList
 	{
-		$allSelectedTweaks = @(Get-SelectedTweakRunList)
+		param ([switch]$SelectionOnly)
+		$allSelectedTweaks = @(Get-SelectedTweakRunList -SelectionOnly:$SelectionOnly)
 		$selectedTweaks = @(Select-GuiModeScopedTweakRunList -SelectedTweaks $allSelectedTweaks)
 		if ($allSelectedTweaks.Count -ne $selectedTweaks.Count -and (Get-Command -Name 'LogDebug' -CommandType Function -ErrorAction SilentlyContinue))
 		{
@@ -367,7 +368,7 @@
 		$hasScopedSelection = $false
 		if (-not [bool]$Script:AppsModeActive -and -not [bool]$Script:DeploymentMediaModeActive)
 		{
-			$hasScopedSelection = (@(Get-ActiveTweakRunList).Count -gt 0)
+			$hasScopedSelection = (@(Get-ActiveTweakRunList -SelectionOnly).Count -gt 0)
 		}
 
 		return [pscustomobject]@{
@@ -383,6 +384,12 @@
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ()
+
+		if (Test-GuiSelectionBulkUpdateInProgress) {
+			$Script:RunActionAvailabilityRefreshPending = $true
+			return
+		}
+		$Script:RunActionAvailabilityRefreshPending = $false
 
 		try
 		{

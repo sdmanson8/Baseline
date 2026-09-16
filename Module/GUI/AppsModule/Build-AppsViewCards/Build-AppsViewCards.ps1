@@ -386,7 +386,7 @@ foreach ($app in @($sortedCatalog))
 				$null = $buttonEventArgs
 				try
 				{
-					$current = Get-AppQueuedAction -AppId $selectionKeyCapture
+					$current = & $getAppQueuedActionCommand -AppId $selectionKeyCapture
 					$desired = if ($current -eq $capturedPrimaryAction) { 'DoNothing' } else { $capturedPrimaryAction }
 					& $setAppQueuedActionCommand -AppId $selectionKeyCapture -Action $desired
 				}
@@ -423,7 +423,7 @@ foreach ($app in @($sortedCatalog))
 					$null = $buttonEventArgs
 					try
 					{
-						$current = Get-AppQueuedAction -AppId $selectionKeyCapture
+						$current = & $getAppQueuedActionCommand -AppId $selectionKeyCapture
 						$desired = if ($current -eq 'Update') { 'DoNothing' } else { 'Update' }
 						& $setAppQueuedActionCommand -AppId $selectionKeyCapture -Action $desired
 					}
@@ -497,8 +497,4 @@ foreach ($app in @($sortedCatalog))
 		}
 
 		[void]$Script:AppsWrapPanel.Children.Add($card)
-		if (($Script:AppsWrapPanel.Children.Count % 10) -eq 0)
-		{
-			try { [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Background) } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Build-AppsViewCards.DispatcherYield' }
-		}
 	}

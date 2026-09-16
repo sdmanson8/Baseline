@@ -239,7 +239,16 @@
 		{
 			$categoryTweaks = [ordered]@{}
 			$matchCount = 0
-			for ($index = 0; $index -lt $Script:TweakManifest.Count; $index++)
+			# Search spans the manifest; ordinary tabs use the same membership index as their headers.
+			$candidateIndices = if ($IsSearchResultsTab)
+			{
+				for ($i = 0; $i -lt $Script:TweakManifest.Count; $i++) { $i }
+			}
+			else
+			{
+				$Script:TweakIndicesByPrimaryTab[$PrimaryTab]
+			}
+			foreach ($index in $candidateIndices)
 			{
 				$tweak = $Script:TweakManifest[$index]
 				if (-not $tweak) { continue }

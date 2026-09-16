@@ -35,6 +35,7 @@ $ExportedFunctions = @(
     'Get-BaselineDefenderComponentUnavailableReason'
     'Test-BaselineEntryAvailable'
     'Test-BaselineEntrySupportsExecution'
+    'Get-BaselineEntrySupportsExecutionReason'
     'Get-BaselineEntryAvailabilitySummary'
     'Update-BaselineManifestAvailability'
     'Update-BaselineManifestExecutionSupport'

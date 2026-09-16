@@ -1,4 +1,4 @@
-
+﻿
 # App-focused helpers used by the Baseline GUI.
 
 # Keep this explicit order so catalog, state, and chrome helpers load before orchestration entrypoints.
@@ -6,6 +6,9 @@ $appsModuleSplitRoot = Join-Path $PSScriptRoot 'AppsModule'
 . (Join-Path $appsModuleSplitRoot 'CatalogHelpers.ps1')
 . (Join-Path $appsModuleSplitRoot 'SelectionQueueState.ps1')
 . (Join-Path $appsModuleSplitRoot 'ProgressNavChrome.ps1')
+. (Join-Path $appsModuleSplitRoot 'CardBuildLifecycle.ps1')
+$Script:AppsCardBuildContext = $null
+$Script:AppsCacheRefreshWorker = $null
 
 function Start-AppsModuleQueuedActionAsync
 {
@@ -142,6 +145,9 @@ function Build-AppsViewCards
 {
 	[CmdletBinding()]
 	param ()
+	$__appsPerf = Start-GuiPerfScope -Name 'Apps.Build-AppsViewCards'
+	try {
+
 
 	if (-not $Script:AppsWrapPanel) { return }
 
@@ -181,6 +187,9 @@ function Build-AppsViewCards
 			return
 		}
 	}
+	if ($Script:AppsCardBuildContext) { Stop-GuiPerfScope -Scope $Script:AppsCardBuildContext.Perf -ExtraNote 'superseded' }
+	$Script:AppsCardBuildContext = $null
+	$Script:AppsViewBuildSignature = $null
 	$Script:AppsWrapPanel.Children.Clear()
 	$appsViewModeActive = if ([string]::IsNullOrWhiteSpace([string]$Script:AppsViewMode)) { 'Cards' } else { [string]$Script:AppsViewMode }
 	if ($appsViewModeActive -eq 'List')
@@ -236,8 +245,9 @@ function Build-AppsViewCards
 	{
 		try { Update-AppsCategoryTabCounts } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Build-AppsViewCards.UpdateAppsCategoryTabCounts' }
 	}
-	$allCatalog = @(Get-BaselineApplicationsCatalog)
 	$activeSearchQuery = if ($Script:AppsModeActive) { [string]$Script:AppsSearchText } else { [string]$Script:SearchText }
+	$activeStatusFilter = if ([string]::IsNullOrWhiteSpace([string]$Script:AppsStatusFilter)) { 'All' } else { [string]$Script:AppsStatusFilter.Trim() }
+	$allCatalog = @(Get-BaselineApplicationsCatalog -AllCategories:(-not [string]::IsNullOrWhiteSpace($activeSearchQuery)))
 	$catalog = @(Get-AppsCatalogItemsBySearchStatusAndSourceFilters -SearchQuery $activeSearchQuery)
 
 	# Per Apps Filter spec: if a previously selected app has been hidden by the
@@ -284,10 +294,12 @@ function Build-AppsViewCards
 	}
 	$setAppSelectionStateCommand = Get-GuiRuntimeCommand -Name 'Set-AppSelectionState' -CommandType 'Function'
 	$setAppQueuedActionCommand = Get-GuiRuntimeCommand -Name 'Set-AppQueuedAction' -CommandType 'Function'
+	$getAppQueuedActionCommand = Get-GuiRuntimeCommand -Name 'Get-AppQueuedAction' -CommandType 'Function'
 	$startAppsModuleActionAsyncCommand = Get-GuiRuntimeCommand -Name 'Start-AppsModuleActionAsync' -CommandType 'Function'
 	$showGuiRuntimeFailureCommand = Get-GuiFunctionCapture -Name 'Invoke-GuiRuntimeFailureReport'
 	if (-not $setAppSelectionStateCommand) { throw 'Set-AppSelectionState not found.' }
 	if (-not $setAppQueuedActionCommand) { throw 'Set-AppQueuedAction not found.' }
+	if (-not $getAppQueuedActionCommand) { throw 'Get-AppQueuedAction not found.' }
 	if (-not $startAppsModuleActionAsyncCommand) { throw 'Start-AppsModuleActionAsync not found.' }
 	if (-not $showGuiRuntimeFailureCommand) { throw 'Invoke-GuiRuntimeFailureReport not found.' }
 
@@ -325,10 +337,6 @@ function Build-AppsViewCards
 		elseif ($activeStatusFilter -eq 'UpdateAvailable')
 		{
 			(Get-UxLocalizedString -Key 'GuiAppsEmptyStateNoUpdates' -Fallback 'No updates are available for the current filters.')
-		}
-		elseif (-not [string]::IsNullOrWhiteSpace([string]$activeSearchQuery) -and ($Script:AppsCategoryFilter -and $Script:AppsCategoryFilter -ne 'All'))
-		{
-			(Get-UxLocalizedString -Key 'GuiAppsEmptyStateSearchAndCategory' -Fallback 'No apps match your search in the selected category.')
 		}
 		elseif (-not [string]::IsNullOrWhiteSpace([string]$activeSearchQuery))
 		{
@@ -398,47 +406,28 @@ function Build-AppsViewCards
 		$Script:TxtAppsProgressText.Text = $buildProgressLabel
 	}
 
-		. (Join-Path $PSScriptRoot 'AppsModule\Build-AppsViewCards\Build-AppsViewCards.ps1')
-
-	if (-not $cacheReady)
-	{
-		if ($Script:TxtAppsProgressText)
-		{
-			$Script:TxtAppsProgressText.Text = $cacheRefreshPrompt
-		}
-		Update-AppsSelectionSummary
-		return
-	}
-
-	if ($Script:TxtAppsProgressText)
-	{
-		$filterActive = ($Script:AppsCategoryFilter -and $Script:AppsCategoryFilter -ne 'All') -or ($activeStatusFilter -and $activeStatusFilter -ne 'All')
-		$summaryText = if ($filterActive)
-		{
-			if ($updateAvailableCount -gt 0)
-			{
-				[string]::Format((Get-UxLocalizedString -Key 'AppStatusSummaryFilteredWithUpdates' -Fallback 'Installed: {0}/{1} | Updates available: {2} | Showing: {3}/{1}'), $installedCount, $allCatalog.Count, $updateAvailableCount, $catalog.Count)
-			}
-			else
-			{
-				[string]::Format((Get-UxLocalizedString -Key 'AppStatusSummaryFiltered' -Fallback 'Installed: {0}/{1} | Showing: {2}/{1}'), $installedCount, $allCatalog.Count, $catalog.Count)
-			}
-		}
-		else
-		{
-			if ($updateAvailableCount -gt 0)
-			{
-				[string]::Format((Get-UxLocalizedString -Key 'AppStatusSummaryAllWithUpdates' -Fallback 'Installed: {0}/{1} | Updates available: {2}'), $installedCount, $allCatalog.Count, $updateAvailableCount)
-			}
-			else
-			{
-				[string]::Format((Get-UxLocalizedString -Key 'AppStatusSummaryAll' -Fallback 'Installed: {0}/{1}'), $installedCount, $allCatalog.Count)
-			}
-		}
-		$Script:TxtAppsProgressText.Text = $summaryText
-	}
-	$Script:AppsViewBuildSignature = $renderSignature
-	Update-AppsSelectionSummary
+    # Rollback checkpoint: CardBuildLifecycle.ps1 owns the former synchronous
+    # card loop and completion tail. It renders one card per dispatcher turn.
+    $cardContext = @{
+        Panel = $Script:AppsWrapPanel
+        Catalog = $sortedCatalog
+        Position = 0
+        Action = $null
+        Perf = Start-GuiPerfScope -Name 'Apps.CardHydration'
+        Values = @{}
+    }
+    foreach ($name in @('bc', 'theme', 'cacheReady', 'cacheRefreshPrompt',
+        'installedWingetCache', 'installedChocolateyCache', 'wingetUpdateCache', 'chocolateyUpdateCache',
+        'setAppSelectionStateCommand', 'setAppQueuedActionCommand', 'getAppQueuedActionCommand',
+        'showGuiRuntimeFailureCommand', 'installedCount', 'updateAvailableCount', 'allCatalog', 'catalog',
+        'activeStatusFilter', 'renderSignature')) {
+        $cardContext.Values[$name] = Get-Variable -Name $name -ValueOnly -ErrorAction Stop
+    }
+    $stepCommand = Get-Command Invoke-AppsViewCardsBuildStep -CommandType Function -ErrorAction Stop
+    $cardContext.Action = [Action]{ & $stepCommand -Context $cardContext }.GetNewClosure()
+    $Script:AppsCardBuildContext = $cardContext
+    $null = $cardContext.Panel.Dispatcher.BeginInvoke($cardContext.Action, [System.Windows.Threading.DispatcherPriority]::Background)
+	} finally { Stop-GuiPerfScope -Scope $__appsPerf }
 }
 
 <#
@@ -645,6 +634,7 @@ function Start-AppsCacheRefresh
 	$asyncResult = $ps.BeginInvoke()
 	$timer = [System.Windows.Threading.DispatcherTimer]::new()
 	$timer.Interval = [TimeSpan]::FromMilliseconds(100)
+	$Script:AppsCacheRefreshWorker = [pscustomobject]@{PowerShell=$ps; Runspace=$runspace; AsyncResult=$asyncResult; Timer=$timer}
 
 	# Pre-capture UI references and apps module scope as locals.
 	# GetNewClosure() rebinds the tick scriptblock to a new module whose
@@ -660,7 +650,7 @@ function Start-AppsCacheRefresh
 			$timer.Stop()
 			& $appsSetSharedProgressBarStateCommand -ProgressBar $tickProgressBar -ProgressText $tickProgressText -Completed 0 -Total 1 -CurrentAction (& $appsGetUxLocalizedStringCommand -Key 'GuiAppsCacheRefreshFailed' -Fallback 'Failed to scan installed applications.') -PassThruText | Out-Null
 			& $appsLogErrorCommand (& $appsGetUxLocalizedStringCommand -Key 'Progress_Error' -Fallback 'Error: {0}' -FormatArgs @([string]$syncHash.Error))
-			& $appsScriptScope { $Script:AppsCacheRefreshInProgress = $false }
+			& $appsScriptScope { $Script:AppsCacheRefreshInProgress = $false; $Script:AppsCacheRefreshWorker = $null }
 			& $appsSetActionControlsEnabledCommand -Enabled $true
 			try { $ps.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Start-AppsCacheRefresh.DisposePowerShell' }
 			try { $runspace.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Start-AppsCacheRefresh.DisposeRunspace' }
@@ -749,7 +739,7 @@ function Start-AppsCacheRefresh
 		}
 		finally
 		{
-			& $appsScriptScope { $Script:AppsCacheRefreshInProgress = $false }
+			& $appsScriptScope { $Script:AppsCacheRefreshInProgress = $false; $Script:AppsCacheRefreshWorker = $null }
 			& $appsSetActionControlsEnabledCommand -Enabled $true
 			try { $ps.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Start-AppsCacheRefresh.DisposePowerShell' }
 			try { $runspace.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Start-AppsCacheRefresh.DisposeRunspace' }

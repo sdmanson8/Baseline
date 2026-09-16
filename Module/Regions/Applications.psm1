@@ -148,6 +148,8 @@ function Resolve-ApplicationExecutionRoute
 	}
 
 	$extraArgs = Get-ApplicationCatalogFieldValue -Object $Application -FieldName 'ExtraArgs'
+	$winGetSource = [string](Get-ApplicationCatalogFieldValue -Object $Application -FieldName 'WinGetSource')
+	if ([string]::IsNullOrWhiteSpace($winGetSource)) { $winGetSource = 'winget' }
 	$winGetId = [string](Get-ApplicationCatalogFieldValue -Object $Application -FieldName 'WinGetId')
 	if ([string]::IsNullOrWhiteSpace($winGetId))
 	{
@@ -498,6 +500,7 @@ function Resolve-ApplicationExecutionRoute
 		SelectionKey = $selectionKey
 		Reason = $reason
 		WinGetId = $winGetId
+		WinGetSource = $winGetSource
 		ChocoId = $chocoId
 		StoreUri = $storeUri
 		DirectUrl = $directUrl
@@ -1079,16 +1082,35 @@ function Throw-ApplicationActionFailure
 	}
 
 	$genericFailureMessage = "{0} {1} - Failed" -f $TargetName, $ActionLabel
+	if ($ErrorRecord -and $ErrorRecord.Exception) {
+		$genericFailureMessage += ': ' + $ErrorRecord.Exception.Message
+	}
 	LogError $genericFailureMessage
-	throw $genericFailureMessage
+	throw [System.InvalidOperationException]::new($genericFailureMessage, $(if ($ErrorRecord) { $ErrorRecord.Exception } else { $null }))
+}
+
+<#
+    .SYNOPSIS
+    Formats a native WinGet action failure without discarding its HRESULT.
+
+    #>
+
+function Get-WinGetActionFailureMessage
+{
+	param ([string]$DisplayName, [string]$Action, [int]$ExitCode)
+
+	$message = '{0} {1} - Failed (WinGet exit code {2}; 0x{3:X8})' -f $DisplayName, $Action, $ExitCode, ($ExitCode -band 0xffffffffL)
+	if ($ExitCode -eq -1978335138)
+	{
+		$message += ': The server certificate did not match the certificates trusted by WinGet.'
+	}
+	return $message
 }
 
 <#
     .SYNOPSIS
     Runs winget install.
-
-    #>
-
+#>
 function Invoke-WingetInstall
 {
 	[CmdletBinding()]
@@ -1102,7 +1124,8 @@ function Invoke-WingetInstall
 		[Parameter(Mandatory = $false)]
 		[object]$PackageManagerAvailabilityState = $null,
 
-		[int]$TimeoutSeconds = 900
+		[int]$TimeoutSeconds = 900,
+		[string]$WinGetSource = ''
 	)
 
 	$wingetAvailableState = Get-PackageManagerAvailabilityStateValue -AvailabilityState $PackageManagerAvailabilityState -PropertyName 'WinGetAvailable'
@@ -1134,10 +1157,11 @@ function Invoke-WingetInstall
 
 	try
 	{
-		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList @(
+		$sourceArguments = if ([string]::IsNullOrWhiteSpace($WinGetSource)) { @() } else { @('--source', $WinGetSource) }
+		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList (@(
 			'install', '--id', $WinGetId, '--exact', '--silent',
 			'--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
-		) -TimeoutSeconds $TimeoutSeconds
+		) + $sourceArguments) -TimeoutSeconds $TimeoutSeconds
 
 		if ($exitCode -eq 0)
 		{
@@ -1145,7 +1169,7 @@ function Invoke-WingetInstall
 			return
 		}
 
-		$failureMessage = "{0} Install - Failed" -f $DisplayName
+		$failureMessage = Get-WinGetActionFailureMessage -DisplayName $DisplayName -Action 'Install' -ExitCode $exitCode
 		LogError $failureMessage
 		throw $failureMessage
 	}
@@ -1176,7 +1200,8 @@ function Invoke-WingetUninstall
 		[Parameter(Mandatory = $false)]
 		[object]$PackageManagerAvailabilityState = $null,
 
-		[int]$TimeoutSeconds = 600
+		[int]$TimeoutSeconds = 600,
+		[string]$WinGetSource = ''
 	)
 
 	$wingetAvailableState = Get-PackageManagerAvailabilityStateValue -AvailabilityState $PackageManagerAvailabilityState -PropertyName 'WinGetAvailable'
@@ -1208,9 +1233,10 @@ function Invoke-WingetUninstall
 
 	try
 	{
-		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList @(
+		$sourceArguments = if ([string]::IsNullOrWhiteSpace($WinGetSource)) { @() } else { @('--source', $WinGetSource) }
+		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList (@(
 			'uninstall', '--id', $WinGetId, '--exact', '--silent', '--disable-interactivity'
-		) -TimeoutSeconds $TimeoutSeconds
+		) + $sourceArguments) -TimeoutSeconds $TimeoutSeconds
 
 		if ($exitCode -eq 0)
 		{
@@ -1218,7 +1244,7 @@ function Invoke-WingetUninstall
 			return
 		}
 
-		$failureMessage = "{0} Uninstall - Failed" -f $DisplayName
+		$failureMessage = Get-WinGetActionFailureMessage -DisplayName $DisplayName -Action 'Uninstall' -ExitCode $exitCode
 		LogError $failureMessage
 		throw $failureMessage
 	}
@@ -1249,7 +1275,8 @@ function Invoke-WingetUpdate
 		[Parameter(Mandatory = $false)]
 		[object]$PackageManagerAvailabilityState = $null,
 
-		[int]$TimeoutSeconds = 900
+		[int]$TimeoutSeconds = 900,
+		[string]$WinGetSource = ''
 	)
 
 	$wingetAvailableState = Get-PackageManagerAvailabilityStateValue -AvailabilityState $PackageManagerAvailabilityState -PropertyName 'WinGetAvailable'
@@ -1281,9 +1308,10 @@ function Invoke-WingetUpdate
 
 	try
 	{
-		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList @(
+		$sourceArguments = if ([string]::IsNullOrWhiteSpace($WinGetSource)) { @() } else { @('--source', $WinGetSource) }
+		$exitCode = Invoke-StreamingProcess -FilePath $wingetPath -ArgumentList (@(
 			'upgrade', '--id', $WinGetId, '--exact', '--include-unknown', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
-		) -TimeoutSeconds $TimeoutSeconds
+		) + $sourceArguments) -TimeoutSeconds $TimeoutSeconds
 
 		if ($exitCode -eq 0)
 		{
@@ -1291,7 +1319,7 @@ function Invoke-WingetUpdate
 			return
 		}
 
-		$failureMessage = "{0} Update - Failed" -f $DisplayName
+		$failureMessage = Get-WinGetActionFailureMessage -DisplayName $DisplayName -Action 'Update' -ExitCode $exitCode
 		LogError $failureMessage
 		throw $failureMessage
 	}
@@ -2042,9 +2070,9 @@ function Invoke-ApplicationAction
 			{
 				switch ($Action)
 				{
-					'Install' { Invoke-WingetInstall -WinGetId $route.PackageId -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
-					'Uninstall' { Invoke-WingetUninstall -WinGetId $route.PackageId -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
-					'Update' { Invoke-WingetUpdate -WinGetId $route.PackageId -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
+					'Install' { Invoke-WingetInstall -WinGetId $route.PackageId -WinGetSource $route.WinGetSource -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
+					'Uninstall' { Invoke-WingetUninstall -WinGetId $route.PackageId -WinGetSource $route.WinGetSource -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
+					'Update' { Invoke-WingetUpdate -WinGetId $route.PackageId -WinGetSource $route.WinGetSource -DisplayName $route.DisplayName -PackageManagerAvailabilityState $PackageManagerAvailabilityState -TimeoutSeconds $TimeoutSeconds; return }
 				}
 			}
 			'choco'

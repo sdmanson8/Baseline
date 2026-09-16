@@ -7,6 +7,135 @@
   },
   "Entries": [
     {
+      "Name": "Google Earth Pro",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Explore satellite imagery, maps, terrain, and 3D buildings",
+      "Detail": "WinGet: Google.EarthPro | Chocolatey: googleearthpro",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "Google.EarthPro",
+        "ChocoId": "googleearthpro"
+      },
+      "SubCategory": "Utilities",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "utilities",
+        "maps"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Explore locations around the world, measure distances, and view geographic data on a 3D globe.",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "KeePass 2",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Open-source password manager with an encrypted local database",
+      "Detail": "WinGet: DominikReichl.KeePass | Chocolatey: keepass",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "DominikReichl.KeePass",
+        "ChocoId": "keepass"
+      },
+      "SubCategory": "Utilities",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "utilities",
+        "passwords"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Store and organize passwords in an encrypted database and generate strong passwords.",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
+      "Name": "NVDA",
+      "Function": "AppInstall",
+      "Type": "Choice",
+      "Options": [
+        "Install",
+        "Uninstall"
+      ],
+      "DisplayOptions": null,
+      "Default": null,
+      "WinDefault": null,
+      "Description": "Free screen reader from NV Access with speech and braille output",
+      "Detail": "WinGet: NVAccess.NVDA | Chocolatey: nvda",
+      "Caution": false,
+      "CautionReason": null,
+      "LinkedWith": null,
+      "Scannable": null,
+      "Restorable": true,
+      "OnParam": null,
+      "OffParam": null,
+      "ExtraArgs": {
+        "WinGetId": "NVAccess.NVDA",
+        "ChocoId": "nvda"
+      },
+      "SubCategory": "Utilities",
+      "SourceRegion": "Applications",
+      "WinDefaultDesc": null,
+      "Risk": "Low",
+      "Tags": [
+        "app",
+        "utilities",
+        "accessibility"
+      ],
+      "Impact": "Low",
+      "Safe": true,
+      "RequiresRestart": false,
+      "WhyThisMatters": "Provides spoken and braille feedback so blind and vision-impaired users can navigate Windows and applications.",
+      "PresetTier": null,
+      "RecoveryLevel": "Direct",
+      "CompatibilitySensitivity": "Low",
+      "EntityType": "winget",
+      "SupportsExecution": true
+    },
+    {
       "Name": "Nilesoft Shell",
       "Function": "AppInstall",
       "Type": "Choice",
@@ -1720,47 +1849,6 @@
       "RecoveryLevel": "Direct",
       "CompatibilitySensitivity": "Low",
       "EntityType": "store",
-      "SupportsExecution": true
-    },
-    {
-      "Name": "OneDrive",
-      "Function": "AppInstall",
-      "Type": "Choice",
-      "Options": [
-        "Install",
-        "Uninstall"
-      ],
-      "DisplayOptions": null,
-      "Default": null,
-      "WinDefault": null,
-      "Description": "Microsoft's cloud storage service",
-      "Detail": "WinGet: Microsoft.OneDrive",
-      "Caution": false,
-      "CautionReason": null,
-      "LinkedWith": null,
-      "Scannable": null,
-      "Restorable": true,
-      "OnParam": null,
-      "OffParam": null,
-      "ExtraArgs": {
-        "WinGetId": "Microsoft.OneDrive"
-      },
-      "SubCategory": "Utilities",
-      "SourceRegion": "Applications",
-      "WinDefaultDesc": null,
-      "Risk": "Low",
-      "Tags": [
-        "app",
-        "utilities"
-      ],
-      "Impact": "Low",
-      "Safe": true,
-      "RequiresRestart": false,
-      "WhyThisMatters": "Microsoft's cloud storage service",
-      "PresetTier": null,
-      "RecoveryLevel": "Direct",
-      "CompatibilitySensitivity": "Low",
-      "EntityType": "winget",
       "SupportsExecution": true
     },
     {
@@ -4751,6 +4839,7 @@
       "WinDefault": null,
       "Description": "Microsoft Copilot desktop app for Windows (consumer Copilot), distributed via Microsoft Store and commonly installed via its Store ID.",
       "Detail": "WinGet: 9NHT9RB2F4HD",
+      "WinGetSource": "msstore",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,
@@ -7053,6 +7142,7 @@
       "WinDefault": null,
       "Description": "TranslucentTB is a tool that allows you to customize the transparency of the Windows Taskbar.",
       "Detail": "WinGet: 9PF4KZ2VN4W9 | Chocolatey: translucenttb",
+      "WinGetSource": "msstore",
       "Caution": false,
       "CautionReason": null,
       "LinkedWith": null,

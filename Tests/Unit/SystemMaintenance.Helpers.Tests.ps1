@@ -57,6 +57,18 @@ Describe 'Test-Windows11SmbDuplicateSidIssue' {
         $result | Should -Be $false
         $script:lastSystemMaintenanceWarning | Should -Match 'Unable to query LSASS Event ID 6167'
     }
+
+    It 'returns false without a warning when Windows reports no matching events' {
+        Mock Get-WinEvent {
+            throw [System.Management.Automation.ErrorRecord]::new(
+                [Exception]::new('No matching events'),
+                'NoMatchingEventsFound,Microsoft.PowerShell.Commands.GetWinEventCommand',
+                [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                $null)
+        }
+        Test-Windows11SmbDuplicateSidIssue | Should -BeFalse
+        $script:lastSystemMaintenanceWarning | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Invoke-AdditionalServiceOptimizations' {
@@ -141,12 +153,13 @@ Describe 'Invoke-AdditionalServiceOptimizations' {
         ($script:setServiceCalls | Where-Object { $_.Name -eq 'RemoteRegistry' }).StartupType | Should -Be 'Disabled'
     }
 
-    It 'logs a warning when a service is missing and its registry key does not exist' {
+    It 'reports an absent optional service without a warning' {
         $script:serviceLookup = @{}
 
         Invoke-AdditionalServiceOptimizations
 
-        ($script:warningMessages | Where-Object { $_ -match 'PeerDistSvc' }).Count | Should -Be 1
+        ($script:warningMessages | Where-Object { $_ -match 'PeerDistSvc' }).Count | Should -Be 0
+        ($script:infoMessages | Where-Object { $_ -match 'Optional service PeerDistSvc is not installed' }).Count | Should -Be 1
         $script:consoleStatuses[-1] | Should -Be 'success'
     }
 

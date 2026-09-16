@@ -2807,7 +2807,7 @@ Set-BaselineLogScope -Scope 'GUI'
 Write-LaunchTrace 'Preparing GUI open'
 Stop-BaselineIfBootstrapSplashAbortRequested -Phase 'before Show-TweakGUI'
 Show-TweakGUI
-Write-LaunchTrace 'GUI opened'
+Write-LaunchTrace 'GUI session ended (Show-TweakGUI returned)'
 if ($Script:LoadingSplash -and $Script:LoadingSplash.IsAlive)
 {
 	$null = Close-LoadingSplashWindow -Splash $Script:LoadingSplash -DisposeResources

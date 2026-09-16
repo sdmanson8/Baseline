@@ -163,19 +163,20 @@
 		$Card.Cursor = [System.Windows.Input.Cursors]::Hand
 		# Attach hover/focus handlers directly to avoid Invoke-GuiSafeAction
 		# overhead on these high-frequency visual-only events.
-		$Card.Add_MouseEnter({ try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_MouseEnter' } }.GetNewClosure())
-		$Card.Add_MouseLeave({ try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_MouseLeave' } }.GetNewClosure())
+		$refreshChromeHandler = { try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.RefreshChrome' } }.GetNewClosure()
+		$Card.Add_MouseEnter($refreshChromeHandler)
+		$Card.Add_MouseLeave($refreshChromeHandler)
 		$pressBg = $res.PressBg
 		$pressHandler = {
 			$Card.Background = $pressBg
 		}.GetNewClosure()
 		$Card.Add_PreviewMouseLeftButtonDown({ try { & $pressHandler } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_PreviewMouseLeftButtonDown' } }.GetNewClosure())
-		$Card.Add_PreviewMouseLeftButtonUp({ try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_PreviewMouseLeftButtonUp' } }.GetNewClosure())
+		$Card.Add_PreviewMouseLeftButtonUp($refreshChromeHandler)
 		foreach ($focusSource in $FocusSources)
 		{
 			if (-not $focusSource) { continue }
-			$focusSource.Add_GotKeyboardFocus({ try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_GotKeyboardFocus' } }.GetNewClosure())
-			$focusSource.Add_LostKeyboardFocus({ try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.Add_LostKeyboardFocus' } }.GetNewClosure())
+			$focusSource.Add_GotKeyboardFocus($refreshChromeHandler)
+			$focusSource.Add_LostKeyboardFocus($refreshChromeHandler)
 		}
 		try { & $updateChrome } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakRowFactory.Build-TweakRowCard.UpdateChrome' }
 	}

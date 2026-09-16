@@ -18,19 +18,30 @@ Current user
 #>
 function DiskCleanup
 {
-	Write-ConsoleStatus -Action "Running Disk Cleanup"
-	LogInfo "Running Disk Cleanup"
-	# Pass log file path to child process
-	[Environment]::SetEnvironmentVariable("diskcleanup", $global:LogFilePath, "Process")
-
+	Write-ConsoleStatus -Action "Starting Disk Cleanup in the background"
+	LogInfo "Starting Disk Cleanup in the background"
 	$ScriptPath = Join-Path $PSScriptRoot "diskcleanup.ps1"
 	$ScriptPath = [System.IO.Path]::GetFullPath($ScriptPath)
 
-	$null = Invoke-BaselineProcess `
-		-FilePath 'powershell.exe' `
-		-ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) `
-		-TimeoutSeconds 3000
-	LogInfo "Disk cleanup child script completed"
+	# Create the worker directly: no shell activation, inherited console, output
+	# pipes, or process wait may tie maintenance to the GUI action runspace.
+	$worker = New-Object System.Diagnostics.Process
+	try
+	{
+		$worker.StartInfo.FileName = Join-Path $PSHOME 'powershell.exe'
+		$worker.StartInfo.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $ScriptPath
+		$worker.StartInfo.UseShellExecute = $false
+		$worker.StartInfo.CreateNoWindow = $true
+		$worker.StartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+		$worker.StartInfo.EnvironmentVariables['diskcleanup'] = [string]$global:LogFilePath
+		if (-not $worker.Start()) { throw 'Disk Cleanup worker could not be started.' }
+		LogInfo ("Disk Cleanup started in the background (PID {0}); cleanup continues independently of this run" -f $worker.Id)
+	}
+	finally
+	{
+		# Release only our handle; the worker continues after the runspace closes.
+		$worker.Dispose()
+	}
 	Write-ConsoleStatus -Status success
 }
 

@@ -1,6 +1,8 @@
 using module .\Logging.psm1
 using module .\SharedHelpers.psm1
 
+. (Join-Path $PSScriptRoot 'GUIExecution/WorkerLifecycle.ps1')
+
 
 <#
     .SYNOPSIS
@@ -722,14 +724,7 @@ function Get-GuiExecutionOutcome
 		'^(Not Run)$' { return 'Not Run' }
 		'^(Not applicable)$' { return 'Not applicable' }
 		'^(Restart pending)$' { return 'Restart pending' }
-		'^(Skipped)$'
-		{
-			if (-not [string]::IsNullOrWhiteSpace($Detail) -and $Detail -match '(?i)\b(not applicable|not supported|unsupported|unsupported build|windows server)\b')
-			{
-				return 'Not applicable'
-			}
-			return 'Skipped'
-		}
+        '^(Skipped)$' { return 'Skipped' }
 		'^(Success)$'
 		{
 			if ($RequiresRestart)
@@ -1404,11 +1399,15 @@ function Invoke-GuiExecutionActionHostCommand
 		Get-GuiExecutionOperationMode
 	}
 
+    $executionClock = [hashtable]::Synchronized(@{ Watch = [Diagnostics.Stopwatch]::StartNew() })
+    $outcome = @{ Function = $CommandName; Status = 'Success'; Detail = '' }
 	$powerShell = [powershell]::Create().AddScript({
 		param (
 			[string]$InvocationCommandName,
 			[hashtable]$InvocationCommandArguments,
-			[string]$InvocationOperationMode
+			[string]$InvocationOperationMode,
+            [hashtable]$OutcomeContext,
+            [hashtable]$ExecutionClock
 		)
 
 		if ([string]::IsNullOrWhiteSpace([string]$InvocationOperationMode))
@@ -1426,16 +1425,14 @@ function Invoke-GuiExecutionActionHostCommand
 			Set-BaselineOperationMode -Mode ([string]$InvocationOperationMode)
 		}
 
-		$resolvedCommand = Get-Command -Name $InvocationCommandName -ErrorAction Stop | Select-Object -First 1
-		if ($InvocationCommandArguments -and $InvocationCommandArguments.Count -gt 0)
-		{
-			& $resolvedCommand @InvocationCommandArguments
-		}
-		else
-		{
-			& $resolvedCommand
-		}
-	}).AddArgument($CommandName).AddArgument($CommandArguments).AddArgument($invocationOperationMode)
+        $Global:BaselineExecutionClock = $ExecutionClock
+        $Global:BaselineTweakOutcomeContext = $OutcomeContext
+        try {
+            $resolvedCommand = Get-Command -Name $InvocationCommandName -ErrorAction Stop | Select-Object -First 1
+            & $resolvedCommand @InvocationCommandArguments
+        }
+        finally { Remove-Variable -Name BaselineExecutionClock,BaselineTweakOutcomeContext -Scope Global -ErrorAction SilentlyContinue }
+	}).AddArgument($CommandName).AddArgument($CommandArguments).AddArgument($invocationOperationMode).AddArgument($outcome).AddArgument($executionClock)
 	$powerShell.Runspace = $ActionHost.Runspace
 
 	$startedAt = Get-Date
@@ -1458,7 +1455,10 @@ function Invoke-GuiExecutionActionHostCommand
 				break
 			}
 
-			if (((Get-Date) - $startedAt).TotalSeconds -ge [double]$TimeoutSeconds)
+			[Threading.Monitor]::Enter($executionClock.SyncRoot)
+            try { $executionSeconds = $executionClock.Watch.Elapsed.TotalSeconds }
+            finally { [Threading.Monitor]::Exit($executionClock.SyncRoot) }
+            if ($executionSeconds -ge [double]$TimeoutSeconds)
 			{
 				$timedOut = $true
 				$stopCompleted = Request-GuiExecutionPowerShellStopAsync -PowerShell $powerShell -Source 'GUIExecution.ActionHostCommand.TimeoutStop'
@@ -1491,7 +1491,10 @@ function Invoke-GuiExecutionActionHostCommand
 		}
 
 		$results = @($powerShell.EndInvoke($asyncResult))
+        if ($powerShell.Streams.Error.Count -gt 0) { throw $powerShell.Streams.Error[0] }
+        if ($outcome.Status -eq 'Failed') { throw [System.InvalidOperationException]::new([string]$outcome.Detail) }
 		return [pscustomobject]@{
+            Outcome           = [pscustomobject]$outcome
 			Succeeded         = $true
 			TimedOut          = $false
 			Aborted           = $false
@@ -2134,33 +2137,12 @@ function Start-GuiAppExecutionWorker
 
 function Request-GuiExecutionWorkerStop
 {
-	param (
-		[Parameter(Mandatory = $true)]
-		$PowerShellInstance
-	)
+    param (
+        [Parameter(Mandatory = $true)]
+        $PowerShellInstance
+    )
 
-	if (-not $PowerShellInstance)
-	{
-		return
-	}
-
-	[System.Threading.ThreadPool]::QueueUserWorkItem(
-		[System.Threading.WaitCallback]{
-			param($state)
-			try
-			{
-				if ($state)
-				{
-					$state.Stop()
-				}
-			}
-			catch
-			{
-				Write-GuiExecutionCleanupWarning "Failed to request GUI execution worker stop: $($_.Exception.Message)"
-			}
-		},
-		$PowerShellInstance
-	) | Out-Null
+    [Baseline.GuiExecution.WorkerLifecycle]::RequestStop($PowerShellInstance)
 }
 
 <#
@@ -2173,81 +2155,15 @@ function Request-GuiExecutionWorkerStop
 
 function Stop-GuiExecutionWorkerAsync
 {
-	# Fire-and-forget cleanup via ThreadPool. Each step (Stop, EndInvoke, Dispose,
-	# Runspace.Close/Dispose) is wrapped in its own try/catch because a failure in
-	# one step must not prevent cleanup of subsequent resources. Callers should null
-	# out their $Worker reference after calling this function - the ThreadPool work
-	# item provides no completion signal.
-	param (
-		[Parameter(Mandatory = $true)]
-		$Worker
-	)
+    param (
+        [Parameter(Mandatory = $true)]
+        $Worker
+    )
 
-	if (-not $Worker)
-	{
-		return
-	}
+    if (-not $Worker) { return }
 
-	[System.Threading.ThreadPool]::QueueUserWorkItem(
-		[System.Threading.WaitCallback]{
-			param($state)
-
-			if (-not $state)
-			{
-				return
-			}
-
-			try
-			{
-				if ($state.PowerShell)
-				{
-					$state.PowerShell.Stop()
-				}
-			}
-			catch
-			{
-				Write-GuiExecutionCleanupWarning "Failed to stop GUI execution worker asynchronously: $($_.Exception.Message)"
-			}
-
-			try
-			{
-				if ($state.PowerShell -and $state.AsyncResult)
-				{
-					$state.PowerShell.EndInvoke($state.AsyncResult)
-				}
-			}
-			catch
-			{
-				Write-GuiExecutionCleanupWarning "Failed to finalize GUI execution worker asynchronously: $($_.Exception.Message)"
-			}
-
-			try
-			{
-				if ($state.PowerShell)
-				{
-					$state.PowerShell.Dispose()
-				}
-			}
-			catch
-			{
-				Write-GuiExecutionCleanupWarning "Failed to dispose GUI PowerShell worker asynchronously: $($_.Exception.Message)"
-			}
-
-			try
-			{
-				if ($state.Runspace)
-				{
-					$state.Runspace.Close()
-					$state.Runspace.Dispose()
-				}
-			}
-			catch
-			{
-				Write-GuiExecutionCleanupWarning "Failed to dispose GUI runspace asynchronously: $($_.Exception.Message)"
-			}
-		},
-		$Worker
-	) | Out-Null
+    [Baseline.GuiExecution.WorkerLifecycle]::StopAndDispose(
+        $Worker.PowerShell, $Worker.AsyncResult, $Worker.Runspace)
 }
 
 <#
@@ -2340,42 +2256,10 @@ function Complete-GuiExecutionWorker
 		return
 	}
 
-	try
-	{
-		if ($Worker.PowerShell -and $Worker.AsyncResult)
-		{
-			$Worker.PowerShell.EndInvoke($Worker.AsyncResult)
-		}
-	}
-	catch
-	{
-		Write-GuiExecutionCleanupWarning "Failed to finalize completed GUI execution worker: $($_.Exception.Message)"
-	}
-
-	try
-	{
-		if ($Worker.PowerShell)
-		{
-			$Worker.PowerShell.Dispose()
-		}
-	}
-	catch
-	{
-		Write-GuiExecutionCleanupWarning "Failed to dispose completed GUI PowerShell worker: $($_.Exception.Message)"
-	}
-
-	try
-	{
-		if ($Worker.Runspace)
-		{
-			$Worker.Runspace.Close()
-			$Worker.Runspace.Dispose()
-		}
-	}
-	catch
-	{
-		Write-GuiExecutionCleanupWarning "Failed to dispose completed GUI runspace: $($_.Exception.Message)"
-	}
+	# Runspace disposal can synchronously wait on provider and remoting cleanup.
+	# Keep that lifecycle work off the WPF dispatcher; completion state has
+	# already been drained and recorded by the caller.
+	Stop-GuiExecutionWorkerAsync -Worker $Worker
 }
 
 Export-ModuleMember -Function @(

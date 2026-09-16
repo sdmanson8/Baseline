@@ -506,6 +506,7 @@ function StartRecommendedSection
 	$versionData = Get-WindowsVersionData
 	if ($versionData.ProductName -match 'Home')
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 	}
 

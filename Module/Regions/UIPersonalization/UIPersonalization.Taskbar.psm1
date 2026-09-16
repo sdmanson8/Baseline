@@ -155,6 +155,7 @@ function Set-UIPersonalizationTaskbarWidgets
 
 	if (-not (Get-AppxPackage -Name MicrosoftWindows.Client.WebExperience -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -422,6 +423,7 @@ function Set-UIPersonalizationSearchHighlights
 			$DisableSearchBoxSuggestions = ([Microsoft.Win32.Registry]::GetValue("HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", $null))
 			if (($BingSearchEnabled -eq 1) -or ($DisableSearchBoxSuggestions -eq 1))
 			{
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 				LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 			}
 			else
@@ -1146,6 +1148,7 @@ function BatteryPercentage
 	if (-not $hasBattery)
 	{
 		LogInfo "No battery detected; skipping battery percentage toggle"
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail 'No battery is installed.'
 		Write-ConsoleStatus -Action "Skipping battery percentage (no battery)"
 		Write-ConsoleStatus -Status success
 		return

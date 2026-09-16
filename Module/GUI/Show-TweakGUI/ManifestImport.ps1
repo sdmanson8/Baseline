@@ -15,10 +15,13 @@ if (-not $Script:ManifestLoadedFromData)
 			# treating absence as "available". No override -> real host platform.
 			try
 			{
+				& $traceGuiStartup 'System platform query started'
 				$Script:BaselineSystemPlatformInfo = Get-BaselineSystemPlatformInfo
+				& $traceGuiStartup 'System platform query completed; manifest platform availability started'
 				$null = Update-BaselineManifestAvailability `
 					-Manifest $Script:TweakManifest `
 					-SystemInfo $Script:BaselineSystemPlatformInfo
+				& $traceGuiStartup 'Manifest platform availability completed; execution support stamping started'
 				$null = Update-BaselineManifestExecutionSupport -Manifest $Script:TweakManifest
 				& $traceGuiStartup 'Manifest availability stamped'
 			}

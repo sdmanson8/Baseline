@@ -15,6 +15,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
 using System.Text;
+using System.Windows.Threading;
 
 namespace Baseline.RunLauncher
 {
@@ -190,6 +191,7 @@ namespace Baseline.RunLauncher
                 }
                 launcherPath = Path.GetFullPath(launcherPath);
                 var hydratedRoot = EnsureHydratedRuntime(launcherPath);
+                BundledAssemblyResolver.Install(Path.Combine(hydratedRoot, "Module", "Libraries"));
                 var stateRoot = ResolveStateRoot(AppContext.BaseDirectory, out var portableMode);
                 var launcherScript = Path.Combine(hydratedRoot, LauncherRelativePath);
 
@@ -987,8 +989,11 @@ namespace Baseline.RunLauncher
 
                 using (var runspace = RunspaceFactory.CreateRunspace(host, initialSessionState))
                 {
+                    var timeout = GetPowerShellInvokeTimeout(normalizedArgs);
                     runspace.ApartmentState = ApartmentState.STA;
-                    runspace.ThreadOptions = PSThreadOptions.ReuseThread;
+                    // WPF belongs to the launcher STA thread for the whole GUI
+                    // session, including dispatcher teardown after the window closes.
+                    runspace.ThreadOptions = timeout.HasValue ? PSThreadOptions.ReuseThread : PSThreadOptions.UseCurrentThread;
                     runspace.Open();
 
                     using (var powershell = PowerShell.Create())
@@ -997,34 +1002,32 @@ namespace Baseline.RunLauncher
                         powershell.AddCommand(launcherScript);
                         BindPowerShellInvocationArguments(powershell, normalizedArgs);
 
-                        var timeout = GetPowerShellInvokeTimeout(normalizedArgs);
-                        var asyncResult = powershell.BeginInvoke();
-                        var completed = timeout.HasValue
-                            ? asyncResult.AsyncWaitHandle.WaitOne(timeout.Value)
-                            : asyncResult.AsyncWaitHandle.WaitOne();
-                        if (!completed)
-                        {
-                            try
-                            {
-                                powershell.Stop();
-                            }
-                            catch
-                            {
-                                // Stop is best effort only.
-                            }
-
-                            NativeMsgBox(
-                                IntPtr.Zero,
-                                $"Baseline timed out while running the PowerShell workflow after {timeout.Value.TotalMinutes:0} minute(s).",
-                                "Baseline",
-                                MB_OK | MB_ICONERROR);
-                            return 1;
-                        }
-
-                        PSDataCollection<PSObject> output;
+                        IList<PSObject> output;
                         try
                         {
-                            output = powershell.EndInvoke(asyncResult);
+                            if (!timeout.HasValue)
+                            {
+                                try { output = powershell.Invoke(); }
+                                finally
+                                {
+                                    var dispatcher = Dispatcher.FromThread(Thread.CurrentThread);
+                                    if (dispatcher != null && !dispatcher.HasShutdownStarted)
+                                        dispatcher.InvokeShutdown();
+                                }
+                            }
+                            else
+                            {
+                                var asyncResult = powershell.BeginInvoke();
+                                if (!asyncResult.AsyncWaitHandle.WaitOne(timeout.Value))
+                                {
+                                    powershell.Stop();
+                                    NativeMsgBox(IntPtr.Zero,
+                                        $"Baseline timed out while running the PowerShell workflow after {timeout.Value.TotalMinutes:0} minute(s).",
+                                        "Baseline", MB_OK | MB_ICONERROR);
+                                    return 1;
+                                }
+                                output = powershell.EndInvoke(asyncResult);
+                            }
                         }
                         catch (PipelineStoppedException)
                         {

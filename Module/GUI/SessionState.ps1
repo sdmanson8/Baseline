@@ -1,4 +1,5 @@
 # GUI session state, undo snapshots, and settings profile management
+$Script:RunActionAvailabilityRefreshPending = $false
 
 if (-not (Get-Variable -Name 'GuiSelectionBulkUpdateInProgress' -Scope Script -ErrorAction SilentlyContinue))
 {
@@ -79,18 +80,17 @@ function Exit-GuiSelectionBulkUpdate
 		return
 	}
 
-	if (-not [bool]$Script:GameModePlanSyncPending)
-	{
-		return
+	try {
+		if ($Script:GameModePlanSyncPending -and (Get-Command -Name 'Sync-GameModePlanFromGamingControls' -CommandType Function -ErrorAction SilentlyContinue)) {
+			$Script:GameModePlanSyncPending = $false
+			Sync-GameModePlanFromGamingControls
+		}
+	} finally {
+		if ($Script:RunActionAvailabilityRefreshPending) {
+			$Script:RunActionAvailabilityRefreshPending = $false
+			Update-GuiScopedRunActionAvailability
+		}
 	}
-
-	if (-not (Get-Command -Name 'Sync-GameModePlanFromGamingControls' -CommandType Function -ErrorAction SilentlyContinue))
-	{
-		return
-	}
-
-	$Script:GameModePlanSyncPending = $false
-	Sync-GameModePlanFromGamingControls
 }
 
 <#
@@ -1655,7 +1655,16 @@ function Import-GuiRemoteTargetApprovalPolicy
 		}
 
 		# P5 rollback checkpoint: Restore-GuiSettingsSnapshot navigation split to SessionState/Restore-GuiSettingsSnapshot/RestoreNavigationMode.ps1.
-		. (Join-Path $PSScriptRoot 'SessionState\Restore-GuiSettingsSnapshot\RestoreNavigationMode.ps1')
+		$previousContentRestore = $Script:GuiContentRestoreInProgress
+		$previousTabSelectionSuppression = $Script:SuppressPrimaryTabSelectionChanged
+		$Script:GuiContentRestoreInProgress = $true
+		$Script:SuppressPrimaryTabSelectionChanged = $true
+		try {
+			. (Join-Path $PSScriptRoot 'SessionState\Restore-GuiSettingsSnapshot\RestoreNavigationMode.ps1')
+		} finally {
+			$Script:GuiContentRestoreInProgress = $previousContentRestore
+			$Script:SuppressPrimaryTabSelectionChanged = $previousTabSelectionSuppression
+		}
 		if ($setGuiFilterPanelExpandedStateScript)
 		{
 			if ($desiredNavigationMode -ne 'Apps' -and $desiredNavigationMode -ne 'DeploymentMedia')

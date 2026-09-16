@@ -135,7 +135,9 @@
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ()
 
-		$searchQuery = if ($null -eq $Script:SearchText) { '' } else { [string]$Script:SearchText.Trim() }
+        $__phasePerf = Start-GuiPerfScope -Name 'UpdatePrimaryTabHeaders'
+        try {
+        $searchQuery = if ($null -eq $Script:SearchText) { '' } else { [string]$Script:SearchText.Trim() }
 		foreach ($tab in $PrimaryTabs.Items)
 		{
 			if (-not ($tab -is [System.Windows.Controls.TabItem])) { continue }
@@ -157,15 +159,24 @@
 
 			$displayName = Get-LocalizedTabHeader -PrimaryTab $pKey
 			$tabIconName = Get-GuiPrimaryTabIconName -PrimaryTab $pKey
-			if ($tabIconName)
-			{
-				$tab.Header = New-GuiLabeledIconContent -IconName $tabIconName -Text "$displayName ($tweakCount)" -IconSize 16 -Gap 6 -AllowTextOnlyFallback
-			}
+            if ($tabIconName)
+            {
+                $headerState = $tab.Resources['Baseline.PrimaryHeader']
+                if ($headerState -and $headerState.IconName -eq $tabIconName -and [object]::ReferenceEquals($tab.Header, $headerState.Panel)) {
+                    $headerState.Label.Text = "$displayName ($tweakCount)"
+                }
+                else {
+                    $tab.Header = New-GuiLabeledIconContent -IconName $tabIconName -Text "$displayName ($tweakCount)" -IconSize 16 -Gap 6 -AllowTextOnlyFallback
+                    $tab.Resources['Baseline.PrimaryHeader'] = @{ IconName = $tabIconName; Panel = $tab.Header; Label = $tab.Header.Children[$tab.Header.Children.Count - 1] }
+                }
+            }
 			else
 			{
 				$tab.Header = "$displayName ($tweakCount)"
 			}
 		}
+        } finally { Stop-GuiPerfScope -Scope $__phasePerf }
+
 	}
 
 

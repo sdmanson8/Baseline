@@ -576,6 +576,7 @@
 
 		$previousApplyingGuiPreset = $Script:ApplyingGuiPreset
 		$Script:ApplyingGuiPreset = $presetContext.UsesExplicitPreset
+		$selectionBulkPreviousState = Enter-GuiSelectionBulkUpdate
 		try
 		{
 			Set-TabPresetSharedUiState -PrimaryTab $PrimaryTab -PresetContext $presetContext -SetSafeModeStateScript $setSafeModeStateScript -SetAdvancedModeStateScript $setAdvancedModeStateScript -UpdateCategoryFilterListScript $updateCategoryFilterListScript -SetFilterSelectionsScript $setFilterSelectionsScript -WriteGuiPresetDebugScript $writeGuiPresetDebugScript
@@ -597,5 +598,6 @@
 				$progressHost.Visibility = [System.Windows.Visibility]::Collapsed
 			}
 			$Script:ApplyingGuiPreset = $previousApplyingGuiPreset
+			Exit-GuiSelectionBulkUpdate -PreviousState $selectionBulkPreviousState
 		}
 	}

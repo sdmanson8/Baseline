@@ -460,7 +460,7 @@ $Script:DetectScriptblocks = @{
 		$autoRegBackupTask = $false
 			try
 			{
-				$autoRegBackupTask = [bool](Get-ScheduledTask -TaskName 'AutoRegBackup' -ErrorAction SilentlyContinue)
+				$autoRegBackupTask = [bool](Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -eq 'AutoRegBackup' } | Select-Object -First 1)
 			}
 			catch
 			{

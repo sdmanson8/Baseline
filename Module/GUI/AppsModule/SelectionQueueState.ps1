@@ -9,6 +9,9 @@ function Set-AppsActionControlsEnabled
 	param (
 		[bool]$Enabled = $true
 	)
+	$__appsPerf = Start-GuiPerfScope -Name 'Apps.Set-AppsActionControlsEnabled'
+	try {
+
 
 	$setControlEnabled = {
 		param ([object]$Control)
@@ -101,6 +104,8 @@ function Set-AppsActionControlsEnabled
 	{
 		Update-AppsSelectionSummary
 	}
+
+	} finally { Stop-GuiPerfScope -Scope $__appsPerf }
 }
 
 <#
@@ -549,6 +554,9 @@ function Update-AppsSelectionSummary
 {
 	[CmdletBinding()]
 	param ()
+	$__appsPerf = Start-GuiPerfScope -Name 'Apps.Update-AppsSelectionSummary'
+	try {
+
 
 	foreach ($controlVariableName in @('TxtAppSelectionStatus', 'BtnInstallSelectedApps', 'BtnUninstallSelectedApps', 'BtnUpdateSelectedApps', 'BtnScanInstalledApps', 'BtnApplyQueuedActions', 'BtnClearQueuedActions'))
 	{
@@ -709,7 +717,9 @@ function Update-AppsSelectionSummary
 				(Get-UxLocalizedString -Key 'GuiAppsResetTip' -Fallback 'Clear all queued changes and checked applications.')
 			}
 		}
-	}
+
+	} finally { Stop-GuiPerfScope -Scope $__appsPerf }
+}
 
 <#
     .SYNOPSIS

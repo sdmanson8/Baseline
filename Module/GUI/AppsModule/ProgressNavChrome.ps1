@@ -1430,7 +1430,8 @@ function Set-GuiAppsMode
 {
 	[CmdletBinding()]
 	param (
-		[bool]$Enable = $false
+		[bool]$Enable = $false,
+		[switch]$SkipContentRestore
 	)
 
 	if ($Script:AppsModeActive -eq $Enable)
@@ -1559,7 +1560,7 @@ function Set-GuiAppsMode
 	{
 		Build-AppsViewCards
 	}
-	elseif (-not [bool]$Script:GamingModeActive -and -not [bool]$Script:UpdatesModeActive -and -not [bool]$Script:DeploymentMediaModeActive)
+	elseif (-not $SkipContentRestore -and -not [bool]$Script:GamingModeActive -and -not [bool]$Script:UpdatesModeActive -and -not [bool]$Script:DeploymentMediaModeActive)
 	{
 		if (Get-Command -Name 'Update-CurrentTabContent' -CommandType Function -ErrorAction SilentlyContinue)
 		{

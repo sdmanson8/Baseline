@@ -1085,6 +1085,7 @@ function Set-UIPersonalizationNewsInterestsIcon
 	# Skip if Edge is not installed
 	if (-not (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -1093,6 +1094,7 @@ function Set-UIPersonalizationNewsInterestsIcon
 	$MachineId = [Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SQMClient", "MachineId", $null)
 	if (-not $MachineId)
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}

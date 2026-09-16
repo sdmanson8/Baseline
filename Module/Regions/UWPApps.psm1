@@ -257,6 +257,7 @@ function CortanaAutostart
 
 	if (-not (Get-AppxPackage -Name Microsoft.549981C3F5F10 -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -828,7 +829,8 @@ function RevertStartMenu
 
 			if (-not $IsRevertStartMenuSupported)
 			{
-				Write-ConsoleStatus -Status success
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail $SupportedMessage
+				Write-ConsoleStatus -Status warning
 				LogWarning $SupportedMessage
 				return
 			}
@@ -889,7 +891,8 @@ function RevertStartMenu
 
 			if (-not $IsRevertStartMenuSupported)
 			{
-				Write-ConsoleStatus -Status success
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail $SupportedMessage
+				Write-ConsoleStatus -Status warning
 				LogWarning $SupportedMessage
 				return
 			}

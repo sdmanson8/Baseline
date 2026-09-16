@@ -127,7 +127,7 @@ Describe 'Export-BaselineSupportBundle' {
         New-Item -ItemType Directory -Path $launchTraceDir -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $launchTraceDir 'Baseline-launch-trace.txt') -Value 'launch trace line' -Encoding UTF8
         $sessionSnapshot = [pscustomobject]@{
-            SelectedPreset               = 'Privacy'
+            ActivePresetName             = 'Privacy'
             SafeMode                     = $true
             AdvancedMode                 = $false
             UIDensity                    = 'Compact'

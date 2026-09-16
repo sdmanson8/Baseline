@@ -1,4 +1,4 @@
-
+﻿
 	<#
 	    .SYNOPSIS
 	#>
@@ -1014,6 +1014,20 @@
 		}
 
 		[void]($statusRow.Children.Add($statusLabel))
+		$getDisplayState = ${function:Get-GuiToggleDisplayState}
+		$getDetectionFailure = { param($Name) $Script:GuiDetectionFailures[$Name] }
+		$detectionFailureLabel = Get-UxString -Key 'GuiDetectionFailed' -Fallback 'Detection failed'
+		$Script:GuiDetectionSubscriptions[[string]$Tweak.Function] = {
+			$failure = & $getDetectionFailure ([string]$Tweak.Function)
+			if ($failure) {
+				$statusLabel.Text = $detectionFailureLabel
+				$statusLabel.ToolTip = $failure
+				return
+			}
+			$display = & $getDisplayState -Tweak $Tweak -StateSource $CheckBox
+			$statusLabel.Text = [string]$display.StateLabel
+			$statusLabel.Foreground = $RowContext.BrushConverter.ConvertFromString($(if ($display.StateTone -eq 'Primary') { $primaryColor } else { $mutedColor }))
+		}.GetNewClosure()
 		$whyBlock = New-WhyThisMattersButton -Tweak $Tweak
 		if ($whyBlock)
 		{
@@ -1802,7 +1816,7 @@
 		}.GetNewClosure()
 
 		$syncSelectionState = {
-			param([bool]$IsChecked)
+			param([bool]$IsChecked, [bool]$RefreshAvailability = $true)
 
 			if ($StateControl -and (& $hasField -Object $StateControl -FieldName 'IsRestoring') -and [bool]$StateControl.IsRestoring)
 			{
@@ -1844,7 +1858,7 @@
 				{
 					& $RowContext.SyncGameModePlanFromControlsScript
 				}
-				if ($RowContext.UpdateRunActionAvailabilityScript -is [scriptblock]) { & $RowContext.UpdateRunActionAvailabilityScript }
+				if ($RefreshAvailability -and $RowContext.UpdateRunActionAvailabilityScript -is [scriptblock]) { & $RowContext.UpdateRunActionAvailabilityScript }
 				return
 			}
 
@@ -1865,7 +1879,7 @@
 			{
 				& $RowContext.SyncGameModePlanFromControlsScript
 			}
-			if ($RowContext.UpdateRunActionAvailabilityScript -is [scriptblock]) { & $RowContext.UpdateRunActionAvailabilityScript }
+			if ($RefreshAvailability -and $RowContext.UpdateRunActionAvailabilityScript -is [scriptblock]) { & $RowContext.UpdateRunActionAvailabilityScript }
 		}.GetNewClosure()
 
 		$null = Register-GuiEventHandler -Source $CheckBox -EventName 'Checked' -Handler ({
@@ -1901,7 +1915,7 @@
 				return
 			}
 
-			& $syncSelectionState $true
+			& $syncSelectionState $true $false
 		}.GetNewClosure())
 
 		$null = Register-GuiEventHandler -Source $DcSlider -EventName 'ValueChanged' -Handler ({
@@ -1915,7 +1929,7 @@
 				return
 			}
 
-			& $syncSelectionState $true
+			& $syncSelectionState $true $false
 		}.GetNewClosure())
 	}
 

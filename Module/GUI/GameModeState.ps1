@@ -15,6 +15,7 @@
 		$Script:GameModeControlSyncInProgress = $false
 		$Script:GameModeDecisionOverrides = @{}
 		$Script:GameModeAdvancedSelections = @{}
+		$Script:GameModeAdvancedOptionsExpanded = $false
 		$Script:GameModePreviousPrimaryTab = $null
 		$Script:GameModeAllowlist = @(Get-GameModeAllowlist)
 		# Cross-tab entries: functions from other tabs that should also appear in the Gaming tab.

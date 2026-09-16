@@ -264,6 +264,8 @@ function RunTrusted {
     $trustedScriptPath = Join-Path $trustedScriptDirectory ('TrustedInstaller-{0}.ps1' -f $trustedOperationId)
     $trustedMarkerPath = Join-Path $trustedScriptDirectory ('TrustedInstaller-{0}.complete.json' -f $trustedOperationId)
     $trustedErrorPath = Join-Path $trustedScriptDirectory ('TrustedInstaller-{0}.error.json' -f $trustedOperationId)
+    $trustedStartedPath = Join-Path $trustedScriptDirectory ('TrustedInstaller-{0}.started.json' -f $trustedOperationId)
+    $trustedProcess = $null
 
     # Pass log file to the new process
     if ($logFile) {
@@ -279,16 +281,22 @@ $command
 
     $escapedTrustedMarkerPath = $trustedMarkerPath -replace "'", "''"
     $escapedTrustedErrorPath = $trustedErrorPath -replace "'", "''"
+    $escapedTrustedStartedPath = $trustedStartedPath -replace "'", "''"
     $trustedPayload = $command
     $command = @"
 try {
+    `$ErrorActionPreference = 'Stop'
+    `$started = [pscustomobject]@{ ProcessId = `$PID; StartTimeTicks = [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks }
+    [IO.File]::WriteAllText('$escapedTrustedStartedPath.tmp', (`$started | ConvertTo-Json -Compress))
+    [IO.File]::Move('$escapedTrustedStartedPath.tmp', '$escapedTrustedStartedPath')
 $trustedPayload
     `$trustedExitCode = if (`$null -ne `$global:LASTEXITCODE) { [int]`$global:LASTEXITCODE } else { 0 }
     [pscustomobject]@{
         Completed = `$true
         ExitCode = `$trustedExitCode
         TimestampUtc = [DateTime]::UtcNow.ToString('o')
-    } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$escapedTrustedMarkerPath' -Encoding UTF8 -Force
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$escapedTrustedMarkerPath.tmp' -Encoding UTF8 -Force
+    [IO.File]::Move('$escapedTrustedMarkerPath.tmp', '$escapedTrustedMarkerPath')
     if (`$trustedExitCode -ne 0) { exit `$trustedExitCode }
 }
 catch {
@@ -297,7 +305,8 @@ catch {
         Message = `$_.Exception.Message
         Type = `$_.Exception.GetType().FullName
         TimestampUtc = [DateTime]::UtcNow.ToString('o')
-    } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$escapedTrustedErrorPath' -Encoding UTF8 -Force
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$escapedTrustedErrorPath.tmp' -Encoding UTF8 -Force
+    [IO.File]::Move('$escapedTrustedErrorPath.tmp', '$escapedTrustedErrorPath')
     exit 1
 }
 "@
@@ -340,7 +349,7 @@ catch {
             $originalTrustedInstallerBinPath = $defaultTrustedInstallerBinPath
         }
 
-        $trustedCommand = 'cmd.exe /c "{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}"' -f $psexe, $trustedScriptPath
+        $trustedCommand = '"{0}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{1}"' -f $psexe, $trustedScriptPath
 
         LogInfo 'Temporarily changing TrustedInstaller service command to run AIRemoval privileged cleanup.'
         $null = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('config', 'TrustedInstaller', 'binPath=', $trustedCommand) -TimeoutSeconds 60
@@ -348,10 +357,42 @@ catch {
         # SCM exit code 1053 is acceptable here; the marker/error files below are the authoritative result.
         $null = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('start', 'TrustedInstaller') -TimeoutSeconds 120 -AllowedExitCodes @(0, 1053)
         $trustedDeadline = [DateTime]::UtcNow.AddMinutes(20)
+        $trustedStartupDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        $nextTrustedProgressAt = [DateTime]::UtcNow.AddSeconds(15)
         while ((-not (Test-Path -LiteralPath $trustedMarkerPath -PathType Leaf)) -and
                (-not (Test-Path -LiteralPath $trustedErrorPath -PathType Leaf)) -and
                [DateTime]::UtcNow -lt $trustedDeadline)
         {
+            if ($null -eq $trustedProcess) {
+                if (Test-Path -LiteralPath $trustedStartedPath -PathType Leaf) {
+                    $started = Get-Content -LiteralPath $trustedStartedPath -Raw -ErrorAction Stop | ConvertFrom-Json
+                    try {
+                        $trustedProcess = [System.Diagnostics.Process]::GetProcessById([int]$started.ProcessId)
+                        $null = $trustedProcess.Handle
+                        if ($trustedProcess.StartTime.ToUniversalTime().Ticks -ne [long]$started.StartTimeTicks) {
+                            $trustedProcess.Dispose()
+                            $trustedProcess = $null
+                            throw 'TrustedInstaller AIRemoval worker process identity changed.'
+                        }
+                    }
+                    catch {
+                        if ((Test-Path -LiteralPath $trustedMarkerPath) -or (Test-Path -LiteralPath $trustedErrorPath)) { break }
+                        throw
+                    }
+                }
+                elseif ([DateTime]::UtcNow -ge $trustedStartupDeadline) {
+                    throw 'TrustedInstaller AIRemoval worker did not start within 30 seconds after the service start returned.'
+                }
+            }
+            if ($null -ne $trustedProcess -and $trustedProcess.HasExited) {
+                if ((Test-Path -LiteralPath $trustedMarkerPath) -or (Test-Path -LiteralPath $trustedErrorPath)) { break }
+                throw "TrustedInstaller AIRemoval worker exited with code $($trustedProcess.ExitCode) without reporting completion."
+            }
+            if ([DateTime]::UtcNow -ge $nextTrustedProgressAt)
+            {
+                LogInfo 'TrustedInstaller AIRemoval cleanup is still running; waiting for its completion marker.'
+                $nextTrustedProgressAt = [DateTime]::UtcNow.AddSeconds(15)
+            }
             Start-Sleep -Milliseconds 500
         }
 
@@ -384,6 +425,17 @@ catch {
     }
     finally
     {
+        if ($null -ne $trustedProcess) {
+            try {
+                if (-not $trustedProcess.HasExited) {
+                    Stop-BaselineProcessTree -Process $trustedProcess -Source 'AIRemoval.TrustedInstallerCleanup'
+                }
+            }
+            catch {
+                $trustedFailure = $_
+            }
+            finally { $trustedProcess.Dispose() }
+        }
         if (-not [string]::IsNullOrWhiteSpace($originalTrustedInstallerBinPath))
         {
             try
@@ -425,6 +477,10 @@ catch {
         Remove-Item -LiteralPath $trustedScriptPath -Force -ErrorAction SilentlyContinue | Out-Null
         Remove-Item -LiteralPath $trustedMarkerPath -Force -ErrorAction SilentlyContinue | Out-Null
         Remove-Item -LiteralPath $trustedErrorPath -Force -ErrorAction SilentlyContinue | Out-Null
+        Remove-Item -LiteralPath $trustedStartedPath -Force -ErrorAction SilentlyContinue | Out-Null
+        foreach ($temporaryPath in @("$trustedMarkerPath.tmp", "$trustedErrorPath.tmp", "$trustedStartedPath.tmp")) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue | Out-Null
+        }
     }
 
     if ($restoreFailure)

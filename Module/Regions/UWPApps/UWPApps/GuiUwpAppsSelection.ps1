@@ -28,7 +28,14 @@ function Request-GuiUWPAppsSelection
 			Error = $null
 		})
 
-		$queue.Enqueue([PSCustomObject]@{
+		# User interaction is not execution time. Resume the same budget after the response.
+    $clock = Get-Variable -Name BaselineExecutionClock -ValueOnly -ErrorAction Ignore
+    if ($clock) {
+        [Threading.Monitor]::Enter($clock.SyncRoot)
+        try { $clock.Watch.Stop() } finally { [Threading.Monitor]::Exit($clock.SyncRoot) }
+    }
+    try {
+$queue.Enqueue([PSCustomObject]@{
 			Kind = '_InteractiveSelectionRequest'
 			RequestType = 'UWPApps'
 			Mode = $Mode
@@ -54,7 +61,13 @@ function Request-GuiUWPAppsSelection
 		}
 
 		return $responseState['Result']
-	}
+	    } finally {
+        if ($clock) {
+            [Threading.Monitor]::Enter($clock.SyncRoot)
+            try { $clock.Watch.Start() } finally { [Threading.Monitor]::Exit($clock.SyncRoot) }
+        }
+    }
+}
 
 		<#
 		    .SYNOPSIS

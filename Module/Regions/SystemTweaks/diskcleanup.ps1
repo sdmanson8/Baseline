@@ -103,16 +103,60 @@ if (-not ("WinAPI.DiskCleanupWindow" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace WinAPI
 {
     public static class DiskCleanupWindow
     {
-        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        private delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr window, StringBuilder className, int capacity);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDlgItem(IntPtr dialog, int controlId);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowEnabled(IntPtr window);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        public static bool AcceptNotification(int processId)
+        {
+            bool accepted = false;
+            EnumWindows(delegate(IntPtr window, IntPtr parameter)
+            {
+                uint ownerId;
+                GetWindowThreadProcessId(window, out ownerId);
+                if (ownerId != (uint)processId || !IsWindowVisible(window)) return true;
+
+                var className = new StringBuilder(256);
+                GetClassName(window, className, className.Capacity);
+                if (className.ToString() != "#32770") return true;
+
+                // Standard dialog IDs work across Windows display languages.
+                // Progress/cancel dialogs have no IDOK button and are left alone.
+                IntPtr okButton = GetDlgItem(window, 1); // IDOK
+                if (okButton != IntPtr.Zero && IsWindowVisible(okButton) && IsWindowEnabled(okButton))
+                {
+                    // Send IDOK / BN_CLICKED without activating the background dialog.
+                    accepted |= PostMessage(window, 0x0111, new IntPtr(1), okButton); // WM_COMMAND
+                }
+                return true;
+            }, IntPtr.Zero);
+            return accepted;
+        }
     }
 }
 "@ -ErrorAction Stop | Out-Null
@@ -156,141 +200,40 @@ function Set-LowDiskChecksDisabled {
 
 <#
     .SYNOPSIS
-    Closes disk space notification window.
+    Waits in the background worker and accepts cleanup completion notifications.
 #>
-
-function Close-DiskSpaceNotificationWindow {
-    $closed = $false
-    $windowTitles = @(
-        "Disk Space Notification"
-    )
-
-    foreach ($windowTitle in $windowTitles) {
-        foreach ($windowHandle in @(
-            [WinAPI.DiskCleanupWindow]::FindWindow($null, $windowTitle),
-            [WinAPI.DiskCleanupWindow]::FindWindow("#32770", $windowTitle)
-        )) {
-            if ($windowHandle -ne [IntPtr]::Zero) {
-                [WinAPI.DiskCleanupWindow]::PostMessage($windowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-                $closed = $true
-            }
-        }
-    }
-
-    return $closed
-}
-
-<#
-    .SYNOPSIS
-    Closes cleanup process window.
-#>
-
-function Close-CleanupProcessWindow {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Diagnostics.Process]$Process
-    )
-
-    try {
-        $Process.Refresh()
-    } catch {
-	if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'diskcleanup.Close-CleanupProcessWindow:catch199' -Severity Debug }
-
-        return $false
-    }
-
-    if ($Process.HasExited) {
-        return $true
-    }
-
-    if ($Process.MainWindowHandle -eq [IntPtr]::Zero) {
-        return $false
-    }
-
-    return $Process.CloseMainWindow()
-}
-
-<#
-    .SYNOPSIS
-    Waits for cleanup process and dismiss notification.
-#>
-
 function Wait-CleanupProcessAndDismissNotification {
     param(
         [Parameter(Mandatory = $true)]
         [System.Diagnostics.Process]$Process,
 
-        [int]$PostExitSeconds = 60,
-
-        [int]$QuietAfterCloseSeconds = 2,
-
         [int]$TimeoutSeconds = 900
     )
 
+    # Retain the native handle before exit so .NET can still retrieve the exit code.
+    $null = $Process.Handle
     $waitDeadline = $null
     if ($TimeoutSeconds -gt 0) {
         $waitDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
     }
 
-    $graceDeadline = $null
-    $closeLogged = $false
-    $quietDeadline = $null
-    $cleanupWindowCloseRequested = $false
-
-    while ($true) {
-        $now = Get-Date
-        try {
-            $Process.Refresh()
-        } catch {
-	if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'diskcleanup.Wait-CleanupProcessAndDismissNotification:catch245' -Severity Debug }
-
-            break
+    while (-not $Process.HasExited) {
+        if ([WinAPI.DiskCleanupWindow]::AcceptNotification($Process.Id)) {
+            LogInfo "Accepted Disk Cleanup notification automatically."
         }
 
-        if ($waitDeadline -and $now -ge $waitDeadline) {
-            if (-not $Process.HasExited) {
-                LogWarning ("cleanmgr.exe timed out after {0} second(s); stopping process tree." -f $TimeoutSeconds)
-                Stop-BaselineProcessTree -Process $Process -Source 'DiskCleanup.CleanmgrTimeout'
-            }
-            break
-        }
-
-        if ($Process.HasExited) {
-            if (-not $graceDeadline) {
-                $graceDeadline = $now.AddSeconds($PostExitSeconds)
-            }
-
-            if ($now -ge $graceDeadline) {
-                break
-            }
-        }
-
-        if (Close-DiskSpaceNotificationWindow) {
-            if (-not $closeLogged) {
-                LogInfo "Closed Disk Space Notification popup automatically."
-                $closeLogged = $true
-            }
-            $quietDeadline = $now.AddSeconds($QuietAfterCloseSeconds)
-        } elseif ($quietDeadline -and $now -ge $quietDeadline -and -not $cleanupWindowCloseRequested) {
-            if (Close-CleanupProcessWindow -Process $Process) {
-                $cleanupWindowCloseRequested = $true
-                $quietDeadline = $now.AddSeconds($QuietAfterCloseSeconds)
-            }
-        } elseif ($cleanupWindowCloseRequested -and $quietDeadline -and $now -ge $quietDeadline) {
-            $Process.Refresh()
-            if (-not $Process.HasExited) {
-                LogWarning "cleanmgr.exe did not exit after its window was closed; stopping process tree."
-                Stop-BaselineProcessTree -Process $Process -Source 'DiskCleanup.CleanmgrTimeout'
-            }
-            break
-        } elseif ($Process.HasExited -and $quietDeadline -and $now -ge $quietDeadline) {
-            break
+        if ($waitDeadline -and (Get-Date) -ge $waitDeadline) {
+            LogWarning ("cleanmgr.exe timed out after {0} second(s); stopping process tree." -f $TimeoutSeconds)
+            Stop-BaselineProcessTree -Process $Process -Source 'DiskCleanup.CleanmgrTimeout'
+            throw [TimeoutException]::new("Disk Cleanup exceeded its $TimeoutSeconds second execution limit.")
         }
 
         Start-Sleep -Milliseconds 500
+        $Process.Refresh()
     }
-
-    Close-DiskSpaceNotificationWindow | Out-Null
+    $Process.WaitForExit()
+    if ($null -eq $Process.ExitCode) { throw 'Disk Cleanup exited, but its exit code could not be retrieved.' }
+    if ($Process.ExitCode -ne 0) { throw "Disk Cleanup exited with code $($Process.ExitCode)." }
 }
 
 <#
@@ -334,7 +277,8 @@ function Invoke-BuiltInSilentCleanup {
             $remainingSeconds = [int][Math]::Ceiling(($taskDeadline - (Get-Date)).TotalSeconds)
             if ($remainingSeconds -lt 1) { $remainingSeconds = 1 }
 
-            Wait-CleanupProcessAndDismissNotification -Process $newCleanmgrProcess -TimeoutSeconds $remainingSeconds
+            try { Wait-CleanupProcessAndDismissNotification -Process $newCleanmgrProcess -TimeoutSeconds $remainingSeconds }
+            finally { $newCleanmgrProcess.Dispose() }
             return $true
         }
 
@@ -375,23 +319,21 @@ $originalLowDiskChecksValue = Get-ItemPropertyValue -Path $lowDiskPolicyPath -Na
 try {
     Set-LowDiskChecksDisabled -Disable $true
 
-    $usedSilentCleanupTask = $false
-    try {
-        $usedSilentCleanupTask = Invoke-BuiltInSilentCleanup
-    } catch {
-        LogWarning "SilentCleanup task launch failed. Running direct cleanmgr.exe: $($_.Exception.Message)"
-    }
+    $usedSilentCleanupTask = Invoke-BuiltInSilentCleanup
 
     if (-not $usedSilentCleanupTask) {
-        try {
-            $cleanmgrProcess = Start-Process -FilePath cleanmgr.exe -ArgumentList "/d C: /VERYLOWDISK" -PassThru -NoNewWindow -ErrorAction Stop
-            Wait-CleanupProcessAndDismissNotification -Process $cleanmgrProcess -TimeoutSeconds 900
-        } catch {
-            LogWarning "Direct cleanmgr.exe launch failed: $($_.Exception.Message)"
-        }
+        $cleanupStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $cleanupStartInfo.FileName = Join-Path $env:SystemRoot 'System32\cleanmgr.exe'
+        $cleanupStartInfo.Arguments = '/d C: /VERYLOWDISK'
+        $cleanupStartInfo.UseShellExecute = $false
+        $cleanupStartInfo.CreateNoWindow = $true
+        $cleanmgrProcess = [System.Diagnostics.Process]::Start($cleanupStartInfo)
+        try { Wait-CleanupProcessAndDismissNotification -Process $cleanmgrProcess -TimeoutSeconds 900 }
+        finally { $cleanmgrProcess.Dispose() }
     }
     LogInfo "Running cleanmgr.exe completed"
 }
+catch { LogWarning "Disk Cleanup did not complete: $($_.Exception.Message)" }
 finally {
     try {
         Set-LowDiskChecksDisabled -Restore -RestoreValue $originalLowDiskChecksValue -Disable $false

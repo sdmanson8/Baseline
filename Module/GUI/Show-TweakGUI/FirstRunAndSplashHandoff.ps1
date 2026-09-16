@@ -1,3 +1,5 @@
+$setStartupWindowMaximizedCommand = Get-GuiRuntimeCommand -Name 'Set-GuiMainWindowWorkAreaMaximized'
+$Script:SplashCloseWorker = $null
 
 # Purpose: first-run dependency and startup splash resolution.
 $firstRunDialogDispatcher = if ($Form -and $Form.Dispatcher) { $Form.Dispatcher } else { $null }
@@ -97,11 +99,11 @@ $firstRunDialogDispatcher = if ($Form -and $Form.Dispatcher) { $Form.Dispatcher 
 
 					if ($splashWindowMaximizedNow)
 					{
-						Set-GuiMainWindowWorkAreaMaximized -Window $Form -Maximized $true -PreserveRestoreBounds
+						& $setStartupWindowMaximizedCommand -Window $Form -Maximized $true -PreserveRestoreBounds
 					}
 					elseif ($null -ne $startupSplashLastMirroredWindowMaximized -and [bool]$startupSplashLastMirroredWindowMaximized)
 					{
-						Set-GuiMainWindowWorkAreaMaximized -Window $Form -Maximized $false
+						& $setStartupWindowMaximizedCommand -Window $Form -Maximized $false
 					}
 					$startupSplashLastMirroredWindowMaximized = $splashWindowMaximizedNow
 				}

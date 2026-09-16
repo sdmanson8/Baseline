@@ -1076,73 +1076,11 @@
 			}
 		}
 
-		if ($StopPowerShell -and $worker.PSObject.Properties['PowerShell'] -and $worker.PowerShell)
-		{
-			try
-			{
-				$null = $worker.PowerShell.BeginStop($null, $null)
-			}
-			catch
-			{
-				try { $worker.PowerShell.Stop() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.StopPowerShell' }
-			}
-		}
-
-		if ($worker.PSObject.Properties['AsyncResult'] -and $worker.AsyncResult -and -not $worker.AsyncResult.IsCompleted)
-		{
-			try { [void]$worker.AsyncResult.AsyncWaitHandle.WaitOne(1000) } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.WaitForStop' }
-		}
-		$workerStillRunning = ($worker.PSObject.Properties['AsyncResult'] -and $worker.AsyncResult -and -not $worker.AsyncResult.IsCompleted)
-
-		if (-not $SkipEndInvoke -and $worker.PSObject.Properties['AsyncResult'] -and $worker.AsyncResult -and $worker.AsyncResult.IsCompleted -and $worker.PSObject.Properties['PowerShell'] -and $worker.PowerShell)
-		{
-			try { $null = $worker.PowerShell.EndInvoke($worker.AsyncResult) } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.EndInvokeDuringCleanup' }
-		}
-
-		if ($worker.PSObject.Properties['MenuItem'] -and $worker.MenuItem)
-		{
-			$menuWasEnabled = $true
-			if ($worker.PSObject.Properties['MenuWasEnabled']) { $menuWasEnabled = [bool]$worker.MenuWasEnabled }
-			try { $worker.MenuItem.IsEnabled = $menuWasEnabled } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.RestoreMenuItem' }
-		}
-
-		if ($worker.PSObject.Properties['SessionStatePath'] -and -not [string]::IsNullOrWhiteSpace([string]$worker.SessionStatePath) -and (Test-Path -LiteralPath ([string]$worker.SessionStatePath)))
-		{
-			try { Remove-Item -LiteralPath ([string]$worker.SessionStatePath) -Force -ErrorAction SilentlyContinue }
-			catch { Write-SwallowedException -ErrorRecord $_ -Source 'ActionHandlers.ExportSupportBundle.RemoveSessionStatePath' }
-		}
-
-		if ($worker.PSObject.Properties['PowerShell'] -and $worker.PowerShell)
-		{
-			if (-not $workerStillRunning)
-			{
-				try { $worker.PowerShell.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.DisposePowerShell' }
-			}
-		}
-
-		if ($worker.PSObject.Properties['Runspace'] -and $worker.Runspace)
-		{
-			try
-			{
-				if ($worker.Runspace.RunspaceStateInfo -and $worker.Runspace.RunspaceStateInfo.State -eq [System.Management.Automation.Runspaces.RunspaceState]::Opened)
-				{
-					if ($StopPowerShell -and $workerStillRunning)
-					{
-						$worker.Runspace.CloseAsync()
-					}
-					else
-					{
-						$worker.Runspace.Close()
-					}
-				}
-			}
-			catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.CloseRunspace' }
-			if (-not $workerStillRunning)
-			{
-				try { $worker.Runspace.Dispose() } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.DisposeRunspace' }
-			}
-		}
-
+        if ($worker.MenuItem) { $worker.MenuItem.IsEnabled = [bool]$worker.MenuWasEnabled }
+        # Stop/finalize/dispose in one owning cleanup operation. A dispatcher
+        # callback must never wait on a worker that may need that dispatcher.
+        $invocation = if ($SkipEndInvoke) { $null } else { $worker.AsyncResult }
+        [Baseline.GuiExecution.WorkerLifecycle]::StopAndDispose($worker.PowerShell, $invocation, $worker.Runspace, [string]$worker.SessionStatePath)
 		if ($StopPowerShell -and -not [string]::IsNullOrWhiteSpace($Reason) -and (Get-Command -Name 'LogWarning' -CommandType Function -ErrorAction SilentlyContinue))
 		{
 			LogWarning $Reason
@@ -1150,6 +1088,84 @@
 	}
 
 	$Script:StopGuiSupportBundleExportWorkerScript = ${function:Stop-GuiSupportBundleExportWorker}
+
+	# Rollback checkpoint: re-inline this callback into Start-GuiSupportBundleExportAsync.
+	function Receive-GuiSupportBundleExport
+	{
+		param([hashtable]$Context)
+		$syncHash = $Context.syncHash
+		$statusState = $Context.statusState
+		$SetProgressDialogStatus = $Context.SetProgressDialogStatus
+		$ProgressDialog = $Context.ProgressDialog
+		$SetStatusTextCommand = $Context.SetStatusTextCommand
+		$asyncResult = $Context.asyncResult
+		$timer = $Context.timer
+		$ps = $Context.ps
+		$OutputPath = $Context.OutputPath
+		$CloseProgressDialog = $Context.CloseProgressDialog
+		$SessionLogPath = $Context.SessionLogPath
+		$ShowDialog = $Context.ShowDialog
+
+				$currentStatus = [string]$syncHash.Status
+				if (-not [string]::IsNullOrWhiteSpace($currentStatus) -and $currentStatus -ne $statusState.LastStatus)
+				{
+					$statusState.LastStatus = $currentStatus
+					& $SetProgressDialogStatus -ProgressDialog $ProgressDialog -Status $currentStatus
+					if ($SetStatusTextCommand)
+					{
+						try { & $SetStatusTextCommand -Text $currentStatus -Tone 'accent' } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.StatusTextUpdate' }
+					}
+				}
+
+				if (-not $asyncResult.IsCompleted)
+				{
+					return
+				}
+
+				$timer.Stop()
+				try
+				{
+					$resultItems = @($ps.EndInvoke($asyncResult))
+					$result = if ($resultItems.Count -gt 0) { $resultItems[0] } else { $null }
+					$outputPathValue = [string]$syncHash.OutputPath
+					if ([string]::IsNullOrWhiteSpace($outputPathValue) -and $result -and $result.PSObject.Properties['OutputPath'])
+					{
+						$outputPathValue = [string]$result.OutputPath
+					}
+					if ([string]::IsNullOrWhiteSpace($outputPathValue))
+					{
+						$outputPathValue = [string]$OutputPath
+					}
+
+					& $SetProgressDialogStatus -ProgressDialog $ProgressDialog -Status 'Support bundle export complete.' -Completed
+					& $CloseProgressDialog -ProgressDialog $ProgressDialog
+					if ($SetStatusTextCommand)
+					{
+						& $SetStatusTextCommand -Text ("Support bundle exported: {0}" -f $outputPathValue) -Tone 'success'
+					}
+					LogInfo ("Exported support bundle to {0} using session log {1}" -f $outputPathValue, [string]$SessionLogPath)
+					[void](Invoke-UserLaunch -FilePath 'explorer.exe' -ArgumentList @('/select,"{0}"' -f $outputPathValue) -Description 'support bundle output')
+				}
+				catch
+				{
+					& $CloseProgressDialog -ProgressDialog $ProgressDialog
+					if ($SetStatusTextCommand)
+					{
+						try { & $SetStatusTextCommand -Text ("Support bundle export failed: {0}" -f $_.Exception.Message) -Tone 'danger' } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.StatusTextFailure' }
+					}
+					LogError (Format-BaselineErrorForLog -ErrorObject $_ -Prefix 'Failed to export support bundle')
+					[void](& $ShowDialog -Title 'Export Support Bundle' -Message ("Failed to export support bundle.`n`n{0}" -f $_.Exception.Message) -Buttons @('OK') -AccentButton 'OK')
+				}
+				finally
+				{
+					$stopSupportBundleExportScript = $Script:StopGuiSupportBundleExportWorkerScript
+					if ($stopSupportBundleExportScript)
+					{
+						& $stopSupportBundleExportScript -Reason 'Support bundle export completed.' -SkipEndInvoke
+					}
+				}
+			
+	}
 
 	function Start-GuiSupportBundleExportAsync
 	{
@@ -1244,6 +1260,10 @@
 				$Global:GUIMode = $true
 				$Sync.Status = 'Loading support bundle helpers...'
 				Import-Module -Name $SharedHelpersPath -Force -Global -ErrorAction Stop
+				# Detection scriptblocks belong to the runspace that loads them.
+				# Never execute the GUI's live manifest scriptblocks on this worker.
+				. (Join-Path $ModuleRoot 'GUI\DetectScriptblocks.ps1')
+				$Manifest = Import-TweakManifestFromData -ModuleRoot $ModuleRoot -DetectScriptblocks $Script:DetectScriptblocks -VisibleIfScriptblocks $Script:VisibleIfScriptblocks
 
 				$Sync.Status = 'Preparing support bundle diagnostics...'
 				$progressCallback = {
@@ -1259,6 +1279,7 @@
 				}.GetNewClosure()
 				$exportArgs = @{
 					OutputPath = $OutputPath
+                    Manifest = $Manifest
 					ProfilePath = $ProfilePath
 					SessionLogPath = $SessionLogPath
 					PreSnapshot = $PreSnapshot
@@ -1288,67 +1309,10 @@
 				SessionStatePath = $SessionStatePath
 				OutputPath        = $OutputPath
 			}
-			$lastStatus = ''
-			$timer.Add_Tick({
-				$currentStatus = [string]$syncHash.Status
-				if (-not [string]::IsNullOrWhiteSpace($currentStatus) -and $currentStatus -ne $lastStatus)
-				{
-					$lastStatus = $currentStatus
-					& $SetProgressDialogStatus -ProgressDialog $ProgressDialog -Status $currentStatus
-					if ($SetStatusTextCommand)
-					{
-						try { & $SetStatusTextCommand -Text $currentStatus -Tone 'accent' } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.StatusTextUpdate' }
-					}
-				}
-
-				if (-not $asyncResult.IsCompleted)
-				{
-					return
-				}
-
-				$timer.Stop()
-				try
-				{
-					$resultItems = @($ps.EndInvoke($asyncResult))
-					$result = if ($resultItems.Count -gt 0) { $resultItems[0] } else { $null }
-					$outputPathValue = [string]$syncHash.OutputPath
-					if ([string]::IsNullOrWhiteSpace($outputPathValue) -and $result -and $result.PSObject.Properties['OutputPath'])
-					{
-						$outputPathValue = [string]$result.OutputPath
-					}
-					if ([string]::IsNullOrWhiteSpace($outputPathValue))
-					{
-						$outputPathValue = [string]$OutputPath
-					}
-
-					& $SetProgressDialogStatus -ProgressDialog $ProgressDialog -Status 'Support bundle export complete.' -Completed
-					& $CloseProgressDialog -ProgressDialog $ProgressDialog
-					if ($SetStatusTextCommand)
-					{
-						& $SetStatusTextCommand -Text ("Support bundle exported: {0}" -f $outputPathValue) -Tone 'success'
-					}
-					LogInfo ("Exported support bundle to {0} using session log {1}" -f $outputPathValue, [string]$SessionLogPath)
-					[void](Invoke-UserLaunch -FilePath 'explorer.exe' -ArgumentList @('/select,"{0}"' -f $outputPathValue) -Description 'support bundle output')
-				}
-				catch
-				{
-					& $CloseProgressDialog -ProgressDialog $ProgressDialog
-					if ($SetStatusTextCommand)
-					{
-						try { & $SetStatusTextCommand -Text ("Support bundle export failed: {0}" -f $_.Exception.Message) -Tone 'danger' } catch { Write-SwallowedException -ErrorRecord $_ -Source 'SystemScanFooterHandlers.SupportBundle.StatusTextFailure' }
-					}
-					LogError (Format-BaselineErrorForLog -ErrorObject $_ -Prefix 'Failed to export support bundle')
-					[void](& $ShowDialog -Title 'Export Support Bundle' -Message ("Failed to export support bundle.`n`n{0}" -f $_.Exception.Message) -Buttons @('OK') -AccentButton 'OK')
-				}
-				finally
-				{
-					$stopSupportBundleExportScript = $Script:StopGuiSupportBundleExportWorkerScript
-					if ($stopSupportBundleExportScript)
-					{
-						& $stopSupportBundleExportScript -Reason 'Support bundle export completed.' -SkipEndInvoke
-					}
-				}
-			}.GetNewClosure())
+			$statusState = @{ LastStatus = '' }
+			$exportContext = @{ syncHash = $syncHash; statusState = $statusState; SetProgressDialogStatus = $SetProgressDialogStatus; ProgressDialog = $ProgressDialog; SetStatusTextCommand = $SetStatusTextCommand; asyncResult = $asyncResult; timer = $timer; ps = $ps; OutputPath = $OutputPath; CloseProgressDialog = $CloseProgressDialog; SessionLogPath = $SessionLogPath; ShowDialog = $ShowDialog }
+			$receiveExport = Get-Command -Name Receive-GuiSupportBundleExport -CommandType Function -ErrorAction Stop
+			$timer.Add_Tick({ & $receiveExport -Context $exportContext }.GetNewClosure())
 			$timer.Start()
 		}
 		catch
@@ -1376,6 +1340,19 @@
 		}
 	}
 
+    function Get-GuiSupportBundleRunContext {
+        $pre = $null; $post = $null
+        if ($Script:RunState) {
+            $pre = $Script:RunState['PreRunSnapshot']
+            $post = $Script:RunState['PostRunSnapshot']
+        }
+        if ($Script:LastRunProfile) {
+            if ($null -eq $pre -and (Test-GuiObjectField -Object $Script:LastRunProfile -FieldName 'PreRunSnapshot')) { $pre = $Script:LastRunProfile.PreRunSnapshot }
+            if ($null -eq $post -and (Test-GuiObjectField -Object $Script:LastRunProfile -FieldName 'PostRunSnapshot')) { $post = $Script:LastRunProfile.PostRunSnapshot }
+        }
+        [pscustomobject]@{ RunId = (Get-BaselineRunId); Pre = $pre; Post = $post }
+    }
+    $getSupportBundleRunContextCommand = Get-GuiRuntimeCommand -Name 'Get-GuiSupportBundleRunContext'
 	$getSupportBundleSessionLogChoicesCommand = Get-GuiRuntimeCommand -Name 'Get-GuiSupportBundleSessionLogChoices' -CommandType 'Function'
 	$showSupportBundleSessionLogDialogCommand = Get-GuiRuntimeCommand -Name 'Show-GuiSupportBundleSessionLogDialog' -CommandType 'Function'
 	$showSupportBundleProgressDialogCommand = Get-GuiFunctionCapture -Name 'Show-GuiSupportBundleProgressDialog'
@@ -1434,6 +1411,7 @@
 				try
 				{
 					$sessionSnapshot = & $getGuiSettingsSnapshotCommand
+                    $runContext = & $getSupportBundleRunContextCommand
 					$sessionStatePath = Join-Path ([System.IO.Path]::GetTempPath()) ('BaselineSupportBundleSession_{0}.json' -f [guid]::NewGuid().ToString('N'))
 					$sessionPayload = [ordered]@{
 						Schema = 'Baseline.GuiSession'
@@ -1443,33 +1421,13 @@
 						SupportBundle = [ordered]@{
 							SelectedSessionLogPath = [string]$selectedSessionLog.Path
 							SelectedSessionLogName = [string]$selectedSessionLog.FileName
+                            RunId = $runContext.RunId
 						}
 					}
 					($sessionPayload | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $sessionStatePath -Encoding UTF8 -Force
 
-					$preRunSnapshot = $null
-					$postRunSnapshot = $null
-					try
-					{
-						if ($Script:RunState)
-						{
-							if ($Script:RunState.ContainsKey('PreRunSnapshot') -and $Script:RunState['PreRunSnapshot']) { $preRunSnapshot = $Script:RunState['PreRunSnapshot'] }
-							if ($Script:RunState.ContainsKey('PostRunSnapshot') -and $Script:RunState['PostRunSnapshot']) { $postRunSnapshot = $Script:RunState['PostRunSnapshot'] }
-						}
-
-						if (($null -eq $preRunSnapshot -or $null -eq $postRunSnapshot) -and $Script:LastRunProfile)
-						{
-							if ($null -eq $preRunSnapshot -and (& $hasField -Object $Script:LastRunProfile -FieldName 'PreRunSnapshot')) { $preRunSnapshot = $Script:LastRunProfile.PreRunSnapshot }
-							if ($null -eq $postRunSnapshot -and (& $hasField -Object $Script:LastRunProfile -FieldName 'PostRunSnapshot')) { $postRunSnapshot = $Script:LastRunProfile.PostRunSnapshot }
-						}
-					}
-					catch
-					{
-						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Module\GUI\ActionHandlers\SystemScanFooterHandlers.ps1:1460' -Severity Debug }
-
-						$preRunSnapshot = $null
-						$postRunSnapshot = $null
-					}
+                    $preRunSnapshot = $runContext.Pre
+                    $postRunSnapshot = $runContext.Post
 
 					$connectivityResults = @()
 					try
@@ -1908,4 +1866,3 @@
 	Register-GuiEventHandler -Source $BtnAuditLog -EventName 'Click' -Handler ({
 		& $showAuditLogDialogCommand
 	}) | Out-Null
-

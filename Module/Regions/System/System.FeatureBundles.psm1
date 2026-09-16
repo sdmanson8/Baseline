@@ -89,6 +89,7 @@ function Set-OptionalFeatureBundleState
 	{
 		Write-ConsoleStatus -Status failed
 		LogError ("Failed to {0} {1}: {2}" -f $State.ToLowerInvariant(), $DisplayName, $_.Exception.Message)
+		throw
 	}
 }
 
@@ -118,7 +119,7 @@ function LegacyMediaBundle
 		-EnableAction 'Enabling Legacy Media bundle' `
 		-DisableAction 'Disabling Legacy Media bundle' `
 		-FeatureNames @(
-			'Media.WindowsMediaPlayer'
+			'WindowsMediaPlayer'
 			'MediaPlayback'
 			'DirectPlay'
 			'LegacyComponents'

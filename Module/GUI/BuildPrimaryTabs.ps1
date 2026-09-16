@@ -472,6 +472,7 @@
 			if (-not $e) { return }
 		if ($e.Source -ne $PrimaryTabs) { return }
 		if ($Script:SuppressPrimaryTabSelectionChanged) { return }
+		if ($Script:StartupRestoreSessionPending) { return }
 		$skipIdlePrebuild = [bool]$Script:SkipIdlePrebuildOnNextPrimaryTabSelection
 		$Script:SkipIdlePrebuildOnNextPrimaryTabSelection = $false
 		& $saveTabScrollOffsetScript
@@ -538,9 +539,9 @@
 		{
 			$PrimaryTabDropdown.Visibility = [System.Windows.Visibility]::Collapsed
 		}
-		$PrimaryTabs.Visibility = [System.Windows.Visibility]::Visible
+		# Visibility belongs to the active view; resizing must preserve it.
 
-		# Keep the fixed one-row header strip visible and refresh the selected
+		# Refresh the selected
 		# tab's visual state after any width change.
 		$selectedTab = $PrimaryTabs.SelectedItem
 		if ($selectedTab -is [System.Windows.Controls.TabItem])

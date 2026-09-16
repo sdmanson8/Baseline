@@ -3824,6 +3824,22 @@ function Get-BaselineDisplayVersion
     .SYNOPSIS
 #>
 
+function Set-BaselineTweakOutcome
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Function,
+        [Parameter(Mandatory)][ValidateSet('Success', 'Failed', 'Skipped', 'Not applicable', 'Restart pending')][string]$Status,
+        [Parameter(Mandatory)][string]$Detail
+    )
+    $context = Get-Variable -Name BaselineTweakOutcomeContext -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+    # Only the entry point owns its result; helper sub-steps cannot overwrite it.
+    if ($context -and $context.Function -eq $Function) {
+        $context.Status = $Status
+        $context.Detail = $Detail
+    }
+}
+
 function Get-TweakSkipLabel
 {
 	<# .SYNOPSIS Returns the current tweak or caller name for skip log labels. #>

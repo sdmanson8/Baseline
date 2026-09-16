@@ -111,6 +111,15 @@ try
 			$activeRunId = [string]$globalRunIdVariable.Value
 		}
 
+        if ($ProfilePath -and (Test-Path -LiteralPath $ProfilePath)) {
+            $exportProfile = Get-Content -LiteralPath $ProfilePath -Raw | ConvertFrom-BaselineJson -ErrorAction Stop
+            $bundleContext = Get-BaselineSupportBundleObjectValue -InputObject $exportProfile -Name 'SupportBundle'
+            $capturedRunId = Get-BaselineSupportBundleObjectValue -InputObject $bundleContext -Name 'RunId'
+            if ($capturedRunId) { $activeRunId = [string]$capturedRunId }
+        }
+        if ($validationEvidenceReport) {
+            $validationEvidenceReport | Add-Member -NotePropertyName BuildVerification -NotePropertyValue 'Unverified: bundled test reports do not establish validation of this executable build.' -Force
+        }
 		& $notifySupportBundleProgress -Stage 'Metadata' -Message 'Writing support bundle metadata...'
 		$selectedSessionLogPath = $null
 		if (-not [string]::IsNullOrWhiteSpace($SessionLogPath))
@@ -143,7 +152,7 @@ try
 				Edition = $PSVersionTable.PSEdition
 				Version = $PSVersionTable.PSVersion.ToString()
 			}
-			OS              = [System.Environment]::OSVersion.VersionString
+			OS              = $null # Populated from the collected Windows OS record below.
 			OutputFile      = [System.IO.Path]::GetFileName($OutputPath)
 			ProfilePath     = $ProfilePath
 			SelectedSessionLog = if ($selectedSessionLogPath) {
@@ -157,7 +166,7 @@ try
 				Cutoff = (Get-Date).AddDays(-1 * [int]$AuditRetentionDays).ToString('o')
 			}
 			FeatureMaturitySummary = if ($featureMaturityReport) { $featureMaturityReport.Summary } else { $null }
-			ValidationEvidenceSummary = if ($validationEvidenceReport) { $validationEvidenceReport.Summary } else { $null }
+			ValidationEvidenceSummary = if ($validationEvidenceReport) { 'Historical reports: ' + $validationEvidenceReport.Summary + '. Current executable build validation is unverified.' } else { $null }
 			ValidationEvidenceChannels = if ($validationEvidenceReport) { @($validationEvidenceReport.ValidationChannels) } else { @() }
 			WindowsUpdateStatusSucceeded = $windowsUpdateStatusSucceeded
 			WindowsUpdateSummary = $windowsUpdateSummary
@@ -250,6 +259,8 @@ try
 		{
 			& $notifySupportBundleProgress -Stage 'Environment' -Message 'Collecting environment details...'
 			$environmentInfo = New-BaselineSupportBundleEnvironmentInfo
+            $metadata['OS'] = [string]$environmentInfo.OS.Caption
+            [System.IO.File]::WriteAllText($metadataPath, ($metadata | ConvertTo-Json -Depth 8), $utf8NoBom)
 			$environmentInfoPath = Join-Path $stagingDir 'environment.json'
 			[System.IO.File]::WriteAllText($environmentInfoPath, ($environmentInfo | ConvertTo-Json -Depth 8), $utf8NoBom)
 			$bundleEntries.Add([pscustomobject]@{ Name = 'environment.json'; Source = $environmentInfoPath })
@@ -283,6 +294,8 @@ try
 		{
 			& $notifySupportBundleProgress -Stage 'UserActionContext' -Message 'Collecting GUI session context...'
 			$userActionContext = New-BaselineSupportBundleUserActionContext -ProfilePath $ProfilePath -ReproductionContext $reproContext -ConfigStatePre $ConfigStatePre -ConfigStatePost $ConfigStatePost
+            $userActionContext | Add-Member -NotePropertyName HasPreSnapshot -NotePropertyValue ($null -ne $PreSnapshot)
+            $userActionContext | Add-Member -NotePropertyName HasPostSnapshot -NotePropertyValue ($null -ne $PostSnapshot)
 			$userActionContextPath = Join-Path $stagingDir 'user-action-context.json'
 			[System.IO.File]::WriteAllText($userActionContextPath, ($userActionContext | ConvertTo-Json -Depth 10), $utf8NoBom)
 			$bundleEntries.Add([pscustomobject]@{ Name = 'user-action-context.json'; Source = $userActionContextPath })
@@ -778,7 +791,7 @@ try
 			$dailyLogPath = if ($selectedSessionLogPath) { $selectedSessionLogPath } elseif ($globalLogFileVariable -and $globalLogFileVariable.Value) { [string]$globalLogFileVariable.Value } else { $null }
 			if (-not [string]::IsNullOrWhiteSpace($dailyLogPath) -and (Test-Path -LiteralPath $dailyLogPath))
 			{
-				$classified = Get-BaselineSupportBundleClassifiedErrors -LogPath $dailyLogPath -MaxErrors 20
+				$classified = Get-BaselineSupportBundleClassifiedErrors -LogPath $dailyLogPath -MaxErrors 0
 				if ($classified -and $classified.Errors.Count -gt 0)
 				{
 					$errorsPath = Join-Path $stagingDir 'errors.json'

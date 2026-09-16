@@ -12,7 +12,7 @@ if (
 		{
 			try
 			{
-				$settingsAppsFeaturesHealthAssessment = Resolve-BaselineSettingsAppsFeaturesHealthAssessment
+				$settingsAppsFeaturesHealthAssessment = $Script:RunState['SettingsAppsFeaturesHealthAssessment']
 			}
 			catch
 			{
@@ -38,7 +38,7 @@ if (
 		{
 			try
 			{
-				$screenSnippingHealthAssessment = Resolve-BaselineScreenSnippingHealthAssessment
+				$screenSnippingHealthAssessment = $Script:RunState['ScreenSnippingHealthAssessment']
 			}
 			catch
 			{

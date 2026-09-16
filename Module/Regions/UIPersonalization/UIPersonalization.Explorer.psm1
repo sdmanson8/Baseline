@@ -219,7 +219,14 @@ function TaskManagerDetails
 		$Disable
 	)
 
-	switch ($PSCmdlet.ParameterSetName)
+	# Windows 11 22H2 introduced the redesigned Task Manager, which has no
+    # legacy compact/details switch and does not initialize this binary value.
+    if ((Get-WindowsVersionData).CurrentBuild -ge 22621) {
+        Set-BaselineTweakOutcome -Function 'TaskManagerDetails' -Status 'Not applicable' -Detail 'The redesigned Task Manager does not use the legacy compact/details preference.'
+        return
+    }
+
+    switch ($PSCmdlet.ParameterSetName)
 	{
 		"Enable"
 		{
@@ -235,8 +242,8 @@ function TaskManagerDetails
 					$timeout -= $sleep
 					$preferences = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -ErrorAction SilentlyContinue
 				} Until ($preferences -or $timeout -le 0)
-				Stop-Process $taskmgr -ErrorAction SilentlyContinue | Out-Null
-				If ($preferences) {
+				if ($taskmgr -and -not $taskmgr.HasExited) { Stop-Process -InputObject $taskmgr -ErrorAction Stop }
+				If ($preferences -and $preferences.Preferences -is [byte[]] -and $preferences.Preferences.Length -gt 28) {
 					$preferences.Preferences[28] = 0
 					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" `
 						-Name "Preferences" `
@@ -258,7 +265,7 @@ function TaskManagerDetails
 			try
 			{
 				$preferences = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" -Name "Preferences" -ErrorAction SilentlyContinue
-				If ($preferences) {
+				If ($preferences -and $preferences.Preferences -is [byte[]] -and $preferences.Preferences.Length -gt 28) {
 					$preferences.Preferences[28] = 1
 					Set-RegistryValueSafe -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\TaskManager" `
 						-Name "Preferences" `

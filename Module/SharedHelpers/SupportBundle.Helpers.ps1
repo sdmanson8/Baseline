@@ -1565,7 +1565,7 @@ function New-BaselineSupportBundleUserActionContext
 		 $sessionState = $null }
 	}
 
-	$selectedPreset = Get-BaselineSupportBundleObjectValue -InputObject $sessionState -Name 'SelectedPreset'
+	$selectedPreset = Get-BaselineSupportBundleObjectValue -InputObject $sessionState -Name 'ActivePresetName'
 	$explicitSelections = Get-BaselineSupportBundleObjectValue -InputObject $sessionState -Name 'ExplicitSelections'
 	$explicitSelectionDefinitions = Get-BaselineSupportBundleObjectValue -InputObject $sessionState -Name 'ExplicitSelectionDefinitions'
 	$selectedTweaks = @()
@@ -1804,52 +1804,53 @@ function Get-BaselineSupportBundleClassifiedErrors
 		if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'SupportBundle.Helpers.Get-BaselineSupportBundleClassifiedErrors:catch1718' -Severity Debug }
 	 return $null }
 
-	$classified = [System.Collections.Generic.List[pscustomobject]]::new()
-	$counts = [ordered]@{ AUTH = 0; NETWORK = 0; POLICY = 0; DEPENDENCY = 0; UNKNOWN = 0 }
+    # Parse the log envelope first. Words in a tweak title are not severity.
+    $records = [System.Collections.Generic.List[object]]::new()
+    $record = $null
+    $envelope = '^(?<Timestamp>\d{2}-\d{2}-\d{4} \d{2}:\d{2}) (?<Level>INFO|DEBUG|WARNING|ERROR): (?<Message>.*)$'
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = [string]$lines[$i]
+        if ($line -match $envelope) {
+            $record = [pscustomobject]@{ Line = $line; LineNumber = $i + 1; Level = $Matches.Level; Message = $Matches.Message; Continuation = [System.Collections.Generic.List[string]]::new() }
+            $records.Add($record)
+        }
+        elseif ($record -and -not [string]::IsNullOrWhiteSpace($line)) { $record.Continuation.Add($line) }
+    }
+    $classified = [System.Collections.Generic.List[object]]::new()
+    $counts = [ordered]@{ AUTH = 0; NETWORK = 0; POLICY = 0; DEPENDENCY = 0; UNKNOWN = 0 }
+    foreach ($record in $records) {
+        # Execution outcomes are already reported as structured results, not incidents.
+        if ($record.Message -match '^\[RunId=[^\]]+\] \[GUI\] Run summary \|') { continue }
+        $exceptionType = $null
+        foreach ($line in $record.Continuation) {
+            if ($line -match '^Exception type: (.+)$') { $exceptionType = $Matches[1]; break }
+        }
+        $isDiagnosticFailure = $record.Level -eq 'DEBUG' -and ($exceptionType -or $record.Message.Contains('[swallow]') -or $record.Message.Contains('[GUI] GUI responsiveness failure:'))
+        if ($record.Level -notin @('ERROR', 'WARNING') -and -not $isDiagnosticFailure) { continue }
+        # Categories are based on explicit exception identities, never prose keywords.
+        $category = switch ($exceptionType) {
+            'System.UnauthorizedAccessException' { 'AUTH' }
+            'System.Net.WebException' { 'NETWORK' }
+            'System.Net.Sockets.SocketException' { 'NETWORK' }
+            'System.Management.Automation.CommandNotFoundException' { 'DEPENDENCY' }
+            'System.IO.FileNotFoundException' { 'DEPENDENCY' }
+            default { 'UNKNOWN' }
+        }
+        $counts[$category]++
+        $classified.Add([pscustomobject]@{
+            Category = $category; Level = $record.Level; Line = $record.Line
+            LineNumber = $record.LineNumber; ExceptionType = $exceptionType
+            StackTrace = @($record.Continuation)
+        })
+    }
+    $total = $classified.Count
+    $selected = @($classified)
+    if ($MaxErrors -gt 0 -and $total -gt $MaxErrors) { $selected = @($classified | Select-Object -Last $MaxErrors) }
+    return [pscustomobject][ordered]@{
+        Schema = 'Baseline.ClassifiedErrors'; SchemaVersion = 2
+        GeneratedAt = [DateTime]::UtcNow.ToString('o'); Source = $LogPath
+        Counts = $counts; TotalCount = $total; IncludedCount = $selected.Count
+        Truncated = ($selected.Count -lt $total); Errors = $selected
+    }
 
-	for ($i = $lines.Count - 1; $i -ge 0; $i--)
-	{
-		$line = $lines[$i]
-		if ([string]::IsNullOrWhiteSpace($line)) { continue }
-		# Match the LogMessage format: "dd-MM-yyyy HH:mm LEVEL: ..."
-		if ($line -notmatch '\b(ERROR|WARNING)\b') { continue }
-		if ($classified.Count -ge $MaxErrors) { break }
-
-		$msg = $line.ToLowerInvariant()
-		$category = 'UNKNOWN'
-		if ($msg -match 'access\s+denied|unauthor|requires?\s+administrator|elevation|elevated|hresult: 0x80070005|0x80004003') { $category = 'AUTH' }
-		elseif ($msg -match 'network|wininet|dns|proxy|connection\s+(refused|reset|timed)|host\s+(unreachable|not\s+found)|wsaeconnaborted|0x800705b4|timed?\s*out') { $category = 'NETWORK' }
-		elseif ($msg -match 'group\s+policy|gpo\b|policy\s+(restricted|prevents)|disabled\s+by\s+(your\s+)?administrator|managed\s+by\s+your\s+organization') { $category = 'POLICY' }
-		elseif ($msg -match 'not\s+found|missing|cannot\s+find|no\s+such\s+file|service\s+(not\s+installed|missing)|cmdletnot|commandnot|cannot\s+load|module\s+not\s+found') { $category = 'DEPENDENCY' }
-
-		$stackTrace = [System.Collections.Generic.List[string]]::new()
-		for ($stackIndex = $i + 1; $stackIndex -lt $lines.Count -and $stackTrace.Count -lt 20; $stackIndex++)
-		{
-			$stackLine = [string]$lines[$stackIndex]
-			if ([string]::IsNullOrWhiteSpace($stackLine)) { continue }
-			if ($stackLine -match '\b(INFO|DEBUG|WARNING|ERROR)\b') { break }
-			if ($stackLine -match '^\s+at\s+|^\s+in\s+.*:\s*line\s+\d+|^\s*\+\s+|^\s*CategoryInfo\s*:|^\s*FullyQualifiedErrorId\s*:|^\s*ScriptStackTrace\s*:|^\s*Exception\s*:')
-			{
-				[void]$stackTrace.Add($stackLine)
-				continue
-			}
-			if ($stackTrace.Count -gt 0) { break }
-		}
-
-		$counts[$category]++
-		[void]$classified.Add([pscustomobject]@{
-			Category   = $category
-			Line       = $line
-			StackTrace = @($stackTrace)
-		})
-	}
-
-	return [pscustomobject][ordered]@{
-		Schema        = 'Baseline.ClassifiedErrors'
-		SchemaVersion = 1
-		GeneratedAt   = [System.DateTime]::UtcNow.ToString('o')
-		Source        = $LogPath
-		Counts        = $counts
-		Errors        = @($classified)
-	}
 }

@@ -93,7 +93,12 @@
 
 					try
 					{
-						$row = Build-TweakRow -Index $index -Tweak $tweak -BrushConverter $BuildContext.BrushConverter
+						$rowPerf = if ($startGuiPerfScopeScript) { & $startGuiPerfScopeScript -Name 'BuildTabContent.Row' -Note ("{0}/{1}" -f $primaryTab, $tweak.Function) } else { $null }
+						try {
+							$row = Build-TweakRow -Index $index -Tweak $tweak -BrushConverter $BuildContext.BrushConverter
+						} finally {
+							if ($stopGuiPerfScopeScript) { & $stopGuiPerfScopeScript -Scope $rowPerf }
+						}
 					}
 					catch
 					{
@@ -739,22 +744,30 @@
 			RenderPlan = $renderPlan
 			Action = $null
 		}
-		$priority = if ($BackgroundBuild) { [System.Windows.Threading.DispatcherPriority]::ApplicationIdle } else { [System.Windows.Threading.DispatcherPriority]::Loaded }
+		$priority = if ($BackgroundBuild) { [System.Windows.Threading.DispatcherPriority]::ApplicationIdle } else { [System.Windows.Threading.DispatcherPriority]::Background }
 		$primaryTab = [string]$BuildContext.PrimaryTab
 		$chunkAction = $null
+		# Keep the closure's per-build state and capture module-bound commands.
+		# Rebinding the closure to the parent module discards its local state.
+		$testHydrationCommand = Get-Command Test-TabContentHydrationCurrent -CommandType Function
+		$testCurrentCommand = Get-Command Test-TabContentBuildStillCurrent -CommandType Function
+		$clearTokenCommand = Get-Command Clear-TabContentBuildToken -CommandType Function
+		$addItemCommand = Get-Command Add-TabRenderPlanItem -CommandType Function
+		$completeBuildCommand = Get-Command Complete-TabContentBuild -CommandType Function
+		$warningCommand = Get-Command Write-GuiRuntimeWarning -CommandType Function
 		$chunkAction = {
 			try
 			{
-				if (-not (Test-TabContentHydrationCurrent -PrimaryTab $primaryTab -BuildGeneration $BuildGeneration -BuildToken $BuildToken -BackgroundBuild:$BackgroundBuild))
+				if (-not (& $testHydrationCommand -PrimaryTab $primaryTab -BuildGeneration $BuildGeneration -BuildToken $BuildToken -BackgroundBuild:$BackgroundBuild))
 				{
 					if ($stopGuiPerfScopeScript) { & $stopGuiPerfScopeScript -Scope $__perf -ExtraNote ($primaryTab + ':aborted') }
-					Clear-TabContentBuildToken -PrimaryTab $primaryTab -BuildToken $BuildToken
+					& $clearTokenCommand -PrimaryTab $primaryTab -BuildToken $BuildToken
 					return
 				}
-				if (-not $BackgroundBuild -and -not (Test-TabContentBuildStillCurrent -PrimaryTab $primaryTab -BuildGeneration $BuildGeneration))
+				if (-not $BackgroundBuild -and -not (& $testCurrentCommand -PrimaryTab $primaryTab -BuildGeneration $BuildGeneration))
 				{
 					if ($stopGuiPerfScopeScript) { & $stopGuiPerfScopeScript -Scope $__perf -ExtraNote ($primaryTab + ':stale') }
-					Clear-TabContentBuildToken -PrimaryTab $primaryTab -BuildToken $BuildToken
+					& $clearTokenCommand -PrimaryTab $primaryTab -BuildToken $BuildToken
 					return
 				}
 
@@ -764,7 +777,7 @@
 				{
 					$renderItem = $state.RenderPlan[$state.Position]
 					$state.Position++
-					$rowAdded = Add-TabRenderPlanItem -BuildContext $BuildContext -RenderItem $renderItem
+					$rowAdded = & $addItemCommand -BuildContext $BuildContext -RenderItem $renderItem
 					if ($rowAdded)
 					{
 						$rowsAdded++
@@ -782,19 +795,17 @@
 					return
 				}
 
-				Complete-TabContentBuild -BuildContext $BuildContext -AllTabIndexes $AllTabIndexes -BuildGeneration $BuildGeneration -BuildToken $BuildToken -BackgroundBuild:$BackgroundBuild -SkipIdlePrebuild:$SkipIdlePrebuild -AlreadyDisplayed:((-not $BackgroundBuild))
+				& $completeBuildCommand -BuildContext $BuildContext -AllTabIndexes $AllTabIndexes -BuildGeneration $BuildGeneration -BuildToken $BuildToken -BackgroundBuild:$BackgroundBuild -SkipIdlePrebuild:$SkipIdlePrebuild -AlreadyDisplayed:((-not $BackgroundBuild))
 				if ($stopGuiPerfScopeScript) { & $stopGuiPerfScopeScript -Scope $__perf }
 			}
 			catch
 			{
 				if ($stopGuiPerfScopeScript) { & $stopGuiPerfScopeScript -Scope $__perf -ExtraNote ($primaryTab + ':failed') }
-				Clear-TabContentBuildToken -PrimaryTab $primaryTab -BuildToken $BuildToken
-				Write-GuiRuntimeWarning -Context ('BuildTabContent.ProgressiveHydration:{0}' -f $primaryTab) -Message $_.Exception.Message
+				& $clearTokenCommand -PrimaryTab $primaryTab -BuildToken $BuildToken
+				& $warningCommand -Context ('BuildTabContent.ProgressiveHydration:{0}' -f $primaryTab) -Message $_.Exception.Message
 			}
 		}.GetNewClosure()
 
-		$mod = $ExecutionContext.SessionState.Module
-		if ($mod) { $chunkAction = $mod.NewBoundScriptBlock($chunkAction) }
 		$state.Action = [System.Action]$chunkAction
 		if ($BackgroundBuild)
 		{
@@ -1026,7 +1037,7 @@
 
 		Add-TabContentLeadPanel -BuildContext $buildContext
 		$contentAlreadyDisplayed = $false
-		if ($PrimaryTab -eq 'Gaming' -and -not $BackgroundBuild)
+		if (-not $BackgroundBuild)
 		{
 			if (Test-TabContentBuildStillCurrent -PrimaryTab $PrimaryTab -BuildGeneration $buildGeneration)
 			{
@@ -1040,8 +1051,6 @@
 					throw "Build-TabContent/AssignLeadContent for tab '$PrimaryTab' failed: $($_.Exception.Message)"
 				}
 
-				try { $buildContext.MainPanel.Dispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Render, [System.Action]{}) }
-				catch { Write-SwallowedException -ErrorRecord $_ -Source 'BuildTabContent.GamingLeadPanel.RenderYield' }
 			}
 		}
 
@@ -1114,13 +1123,7 @@
 			{
 				try
 				{
-					$hydrated = Add-TabSectionsToPanel -BuildContext $buildContext -CooperativeYield -YieldEveryNRows 2 -YieldDispatcherPriority ([System.Windows.Threading.DispatcherPriority]::Background) -BuildGeneration $buildGeneration -BuildToken $buildToken
-					if (-not $hydrated)
-					{
-						Clear-TabContentBuildToken -PrimaryTab $PrimaryTab -BuildToken $buildToken
-						return
-					}
-					Complete-TabContentBuild -BuildContext $buildContext -AllTabIndexes $allTabIndexes -BuildGeneration $buildGeneration -BuildToken $buildToken -SkipIdlePrebuild:$SkipIdlePrebuild -AlreadyDisplayed:$contentAlreadyDisplayed
+					Start-ProgressiveTabSectionsHydration -BuildContext $buildContext -AllTabIndexes $allTabIndexes -BuildGeneration $buildGeneration -BuildToken $buildToken -SkipIdlePrebuild:$SkipIdlePrebuild
 				}
 				catch
 				{

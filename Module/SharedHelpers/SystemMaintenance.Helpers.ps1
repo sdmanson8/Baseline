@@ -26,6 +26,10 @@ function Test-Windows11SmbDuplicateSidIssue
 	catch
 	{
 		Remove-HandledErrorRecord -ErrorRecord $_
+		if ($_.FullyQualifiedErrorId -eq 'NoMatchingEventsFound,Microsoft.PowerShell.Commands.GetWinEventCommand')
+		{
+			return $false
+		}
 		LogWarning "Unable to query LSASS Event ID 6167 (check inconclusive): $($_.Exception.Message)"
 		return $false
 	}
@@ -135,7 +139,7 @@ function Invoke-AdditionalServiceOptimizations
 				}
 				else
 				{
-					LogWarning "Service $serviceName not found"
+					LogInfo "Optional service $serviceName is not installed; nothing to disable"
 				}
 			}
 		}

@@ -56,11 +56,12 @@ function DefenderAppGuard
 		{
 			Write-ConsoleStatus -Action "Enabling Windows Defender Application Guard"
 			LogInfo "Enabling Windows Defender Application Guard"
-			$feature = Get-WindowsOptionalFeature -Online -FeatureName "Windows-Defender-ApplicationGuard" -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+			$feature = Get-WindowsOptionalFeature -Online -ErrorAction Stop -WarningAction SilentlyContinue | Where-Object FeatureName -eq 'Windows-Defender-ApplicationGuard'
 
 			if (-not $feature) {
 				Write-ConsoleStatus -Status warning
 				LogWarning "WDAG feature is not available on this system. Skipping."
+				Set-BaselineTweakOutcome -Function 'DefenderAppGuard' -Status 'Not applicable' -Detail 'Windows Defender Application Guard is not installed on this Windows edition/build.'
 			}
 			elseif ($feature.State -eq "Disabled") {
 				try {
@@ -74,7 +75,7 @@ function DefenderAppGuard
 				catch {
 					Write-ConsoleStatus -Status failed
 					LogError "Failed to enable Windows Defender Application Guard: $($_.Exception.Message)"
-					Remove-HandledErrorRecord -ErrorRecord $_
+					throw
 				}
 			}
 			else {
@@ -87,11 +88,12 @@ function DefenderAppGuard
 			Write-ConsoleStatus -Action "Disabling Windows Defender Application Guard"
 			LogInfo "Disabling Windows Defender Application Guard"
 			# Check if feature exists without throwing error
-			$feature = Get-WindowsOptionalFeature -Online -FeatureName "Windows-Defender-ApplicationGuard" -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+			$feature = Get-WindowsOptionalFeature -Online -ErrorAction Stop -WarningAction SilentlyContinue | Where-Object FeatureName -eq 'Windows-Defender-ApplicationGuard'
 
 			if (-not $feature) {
 				Write-ConsoleStatus -Status warning
 				LogWarning "WDAG feature is not available on this system. Skipping."
+				Set-BaselineTweakOutcome -Function 'DefenderAppGuard' -Status 'Not applicable' -Detail 'Windows Defender Application Guard is not installed on this Windows edition/build.'
 			}
 			elseif ($feature.State -ne "Disabled") {
 				try {
@@ -105,7 +107,7 @@ function DefenderAppGuard
 				catch {
 					Write-ConsoleStatus -Status failed
 					LogError "Failed to disable Windows Defender Application Guard: $($_.Exception.Message)"
-					Remove-HandledErrorRecord -ErrorRecord $_
+					throw
 				}
 			}
 			else {
@@ -181,6 +183,7 @@ function DefenderExploitGuardPolicy
 	{
 		Write-ConsoleStatus -Status failed
 		LogError "Failed to configure Defender Exploit Guard policies: $($_.Exception.Message)"
+		throw
 	}
 }
 

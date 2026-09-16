@@ -68,6 +68,7 @@ $ExportedFunctions = @(
     'Get-LocalizedShellString'
     'Restart-Script'
     'Get-BaselineDisplayVersion'
+    'Set-BaselineTweakOutcome'
     'Get-TweakSkipLabel'
     'Stop-Foreground'
     'Invoke-UCPDBypassed'

@@ -526,7 +526,7 @@ try
 		{
 			if ($wasAppsModeActive)
 			{
-				Set-GuiAppsMode -Enable:$false
+				Set-GuiAppsMode -Enable:$false -SkipContentRestore
 			}
 
 			if ($Script:GuiState)
@@ -931,7 +931,7 @@ try
 						LogError (Format-BaselineErrorForLog -ErrorObject $_ -Prefix (Get-UxBilingualLocalizedString -Key 'GuiLogExecutionAppSummaryDialogFailed' -Fallback 'Failed to show app execution summary'))
 					}
 
-					Exit-ExecutionView
+					Exit-ExecutionView -SkipContentRestore:$runWasAppsModeActive
 
 					if ((Get-Command -Name 'Sync-AppActionStatesFromExecutionResult' -CommandType Function -ErrorAction SilentlyContinue) -and $runAction -in @('Install', 'Uninstall', 'Update'))
 					{
@@ -979,7 +979,7 @@ try
 					try { Remove-Variable -Name 'GUIRunState' -Scope Global -ErrorAction SilentlyContinue } catch {
 						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Module\GUI\ExecutionOrchestration\ExecutionRunOrchestration\Start-GuiAppExecutionRun\Start-GuiAppExecutionRun.ps1:975' -Severity Debug }
 					 $null = $_ }
-					try { Exit-ExecutionView } catch {
+					try { Exit-ExecutionView -SkipContentRestore:($Script:RunState -and [bool]$Script:RunState['WasAppsModeActive']) } catch {
 						if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Module\GUI\ExecutionOrchestration\ExecutionRunOrchestration\Start-GuiAppExecutionRun\Start-GuiAppExecutionRun.ps1:976' -Severity Debug }
 					 $null = $_ }
 					try
@@ -1051,7 +1051,7 @@ try
 			try { Remove-Variable -Name 'GUIRunState' -Scope Global -ErrorAction SilentlyContinue } catch {
 				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Module\GUI\ExecutionOrchestration\ExecutionRunOrchestration\Start-GuiAppExecutionRun\Start-GuiAppExecutionRun.ps1:1037' -Severity Debug }
 			 $null = $_ }
-			try { Exit-ExecutionView } catch {
+			try { Exit-ExecutionView -SkipContentRestore:$wasAppsModeActive } catch {
 				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'Module\GUI\ExecutionOrchestration\ExecutionRunOrchestration\Start-GuiAppExecutionRun\Start-GuiAppExecutionRun.ps1:1038' -Severity Debug }
 			 $null = $_ }
 			try

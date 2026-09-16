@@ -199,11 +199,6 @@ function ConvertTo-PowerSchemeDisplayValue
 			$numericValue = [double]$numericValue / 3600
 			break
 		}
-		'^\s*milliseconds\s*$'
-		{
-			$numericValue = [double]$numericValue * 1000
-			break
-		}
 	}
 
 	if ($numericValue -is [double] -and [math]::Abs($numericValue - [math]::Round($numericValue)) -lt 0.0000001)
@@ -248,11 +243,6 @@ function ConvertTo-PowerSchemeSystemValue
 		'^\s*hours\s*$'
 		{
 			$numericValue = [double]$numericValue * 3600
-			break
-		}
-		'^\s*milliseconds\s*$'
-		{
-			$numericValue = [double]$numericValue / 1000
 			break
 		}
 	}
@@ -843,6 +833,7 @@ $ExportedFunctions = @(
     'Show-Menu'
     'Restart-Script'
     'Get-BaselineDisplayVersion'
+    'Set-BaselineTweakOutcome'
     'Get-TweakSkipLabel'
     'Stop-Foreground'
     'Invoke-UCPDBypassed'
@@ -872,6 +863,7 @@ $ExportedFunctions = @(
     'Get-BaselineDefenderComponentUnavailableReason'
     'Test-BaselineEntryAvailable'
     'Test-BaselineEntrySupportsExecution'
+    'Get-BaselineEntrySupportsExecutionReason'
     'Get-BaselineEntryAvailabilitySummary'
     'Update-BaselineManifestAvailability'
     'Update-BaselineManifestExecutionSupport'

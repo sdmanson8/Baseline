@@ -415,7 +415,8 @@ function CrossDeviceResume
 
 			if (-not $IsCrossDeviceResumeSupported)
 			{
-				Write-ConsoleStatus -Status success
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail $SupportedMessage
+				Write-ConsoleStatus -Status warning
 				LogWarning $SupportedMessage
 				return
 			}
@@ -441,7 +442,8 @@ function CrossDeviceResume
 
 			if (-not $IsCrossDeviceResumeSupported)
 			{
-				Write-ConsoleStatus -Status success
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail $SupportedMessage
+				Write-ConsoleStatus -Status warning
 				LogWarning $SupportedMessage
 				return
 			}

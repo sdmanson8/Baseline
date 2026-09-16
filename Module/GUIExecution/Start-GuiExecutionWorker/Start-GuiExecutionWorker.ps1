@@ -300,6 +300,8 @@
 				-LogQueue $Script:RunState['LogQueue']
 
 			$stepIndex = 0
+			$healthCheckAppliedCount = 0
+			$healthCheckRestartPending = $false
 			$stepTotal = $tweakList.Count
 			Write-GuiTweakExecutionWorkerStartupNotice -Message ("Execution worker starting selected tweaks: {0} item(s)." -f $stepTotal) -Progress
 			foreach ($tweak in $tweakList)
@@ -564,6 +566,10 @@
 
 				if (-not $tweakFailed)
 				{
+                    if ($timedInvocation.Outcome.Status -in @('Success', 'Restart pending')) {
+                        $healthCheckAppliedCount++
+                        if ($timedInvocation.Outcome.Status -eq 'Restart pending' -or $tweak.RequiresRestart) { $healthCheckRestartPending = $true }
+                    }
 					$newErrors = @(Get-NewUnhandledErrorRecords -BaselineCount $tweakErrorBaseline)
 					if ($newErrors.Count -gt 0)
 					{
@@ -576,13 +582,14 @@
 
 				if (-not $tweakFailed)
 				{
-					$Script:RunState['AppliedFunctions'].Add($tweak.Function)
+                    if ($timedInvocation.Outcome.Status -in @('Success', 'Restart pending')) { $Script:RunState['AppliedFunctions'].Add($tweak.Function) }
 					$completedCount = Update-GuiRunStateCounter -RunState $Script:RunState -Key 'CompletedCount'
 					$Script:RunState['LogQueue'].Enqueue([PSCustomObject]@{
 						Kind = '_TweakCompleted'
 						Key = $tweak.Key
 						Name = $tweak.Name
-						Status = 'success'
+						Status = [string]$timedInvocation.Outcome.Status
+                        Message = [string]$timedInvocation.Outcome.Detail
 						Count = $completedCount
 						StepIndex = $stepIndex
 						StepTotal = $stepTotal
@@ -620,8 +627,31 @@
 
 			if (-not $Script:RunState['AbortedRun'])
 			{
-				PostActions
-				Errors
+                PostActions
+                if ($Script:RunState['PreRunSnapshot']) {
+                    Write-GuiTweakExecutionWorkerStartupNotice -Message 'Capturing post-run system state.' -Progress
+                    $snapshotWatch = [Diagnostics.Stopwatch]::StartNew()
+                    try {
+                        $postSnapshot = New-SystemStateSnapshot -Manifest $snapshotManifest
+                        $Script:RunState['PostRunSnapshot'] = $postSnapshot
+                        $Script:RunState['SnapshotComparison'] = Compare-SystemStateSnapshots -Before $Script:RunState['PreRunSnapshot'] -After $postSnapshot
+                    }
+                    catch { LogWarning ("Post-run snapshot failed: {0}" -f $_.Exception.Message) }
+                    finally { LogDebug -Message ("Post-run snapshot worker duration: {0} ms" -f $snapshotWatch.ElapsedMilliseconds) -Always }
+                }
+                Errors
+                if ($executionMode -eq 'Run' -and $healthCheckAppliedCount -gt 0 -and -not $healthCheckRestartPending -and [int]$Script:RunState['ErrorCount'] -eq 0) {
+                    Write-GuiTweakExecutionWorkerStartupNotice -Message 'Checking post-run application health.' -Progress
+                    foreach ($healthCheck in @(
+                        @{ Key = 'SettingsAppsFeaturesHealthAssessment'; Command = 'Resolve-BaselineSettingsAppsFeaturesHealthAssessment' },
+                        @{ Key = 'ScreenSnippingHealthAssessment'; Command = 'Resolve-BaselineScreenSnippingHealthAssessment' }
+                    )) {
+                        if (Get-Command -Name $healthCheck.Command -CommandType Function -ErrorAction SilentlyContinue) {
+                            try { $Script:RunState[$healthCheck.Key] = & $healthCheck.Command }
+                            catch { LogWarning ("Post-run health check {0} failed: {1}" -f $healthCheck.Command, $_.Exception.Message) }
+                        }
+                    }
+                }
 			}
 			else
 			{

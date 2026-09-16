@@ -56,6 +56,5 @@ try
 			}
 		}
 		catch { Write-SwallowedException -ErrorRecord $_ -Source 'Regions.GUI.StartupSplashAbortWatchdog.EndInvoke' }
-		try { if ($startupSplashAbortWatchdog.PowerShell) { $startupSplashAbortWatchdog.PowerShell.Dispose() } } catch { Write-SwallowedException -ErrorRecord $_ -Source 'Regions.GUI.StartupSplashAbortWatchdog.PowerShellDispose' }
-		try { if ($startupSplashAbortWatchdog.Runspace) { $startupSplashAbortWatchdog.Runspace.Close(); $startupSplashAbortWatchdog.Runspace.Dispose() } } catch { Write-SwallowedException -ErrorRecord $_ -Source 'Regions.GUI.StartupSplashAbortWatchdog.RunspaceDispose' }
+		[Baseline.GuiExecution.WorkerLifecycle]::StopAndDispose($startupSplashAbortWatchdog.PowerShell, $null, $startupSplashAbortWatchdog.Runspace)
 	}

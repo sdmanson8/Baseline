@@ -79,7 +79,8 @@ function OneDrive
 
 				if (-not $UninstallString)
 				{
-					LogInfo "Skipping OneDrive uninstall because the app is not currently installed."
+					Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail 'OneDrive is already absent; no uninstall was needed.'
+                    LogInfo "Skipping OneDrive uninstall because the app is not currently installed."
 					Write-ConsoleStatus -Status success
 					return
 				}
@@ -88,7 +89,8 @@ function OneDrive
 				$UserEmail = Get-ItemProperty -Path HKCU:\Software\Microsoft\OneDrive\Accounts\Personal -Name UserEmail -ErrorAction Ignore
 				if ($UserEmail)
 				{
-					LogWarning "Skipping OneDrive uninstall because the current user is still signed in. Sign out of OneDrive first, then retry if removal is still desired."
+					Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail 'Sign out of OneDrive before uninstalling it.'
+                    LogWarning "Skipping OneDrive uninstall because the current user is still signed in. Sign out of OneDrive first, then retry if removal is still desired."
 					Write-ConsoleStatus -Status warning
 					return
 				}

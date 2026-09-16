@@ -78,7 +78,7 @@ function GPUScheduling
 			}
 			else
 			{
-				Write-ConsoleStatus -Status success
+				Set-BaselineTweakOutcome -Function 'GPUScheduling' -Status 'Not applicable' -Detail 'Hardware-accelerated GPU scheduling is not supported on this system.'
 				LogWarning "Hardware-accelerated GPU scheduling is not supported on this system. Skipping."
 			}
 		}
@@ -654,6 +654,7 @@ function XboxGameTips
 
 	if (-not (Get-AppxPackage -Name Microsoft.GamingApp -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return

@@ -1065,7 +1065,8 @@ function SharedPrinterConnectionErrors
 		LogInfo "Skipped host SFC check during shared printer repair. Use -RunSystemFileCheck when a full system file repair scan is explicitly required."
 	}
 
-	LogWarning "Restart required to complete shared printer connection repairs."
+	Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Restart pending' -Detail 'Shared printer connection repairs were applied; restart Windows to complete them.'
+    LogWarning "Restart required to complete shared printer connection repairs."
 	if ($hadIssue)
 	{
 		Write-ConsoleStatus -Status warning

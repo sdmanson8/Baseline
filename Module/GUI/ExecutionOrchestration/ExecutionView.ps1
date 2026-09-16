@@ -181,6 +181,8 @@
 
 		$bc = New-SafeBrushConverter -Context 'Enter-ExecutionView'
 		$Script:ExecutionPreviousContent = $ContentScroll.Content
+		# Invalidate any row hydration still queued for the view being replaced.
+		$Script:TabContentBuildGeneration = [int]$Script:TabContentBuildGeneration + 1
 		$Script:ExecutionPreviousScrollMode = $ContentScroll.VerticalScrollBarVisibility
 
 		# Build the outer grid: header row (auto) + log row (fill)
@@ -262,6 +264,12 @@
 
 	    function Exit-ExecutionView
 	    {
+        param ([switch]$SkipContentRestore)
+
+        $__restorePerf = Start-GuiPerfScope -Name 'Execution.RestoreGui'
+        $selectionBulkPreviousState = Enter-GuiSelectionBulkUpdate
+        try {
+
 			LogInfo (Get-UxBilingualLocalizedString -Key 'GuiLogExecutionViewEntered' -Fallback '[Exit-ExecutionView] ENTERED - restoring GUI')
 			$deferAbortReset = ($Script:AbortRequested -and (Get-RunAbortDisposition) -eq 'Return')
 			$savedPreviousContent = $Script:ExecutionPreviousContent
@@ -330,7 +338,12 @@
             $BtnRun.Content = Get-UxRunActionLabel
         }
 
-        if ($Script:CurrentPrimaryTab)
+        if ($SkipContentRestore)
+        {
+            # The caller is returning to another view; preserve the hidden tweak content.
+            $ContentScroll.Content = $savedPreviousContent
+        }
+        elseif ($Script:CurrentPrimaryTab)
         {
             try
             {
@@ -377,4 +390,9 @@
 			}
 
 		LogInfo (Get-UxBilingualLocalizedString -Key 'GuiLogExecutionViewCompleted' -Fallback '[Exit-ExecutionView] COMPLETED - GUI restored')
-    }
+
+        } finally {
+            try { Exit-GuiSelectionBulkUpdate -PreviousState $selectionBulkPreviousState }
+            finally { Stop-GuiPerfScope -Scope $__restorePerf }
+        }
+}

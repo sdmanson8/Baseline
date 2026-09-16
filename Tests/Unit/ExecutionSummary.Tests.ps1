@@ -199,11 +199,11 @@ Describe 'Get-ExecutionSummaryClassification' {
         $result.FailureCode | Should -Be 'unsupported_environment'
     }
 
-    It 'classifies Skipped by policy' {
+    It 'preserves a skip without inventing a policy cause' {
         $result = Get-ExecutionSummaryClassification -Status 'Skipped' -Detail 'excluded by filter'
 
-        $result.OutcomeState | Should -Be 'Skipped by preset or selection'
-        $result.FailureCode | Should -Be 'skipped_by_policy'
+        $result.OutcomeState | Should -Be 'Skipped'
+        $result.FailureCode | Should -Be 'operation_skipped'
     }
 
     It 'classifies restore-mode already-at-default skips correctly' {

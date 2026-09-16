@@ -1129,6 +1129,7 @@ function NetworkAdaptersSavePower
 	$Adapters = Get-NetAdapter -Physical | Where-Object -FilterScript {$_.MacAddress} | Get-NetAdapterPowerManagement | Where-Object -FilterScript {$_.AllowComputerToTurnOffDevice -ne "Unsupported"}
 	if (-not $Adapters)
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return

@@ -77,13 +77,13 @@ if ($RemoteExecution)
 				Exit-ExecutionView
 				Show-LogDialog -LogPath $LogPath
 				Invoke-GuiExecutionCompletionToast -Mode $Mode -Title $dlgTitle -Body $summaryCountsText
-				Set-ExecutionGameModeContext -Context $null
+				Set-ExecutionGameModeContext -GameModeContext $null
 				$__baselineExtractedPartHasReturnValue = $false; $__baselineExtractedPartDidReturn = $true; return
 			}
 
 			Exit-ExecutionView
 			Invoke-GuiExecutionCompletionToast -Mode $Mode -Title $dlgTitle -Body $summaryCountsText
-			Set-ExecutionGameModeContext -Context $null
+			Set-ExecutionGameModeContext -GameModeContext $null
 			$__baselineExtractedPartHasReturnValue = $false; $__baselineExtractedPartDidReturn = $true; return
 		}
 
@@ -193,11 +193,11 @@ if ($RemoteExecution)
 			{
 				Exit-ExecutionView
 				Show-LogDialog -LogPath $LogPath
-				Set-ExecutionGameModeContext -Context $null
+				Set-ExecutionGameModeContext -GameModeContext $null
 				$__baselineExtractedPartHasReturnValue = $false; $__baselineExtractedPartDidReturn = $true; return
 			}
 
 			Exit-ExecutionView
-			Set-ExecutionGameModeContext -Context $null
+			Set-ExecutionGameModeContext -GameModeContext $null
 			$__baselineExtractedPartHasReturnValue = $false; $__baselineExtractedPartDidReturn = $true; return
 		}

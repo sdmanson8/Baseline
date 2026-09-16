@@ -10,7 +10,7 @@ using module ..\SharedHelpers.psm1
 	.DESCRIPTION
 	Ensures System Restore is available on the system drive, temporarily allows
 	immediate restore point creation, creates a restore point named for the
-	current Windows version, and restores the prior System Restore state.
+	current Windows version, and restores the prior creation-frequency setting.
 
 	.EXAMPLE
 	CreateRestorePoint
@@ -20,147 +20,97 @@ using module ..\SharedHelpers.psm1
 #>
 function CreateRestorePoint
 {
-	LogInfo "Creating Restore Point"
-	# Write-Host: intentional — user-visible progress indicator
-	Write-Host "Creating System Restore Point - " -NoNewline
-	$restoreSystemProtection = $false
-	$createdSuccessfully = $false
-	try
-	{
-		# Ensure the Volume Shadow Copy service is running — both Checkpoint-Computer
-		# and the WMI fallback depend on it. On VMs or hardened systems it may be
-		# set to Manual/Disabled and not started.
-		try
-		{
-			$vssSvc = Get-Service -Name VSS -ErrorAction Stop
-			if ($vssSvc.Status -ne 'Running')
-			{
-				LogInfo "Starting Volume Shadow Copy (VSS) service (was $($vssSvc.Status))."
-				if ($vssSvc.StartType -eq 'Disabled')
-				{
-					Set-Service -Name VSS -StartupType Manual -ErrorAction Stop
-				}
-				Start-Service -Name VSS -ErrorAction Stop
-			}
-		}
-		catch
-		{
-			LogWarning "Could not ensure VSS service is running: $($_.Exception.Message)"
-		}
+    LogInfo "Creating Restore Point"
+    Write-Host "Creating System Restore Point - " -NoNewline
+    $createdSuccessfully = $false
+    $failureMessage = ''
+    $frequencyPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+    $frequencyName = 'SystemRestorePointCreationFrequency'
+    $frequencyChanged = $false
+    $job = $null
+    try
+    {
+        # The requester and the Windows software provider both participate in a checkpoint.
+        foreach ($serviceName in @('VSS', 'swprv'))
+        {
+            $service = Get-Service -Name $serviceName -ErrorAction Stop
+            if ($service.StartType -eq 'Disabled')
+            {
+                LogInfo "Enabling required System Restore service '$serviceName' with Manual startup."
+                Set-Service -Name $serviceName -StartupType Manual -ErrorAction Stop
+            }
+            if ($service.Status -ne 'Running')
+            {
+                LogInfo "Starting required System Restore service '$serviceName'."
+                Start-Service -Name $serviceName -ErrorAction Stop
+            }
+        }
 
-		$SystemDriveUniqueID = (Get-Volume | Where-Object -FilterScript {$_.DriveLetter -eq "$($env:SystemDrive[0])"}).UniqueID
-		$SystemProtection = ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SPP\Clients" -ErrorAction Ignore)."{09F7EDC5-294E-4180-AF6A-FB0E6A0E9513}") | Where-Object -FilterScript {$_ -match [regex]::Escape($SystemDriveUniqueID)}
+        # Enabling an already protected drive is idempotent. Protection must remain
+        # enabled after creation so the new restore point remains usable.
+        Enable-ComputerRestore -Drive ($env:SystemDrive + '\') -ErrorAction Stop
+        $previousSequences = @(Get-ComputerRestorePoint -ErrorAction Stop | ForEach-Object { $_.SequenceNumber })
+        $frequencyKey = Get-Item -LiteralPath $frequencyPath -ErrorAction Stop
+        try
+        {
+            $hadFrequency = $frequencyKey.GetValueNames() -contains $frequencyName
+            $originalFrequency = if ($hadFrequency) { $frequencyKey.GetValue($frequencyName) } else { $null }
+            $originalFrequencyKind = if ($hadFrequency) { $frequencyKey.GetValueKind($frequencyName).ToString() } else { 'DWord' }
+        }
+        finally { $frequencyKey.Close() }
+        New-ItemProperty -Path $frequencyPath -Name $frequencyName -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+        $frequencyChanged = $true
 
-		if ($null -eq $SystemProtection)
-		{
-			# Verify whether System Protection is actually disabled before attempting to enable it,
-			# because the SPP\Clients registry check can return null on newer Windows 11 builds
-			# even when System Protection is already on.
-			$srpEnabled = $false
-			try
-			{
-				$srpStatus = Get-CimInstance -ClassName SystemRestoreConfig -Namespace 'root\default' -ErrorAction Stop
-				if ($srpStatus -and $srpStatus.RPSessionInterval -eq 1) { $srpEnabled = $true }
-			}
-			catch {
-				if (Get-Command -Name 'Write-SwallowedException' -CommandType Function -ErrorAction SilentlyContinue) { Write-SwallowedException -ErrorRecord $_ -Source 'InitialSetup.CreateRestorePoint:catch65' -Severity Debug }
-			 $srpEnabled = $false }
-
-			if (-not $srpEnabled)
-			{
-				$restoreSystemProtection = $true
-				Enable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop
-			}
-		}
-
-		# Never skip creating a restore point
-		New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name SystemRestorePointCreationFrequency -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
-
-		$osName = (Get-OSInfo).OSName
-		$displayVersion = Get-BaselineDisplayVersion
-
-		$restorePointDescription = "Baseline | Utility for $osName"
-		if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion))
-		{
-			$restorePointDescription = "$restorePointDescription $displayVersion"
-		}
-
-		# Try Checkpoint-Computer in a background job with a timeout to prevent hanging
-		$checkpointSucceeded = $false
-		$restorePointTimeoutSeconds = 120
-		try
-		{
-			$job = Start-Job -ScriptBlock {
-				param ($Desc)
-				Checkpoint-Computer -Description $Desc -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
-			} -ArgumentList $restorePointDescription
-			$finished = $job | Wait-Job -Timeout $restorePointTimeoutSeconds
-			if ($finished)
-			{
-				$job | Receive-Job -ErrorAction Stop | Out-Null
-				$checkpointSucceeded = $true
-			}
-			else
-			{
-				$job | Stop-Job -ErrorAction SilentlyContinue
-				LogWarning "Checkpoint-Computer timed out after $restorePointTimeoutSeconds seconds. Trying WMI fallback."
-			}
-			$job | Remove-Job -Force -ErrorAction SilentlyContinue
-		}
-		catch
-		{
-			LogWarning "Checkpoint-Computer failed: $($_.Exception.Message). Trying WMI fallback."
-			if ($job) { $job | Remove-Job -Force -ErrorAction SilentlyContinue }
-		}
-
-		if (-not $checkpointSucceeded)
-		{
-			try
-			{
-				$sr = [wmiclass]'\\.\root\default:SystemRestore'
-				$result = $sr.CreateRestorePoint($restorePointDescription, 12, 100)
-				if ($result.ReturnValue -ne 0)
-				{
-					throw "WMI SystemRestore.CreateRestorePoint failed with return code $($result.ReturnValue)"
-				}
-				$checkpointSucceeded = $true
-			}
-			catch
-			{
-				throw "Restore point creation failed: $($_.Exception.Message)"
-			}
-		}
-
-		try
-		{
-			$restorePoints = @(Get-ComputerRestorePoint -ErrorAction Stop | Where-Object -FilterScript { $_.Description -eq $restorePointDescription })
-			if (-not $restorePoints)
-			{
-				throw "Restore point '$restorePointDescription' was not found after creation."
-			}
-		}
-		finally
-		{
-			# Revert the System Restore checkpoint creation frequency to 1440 minutes
-			New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name SystemRestorePointCreationFrequency -PropertyType DWord -Value 1440 -Force -ErrorAction Stop | Out-Null
-
-			# Turn off System Protection for the system drive if it was turned off before without deleting the existing restore points
-			if ($restoreSystemProtection)
-			{
-				LogInfo "Disabling System Restore again"
-				Disable-ComputerRestore -Drive $env:SystemDrive -ErrorAction Stop | Out-Null
-			}
-		}
-		Write-ConsoleStatus -Status success
-		$createdSuccessfully = $true
-	}
-	catch
-	{
-		Write-ConsoleStatus -Status failed
-		LogError "Failed to create a restore point: $($_.Exception.Message)"
-	}
-
-	return $createdSuccessfully
+        $osName = (Get-OSInfo).OSName
+        $displayVersion = Get-BaselineDisplayVersion
+        $description = "Baseline | Utility for $osName"
+        if (-not [string]::IsNullOrWhiteSpace([string]$displayVersion)) { $description += " $displayVersion" }
+        $job = Start-Job -ScriptBlock {
+            param($Description)
+            Checkpoint-Computer -Description $Description -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
+        } -ArgumentList $description -ErrorAction Stop
+        if (-not ($job | Wait-Job -Timeout 120))
+        {
+            throw [TimeoutException]::new('System Restore checkpoint creation exceeded 120 seconds.')
+        }
+        $job | Receive-Job -ErrorAction Stop | Out-Null
+        $newPoints = @(Get-ComputerRestorePoint -ErrorAction Stop | Where-Object {
+            $_.Description -eq $description -and $_.SequenceNumber -notin $previousSequences
+        })
+        if ($newPoints.Count -eq 0) { throw 'System Restore did not create a new restore point.' }
+        $createdSuccessfully = $true
+    }
+    catch
+    {
+        $failureMessage = $_.Exception.Message
+        LogError "Failed to create a restore point: $($_.Exception.Message)"
+    }
+    finally
+    {
+        if ($job) { $job | Remove-Job -Force -ErrorAction SilentlyContinue }
+        if ($frequencyChanged)
+        {
+            try
+            {
+                if ($hadFrequency)
+                {
+                    New-ItemProperty -Path $frequencyPath -Name $frequencyName -PropertyType $originalFrequencyKind -Value $originalFrequency -Force -ErrorAction Stop | Out-Null
+                }
+                else { Remove-ItemProperty -Path $frequencyPath -Name $frequencyName -ErrorAction Stop }
+            }
+            catch
+            {
+                $createdSuccessfully = $false
+                $failureMessage = "Failed to restore the System Restore creation frequency: $($_.Exception.Message)"
+                LogError "Failed to restore the System Restore creation frequency: $($_.Exception.Message)"
+            }
+        }
+    }
+    Write-ConsoleStatus -Status $(if ($createdSuccessfully) { 'success' } else { 'failed' })
+    if (-not $createdSuccessfully) {
+        Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Failed' -Detail $failureMessage
+    }
+    return $createdSuccessfully
 }
 <#
 	.SYNOPSIS

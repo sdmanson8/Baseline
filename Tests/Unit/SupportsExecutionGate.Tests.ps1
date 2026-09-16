@@ -182,9 +182,11 @@ Describe 'Get-BaselineEntryExecutionSupport power setting probes' {
         $global:BaselineTestPowercfgExitCode = 0
         $global:BaselineTestPowercfgCalls = [System.Collections.Generic.List[string]]::new()
 
-        function global:powercfg {
-            [void]$global:BaselineTestPowercfgCalls.Add(($args -join ' '))
-            $global:LASTEXITCODE = $global:BaselineTestPowercfgExitCode
+        Import-Module (Join-Path $PSScriptRoot '../../Module/SharedHelperModules/Baseline.SharedHelpers.PlatformSupport.psm1') -Force
+        Mock Invoke-BaselineProcess -ModuleName Baseline.SharedHelpers.PlatformSupport {
+            param($FilePath,$ArgumentList)
+            [void]$global:BaselineTestPowercfgCalls.Add(($ArgumentList -join ' '))
+            [pscustomobject]@{ ExitCode = $global:BaselineTestPowercfgExitCode; StandardOutput = ''; StandardError = '' }
         }
     }
 

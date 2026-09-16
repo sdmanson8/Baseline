@@ -17,58 +17,58 @@ BeforeAll {
 Describe 'DiskCleanup' {
     BeforeEach {
         $script:consoleStatuses = [System.Collections.Generic.List[string]]::new()
-        $script:startProcessCalls = [System.Collections.Generic.List[object]]::new()
+        $script:launchFails = $false
+        $script:worker = [pscustomobject]@{
+            StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            Id = 123
+            Disposed = $false
+        }
+        $script:worker | Add-Member ScriptMethod Start {
+            if ($script:launchFails) { throw 'launch failed' }
+            return $true
+        }
+        $script:worker | Add-Member ScriptMethod Dispose { $this.Disposed = $true }
         $Global:LogFilePath = 'C:\temp\Baseline.log'
-
         function Write-ConsoleStatus {
             param([string]$Action, [string]$Status)
-            if (-not [string]::IsNullOrWhiteSpace($Status)) { [void]$script:consoleStatuses.Add($Status) }
+            if ($Status) { [void]$script:consoleStatuses.Add($Status) }
         }
         function LogInfo { param([string]$Message) }
-        function Start-Process {
-            param([string]$FilePath, [string]$ArgumentList, [string]$WindowStyle)
-            [void]$script:startProcessCalls.Add([pscustomobject]@{ FilePath = $FilePath; ArgumentList = $ArgumentList })
-        }
-        function Invoke-BaselineProcess {
-            param([string]$FilePath, [object[]]$ArgumentList, [int]$TimeoutSeconds)
-            [void]$script:startProcessCalls.Add([pscustomobject]@{ FilePath = $FilePath; ArgumentList = @($ArgumentList); TimeoutSeconds = $TimeoutSeconds })
-            [pscustomobject]@{ ExitCode = 0 }
-        }
-        # $PSScriptRoot is empty when the function is re-evaluated via
-        # Invoke-Expression, so Join-Path's Path becomes an empty string.
-        # Shim Join-Path to tolerate empty Path.
+        function New-Object { param([string]$TypeName) return $script:worker }
         function Join-Path {
             param([string]$Path, [string]$ChildPath)
-            if ([string]::IsNullOrEmpty($Path)) { return $ChildPath }
-            return [System.IO.Path]::Combine($Path, $ChildPath)
+            if ([string]::IsNullOrEmpty($Path)) { return "C:\Baseline With Spaces\$ChildPath" }
+            return [IO.Path]::Combine($Path, $ChildPath)
         }
     }
 
     AfterEach {
-        foreach ($n in @('Write-ConsoleStatus','LogInfo','Start-Process','Invoke-BaselineProcess','Join-Path')) {
+        foreach ($n in @('Write-ConsoleStatus','LogInfo','New-Object','Join-Path')) {
             Remove-Item Function:\$n -ErrorAction SilentlyContinue
         }
         Remove-Variable -Name LogFilePath -Scope Global -ErrorAction SilentlyContinue
     }
 
-    It 'launches the diskcleanup helper script with powershell.exe' {
+    It 'starts a detached worker with no shell or output pipes and releases its process handle' {
         DiskCleanup
-
-        $script:startProcessCalls.Count | Should -Be 1
-        $script:startProcessCalls[0].FilePath | Should -Be 'powershell.exe'
-        @($script:startProcessCalls[0].ArgumentList) -join ' ' | Should -Match 'diskcleanup\.ps1'
-        @($script:startProcessCalls[0].ArgumentList) | Should -Contain '-ExecutionPolicy'
-        @($script:startProcessCalls[0].ArgumentList) | Should -Contain 'Bypass'
-        $script:startProcessCalls[0].TimeoutSeconds | Should -Be 3000
+        $script:worker.StartInfo.FileName | Should -Be ([IO.Path]::Combine($PSHOME, 'powershell.exe'))
+        $script:worker.StartInfo.Arguments | Should -Match '-File "C:\\Baseline With Spaces\\diskcleanup.ps1"'
+        $script:worker.StartInfo.Arguments | Should -Match '-NonInteractive'
+        $script:worker.StartInfo.UseShellExecute | Should -BeFalse
+        $script:worker.StartInfo.CreateNoWindow | Should -BeTrue
+        $script:worker.StartInfo.WindowStyle | Should -Be 'Hidden'
+        $script:worker.StartInfo.RedirectStandardOutput | Should -BeFalse
+        $script:worker.StartInfo.RedirectStandardError | Should -BeFalse
+        $script:worker.StartInfo.EnvironmentVariables['diskcleanup'] | Should -Be $Global:LogFilePath
+        $script:worker.Disposed | Should -BeTrue
+        $script:consoleStatuses | Should -Contain 'success'
     }
-}
 
-Describe 'DiskCleanup manifest bounds' {
-    It 'declares a GUI timeout long enough for the cleanup helper process' {
-        $manifest = Get-Content -Raw (Join-Path $PSScriptRoot '../../Module/Data/SystemTweaks.json') | ConvertFrom-Json
-        $entry = $manifest.Entries | Where-Object Function -eq 'DiskCleanup' | Select-Object -First 1
-
-        [int]$entry.TimeoutSeconds | Should -BeGreaterOrEqual 3000
+    It 'propagates launch failures without reporting success and releases the handle' {
+        $script:launchFails = $true
+        { DiskCleanup } | Should -Throw '*launch failed*'
+        $script:consoleStatuses | Should -Not -Contain 'success'
+        $script:worker.Disposed | Should -BeTrue
     }
 }
 
@@ -93,6 +93,14 @@ Describe 'diskcleanup helper process bounds' {
         $script:DiskCleanupHelperContent | Should -Match '-TimeoutSeconds 1800'
         $script:DiskCleanupHelperContent | Should -Not -Match '/ResetBase'
         $script:DiskCleanupHelperContent | Should -Not -Match 'Stop-Process\s+-Id\s+\$Process\.Id'
+    }
+
+    It 'accepts the cleanup process OK dialog without closing or killing its progress window' {
+        $script:DiskCleanupHelperContent | Should -Match 'AcceptNotification\(\$Process.Id\)'
+        $script:DiskCleanupHelperContent | Should -Match 'ownerId != \(uint\)processId'
+        $script:DiskCleanupHelperContent | Should -Match 'GetDlgItem\(window, 1\)'
+        $script:DiskCleanupHelperContent | Should -Match 'PostMessage\(window, 0x0111, new IntPtr\(1\), okButton\)'
+        $script:DiskCleanupHelperContent | Should -Not -Match 'FindWindow|CloseMainWindow|0x0010|quietDeadline'
     }
 }
 

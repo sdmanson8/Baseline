@@ -47,6 +47,7 @@ function NewsInterests
 	# Skip if Edge is not installed
 	if (-not (Get-Package -Name "Microsoft Edge" -ProviderName Programs -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -55,6 +56,7 @@ function NewsInterests
 	$MachineId = [Microsoft.Win32.Registry]::GetValue("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SQMClient", "MachineId", $null)
 	if (-not $MachineId)
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -190,6 +192,7 @@ function TaskbarWidgets
 
 	if (-not (Get-AppxPackage -Name MicrosoftWindows.Client.WebExperience -WarningAction SilentlyContinue))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}
@@ -397,6 +400,7 @@ function SearchHighlights
 			$DisableSearchBoxSuggestions = ([Microsoft.Win32.Registry]::GetValue("HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", $null))
 			if (($BingSearchEnabled -eq 1) -or ($DisableSearchBoxSuggestions -eq 1))
 			{
+				Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Not applicable' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 				LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 				Write-ConsoleStatus -Status warning
 			}

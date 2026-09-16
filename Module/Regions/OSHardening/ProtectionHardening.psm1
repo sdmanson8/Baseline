@@ -1352,8 +1352,17 @@ function PowerShellV2
         }
         catch
         {
-            $failed = $true
-            LogError "Failed to disable optional feature ${feature}: $($_.Exception.Message)"
+	            # DISM uses this code when a feature is not present in the current
+	            # Windows image. That is a supported not-applicable result, not a
+	            # failed hardening operation.
+	            if ($_.Exception.Message -match '(?i)(-2146498548|0x800F080C|feature name is unknown)')
+	            {
+	                LogWarning "Windows optional feature ${feature} is not available on this Windows image. Skipping."
+	                continue
+	            }
+
+	            $failed = $true
+	            LogError "Failed to disable optional feature ${feature}: $($_.Exception.Message)"
         }
     }
 

@@ -1,3 +1,4 @@
+$setStartupWindowMaximizedCommand = Get-GuiRuntimeCommand -Name 'Set-GuiMainWindowWorkAreaMaximized'
 Register-GuiEventHandler -Source $Form -EventName 'ContentRendered' -Handler ({
 		if ($startupPresentationCompleted) { return }
 		$startupPresentationCompleted = $true
@@ -33,7 +34,7 @@ Register-GuiEventHandler -Source $Form -EventName 'ContentRendered' -Handler ({
 
 					if ($WindowMaximized)
 					{
-						Set-GuiMainWindowWorkAreaMaximized -Window $Form -Maximized $true -PreserveRestoreBounds
+						& $setStartupWindowMaximizedCommand -Window $Form -Maximized $true -PreserveRestoreBounds
 					}
 				}.GetNewClosure())
 				$closeRunspace = [runspacefactory]::CreateRunspace()
@@ -281,7 +282,8 @@ Register-GuiEventHandler -Source $Form -EventName 'ContentRendered' -Handler ({
 						$null = $_
 					}
 				})
-				[void]$closePs.BeginInvoke()
+				$closeAsync = $closePs.BeginInvoke()
+				$Script:SplashCloseWorker = [pscustomobject]@{PowerShell=$closePs; Runspace=$closeRunspace; AsyncResult=$closeAsync}
 			}
 		}
 		catch

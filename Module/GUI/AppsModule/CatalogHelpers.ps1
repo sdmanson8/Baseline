@@ -125,14 +125,15 @@ function Get-AppsCatalogItemsBySearchStatusAndSourceFilters
 
 	try
 	{
-		$catalog = if ($hasExplicitCategory)
+		$catalog = @(if ($hasExplicitCategory)
 		{
 			@(Get-BaselineApplicationsCatalog -Category $Category -SkipPackageManagerAvailabilityRefresh:$SkipPackageManagerAvailabilityRefresh)
 		}
 		else
 		{
-			@(Get-BaselineApplicationsCatalog -SkipPackageManagerAvailabilityRefresh:$SkipPackageManagerAvailabilityRefresh)
+			@(Get-BaselineApplicationsCatalog -AllCategories:(-not [string]::IsNullOrWhiteSpace($SearchQuery)) -SkipPackageManagerAvailabilityRefresh:$SkipPackageManagerAvailabilityRefresh)
 		}
+		)
 	}
 	finally
 	{
@@ -1033,6 +1034,7 @@ function Get-BaselineApplicationsCatalog
 	param (
 		[switch]$Force,
 		[string]$Category = $null,
+		[switch]$AllCategories,
 		[switch]$SkipPackageManagerAvailabilityRefresh
 	)
 
@@ -1043,6 +1045,30 @@ function Get-BaselineApplicationsCatalog
 	if (-not $SkipPackageManagerAvailabilityRefresh -and (Get-Command -Name 'Test-ChocolateyAvailable' -CommandType Function -ErrorAction SilentlyContinue))
 	{
 		try { $null = Test-ChocolateyAvailable -Refresh } catch { Write-SwallowedException -ErrorRecord $_ -Source 'AppsModule.Get-BaselineApplicationsCatalog.TestChocolateyAvailable' }
+	}
+
+	if ($AllCategories)
+	{
+		$previousCatalog = Get-Variable -Name 'BaselineApplicationsCatalog' -Scope Script -ErrorAction SilentlyContinue
+		$previousCategory = Get-Variable -Name 'BaselineApplicationsCatalogCategory' -Scope Script -ErrorAction SilentlyContinue
+		$savedCatalog = if ($previousCatalog) { $previousCatalog.Value } else { $null }
+		$savedCategory = if ($previousCategory) { $previousCategory.Value } else { $null }
+		try
+		{
+			if ($Force) { $Script:BaselineApplicationsCatalogByCategory = @{} }
+			foreach ($catalogCategory in @(Get-AppsCatalogCategoryNames))
+			{
+				Get-BaselineApplicationsCatalog -Category $catalogCategory -SkipPackageManagerAvailabilityRefresh
+			}
+		}
+		finally
+		{
+			if ($previousCatalog) { $Script:BaselineApplicationsCatalog = $savedCatalog }
+			else { Remove-Variable -Name 'BaselineApplicationsCatalog' -Scope Script -ErrorAction SilentlyContinue }
+			if ($previousCategory) { $Script:BaselineApplicationsCatalogCategory = $savedCategory }
+			else { Remove-Variable -Name 'BaselineApplicationsCatalogCategory' -Scope Script -ErrorAction SilentlyContinue }
+		}
+		return
 	}
 
 	$effectiveCategory = Resolve-AppsCatalogCategory -Category $Category
@@ -1254,6 +1280,7 @@ function Get-BaselineApplicationsCatalog
 			[void]$catalog.Add([pscustomobject]@{
 				Name = $displayName
 				WinGetId = $winGetId
+				WinGetSource = if ($entry.PSObject.Properties['WinGetSource']) { [string]$entry.WinGetSource } else { 'winget' }
 				ChocoId = $chocoId
 				Type = $entityType
 				EntityType = $entityType

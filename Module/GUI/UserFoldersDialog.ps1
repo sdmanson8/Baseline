@@ -63,6 +63,7 @@ function New-GuiUserFoldersEntryRow
 		[object]$BrushConverter,
 
 		[Parameter(Mandatory = $true)]
+		[AllowEmptyCollection()]
 		[System.Collections.Generic.List[object]]$StateList
 	)
 
@@ -447,7 +448,7 @@ function Show-GuiUserFoldersDialog
 	{
 		foreach ($entry in $rows)
 		{
-			$rowCard = New-GuiUserFoldersEntryRow -Entry $entry -Theme $theme -BrushConverter $bc -StateList $rowStates
+			$rowCard = New-GuiUserFoldersEntryRow -Entry $entry -Theme $theme -BrushConverter $bc -StateList (,$rowStates)
 			[void]$rowsPanel.Children.Add($rowCard)
 		}
 	}

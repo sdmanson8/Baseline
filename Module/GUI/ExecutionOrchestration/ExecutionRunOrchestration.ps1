@@ -730,7 +730,7 @@
 					Set-RunAbortDisposition -Disposition 'Return'
 					Exit-ExecutionView
 				}
-				Set-ExecutionGameModeContext -Context $null
+				Set-ExecutionGameModeContext -GameModeContext $null
 				return
 			}
 
@@ -841,7 +841,7 @@
 			{
 				Exit-ExecutionView
 				Show-LogDialog -LogPath $LogPath
-				Set-ExecutionGameModeContext -Context $null
+				Set-ExecutionGameModeContext -GameModeContext $null
 				return
 			}
 
@@ -856,7 +856,7 @@
 
 			break
 		}
-		Set-ExecutionGameModeContext -Context $null
+		Set-ExecutionGameModeContext -GameModeContext $null
 	}
 
 	function Invoke-GuiExecutionRemoteRun
@@ -1039,7 +1039,7 @@
 			[object[]]$TweakList
 		)
 
-		Set-ExecutionGameModeContext -Context $(if (Test-HasGameModeTweaks -TweakList $TweakList) {
+		Set-ExecutionGameModeContext -GameModeContext $(if (Test-HasGameModeTweaks -TweakList $TweakList) {
 			[pscustomobject]@{
 				Profile = if ($TweakList[0].PSObject.Properties['GameModeProfile']) { [string]$TweakList[0].GameModeProfile } else { [string](Get-GameModeProfile) }
 				Operation = if ($TweakList[0].PSObject.Properties['GameModeOperation']) { [string]$TweakList[0].GameModeOperation } else { 'Apply' }
@@ -1246,16 +1246,7 @@
 				{
 				'Log'
 				{
-					if (Test-ExecutionSkipMessage -Message $entry.Message)
-					{
-						$skipKey = if (-not [string]::IsNullOrWhiteSpace($Script:ExecutionCurrentSummaryKey)) { $Script:ExecutionCurrentSummaryKey } else { $null }
-						if (-not [string]::IsNullOrWhiteSpace($skipKey))
-						{
-							$skipDetail = if ((Test-GuiObjectField -Object $entry -FieldName 'Message')) { [string]$entry.Message } else { 'Skipped because the system already matched the requested state.' }
-							$Script:RunState['SkippedTweaks'][$skipKey] = $skipDetail
-							Set-ExecutionSummaryStatus -Key $skipKey -Status 'Skipped' -Detail $skipDetail
-						}
-					}
+                    # Diagnostic prose never changes the operation result.
 				}
 				'_TweakStarted'
 				{
@@ -1312,6 +1303,7 @@
 							{
 								'Success'
 							}
+                            elseif ($completedStatus -in @('skipped', 'not applicable', 'restart pending')) { $completedStatus }
 							elseif ($completedStatus -eq 'timed out')
 							{
 								'Timed Out'
@@ -1475,10 +1467,12 @@
 								{
 									throw "Unsupported ScheduledTasks selection mode '$requestedMode'."
 								}
-								if ((Test-GuiObjectField -Object $entry -FieldName 'SelectedNames') -and $null -ne $entry.SelectedNames)
+								if ((Test-GuiObjectField -Object $entry -FieldName 'SelectedNames') -and @($entry.SelectedNames).Count -gt 0)
 								{
 									$selectionArgs['SelectedTaskNames'] = @($entry.SelectedNames)
 								}
+								$selectionArgs['AvailableTasks'] = @($entry.AvailableTasks)
+								$selectionArgs['OwnerWindow'] = $Script:MainForm
 
 								$selectionResult = ScheduledTasks @selectionArgs
 								if ($responseState)

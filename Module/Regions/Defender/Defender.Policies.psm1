@@ -588,6 +588,7 @@ function WindowsSandbox
 
 	if (($Edition -notmatch "Pro") -and ($Edition -notmatch "Enterprise") -and ($Edition -notmatch "Education"))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 
 		return
@@ -730,6 +731,7 @@ function WindowsScriptHost
 				# Skip if a scheduled task exists
 				if ($_.State -eq "Ready")
 				{
+					Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 					LogInfo ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 					Write-ConsoleStatus -Status success
 					break

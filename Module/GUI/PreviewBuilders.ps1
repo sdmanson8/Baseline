@@ -132,14 +132,15 @@
 	{
 		param (
 			$TweakManifest = $null,
-			$Controls = $null
+			$Controls = $null,
+			[switch]$SelectionOnly
 		)
 		$resolvedManifest = @(if ($null -ne $TweakManifest) { $TweakManifest } else { $Script:TweakManifest })
 		$resolvedControls = if ($null -ne $Controls) { $Controls } else { $Script:Controls }
 
 		$selectedTweaks = [System.Collections.Generic.List[hashtable]]::new()
 
-		for ($ri = 0; $ri -lt $resolvedManifest.Count; $ri++)
+		:selectionLoop for ($ri = 0; $ri -lt $resolvedManifest.Count; $ri++)
 		{
 			$rt = $resolvedManifest[$ri]
 			$rctl = Get-GuiIndexedControlState -Controls $resolvedControls -Index $ri
@@ -180,6 +181,10 @@
 
 					if (-not [string]::IsNullOrWhiteSpace([string]$selectedParam))
 					{
+						if ($SelectionOnly) {
+						    $selectedTweaks.Add(@{ Function = $rt.Function; Category = $rt.Category })
+						    continue selectionLoop
+						}
 						$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
 						$selectedTweaks.Add(@{
 							Key       = [string]$ri
@@ -237,6 +242,10 @@
 					}
 					if ($selIdx -ge 0)
 					{
+						if ($SelectionOnly) {
+						    $selectedTweaks.Add(@{ Function = $rt.Function; Category = $rt.Category })
+						    continue selectionLoop
+						}
 						$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
 						$displayOpts = if ($rt.DisplayOptions) { $rt.DisplayOptions } else { $rt.Options }
 						$selectedTweaks.Add(@{
@@ -291,6 +300,10 @@
 
 						if ($selectedValueSource)
 						{
+							if ($SelectionOnly) {
+							    $selectedTweaks.Add(@{ Function = $rt.Function; Category = $rt.Category })
+							    continue selectionLoop
+							}
 							$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
 							$numericRange = if ((Test-GuiObjectField -Object $rt -FieldName 'NumericRange')) { $rt.NumericRange } else { $null }
 							$units = if ($numericRange -and (Test-GuiObjectField -Object $numericRange -FieldName 'Units')) { [string]$numericRange.Units } else { $null }
@@ -379,6 +392,11 @@
 						$runState = ($null -ne $dateValue)
 					}
 
+					if ($SelectionOnly) {
+					    $selectedTweaks.Add(@{ Function = $rt.Function; Category = $rt.Category })
+					    continue selectionLoop
+					}
+
 					$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
 					$selectionText = if ($runState)
 					{
@@ -445,6 +463,10 @@
 
 					if ($isActionChecked)
 					{
+						if ($SelectionOnly) {
+						    $selectedTweaks.Add(@{ Function = $rt.Function; Category = $rt.Category })
+						    continue selectionLoop
+						}
 						$visual = Get-TweakVisualMetadata -Tweak $rt -StateSource $rctl
 						$selectionText = if ($rt.Name) { [string]$rt.Name } else { 'Run action' }
 						$selectedExtraArgs = $rt.ExtraArgs

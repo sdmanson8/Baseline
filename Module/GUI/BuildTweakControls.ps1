@@ -1,4 +1,5 @@
 	$Script:Controls = @{}
+	$Script:GuiContentRestoreInProgress = $false
 	# Function-name -> manifest-index map for linked-toggle lookups in closures
 	$Script:FunctionToIndex = @{}
 	$Script:Ctx.Data.Controls = $Script:Controls
@@ -53,6 +54,7 @@
 			param (
 				[switch]$SkipIdlePrebuild
 			)
+			if ($Script:GuiContentRestoreInProgress) { return }
 
 			$__perf = Start-GuiPerfScope -Name 'UpdateCurrentTabContent' -Note ([string]$Script:CurrentPrimaryTab)
 			try
@@ -160,7 +162,6 @@
 			$updatePlatformFilterListScript = if ($Script:UpdatePlatformFilterListScript) { $Script:UpdatePlatformFilterListScript } else { ${function:Update-PlatformFilterList} }
 			$updateRiskFilterListScript = if ($Script:UpdateRiskFilterListScript) { $Script:UpdateRiskFilterListScript } else { ${function:Update-RiskFilterList} }
 			$updateCategoryFilterListScript = if ($Script:UpdateCategoryFilterListScript) { $Script:UpdateCategoryFilterListScript } else { ${function:Update-CategoryFilterList} }
-			$updatePrimaryTabHeadersScript = if ($Script:UpdatePrimaryTabHeadersScript) { $Script:UpdatePrimaryTabHeadersScript } else { ${function:Update-PrimaryTabHeaders} }
 			$updatePrimaryTabVisualsScript = if ($Script:UpdatePrimaryTabVisualsScript) { $Script:UpdatePrimaryTabVisualsScript } else { ${function:Update-PrimaryTabVisuals} }
 			$buildTabContentScript = if ($Script:BuildTabContentScript) { $Script:BuildTabContentScript } else { ${function:Build-TabContent} }
 			if ($updatePlatformFilterListScript)
@@ -196,14 +197,7 @@
 					throw "Update-CurrentTabContent/UpdateCategoryFilterList for tab '$targetTab' failed: $($_.Exception.Message)"
 				}
 			}
-			try
-			{
-				& $updatePrimaryTabHeadersScript
-			}
-			catch
-			{
-				throw "Update-CurrentTabContent/UpdatePrimaryTabHeaders for tab '$targetTab' failed: $($_.Exception.Message)"
-			}
+            # Build-TabContent owns the header refresh; do not count/render every tab twice.
 			try
 			{
 				& $updatePrimaryTabVisualsScript

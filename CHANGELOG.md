@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## 1.1.0 | 2026-09-16
+
+### Added
+
+- **Media apps** – CCCP and Winamp.
+- **Documents apps** – CutePDF Writer.
+- **File Management apps** – MEGAsync (MEGA).
+- **Development apps** – FileZilla.
+- **Utilities apps** – Google Earth Pro, KeePass 2, and NVDA (NV Access).
+- New catalog entries use the existing install, uninstall, and update workflows through WinGet and Chocolatey where configured; CCCP and FileZilla use Chocolatey only.
+
+### Changed
+
+- Moved OneDrive from Utilities to File Management and added its Chocolatey package method alongside WinGet.
+
+### Fixed
+
+- Fixed Baseline remaining open and locking its executable after the window closes; detection startup, background workers, and the GUI dispatcher now complete their shutdown lifecycle.
+- Fixed Copilot/Windows AI privileged-cleanup launch quoting, detect workers that fail to start or exit without a result, and publish completion/error markers atomically.
+- Fixed blank Disk Cleanup exit codes by retaining and disposing process handles correctly.
+- Restore-point creation now prepares both required shadow-copy services, verifies a newly created point, restores the original creation-frequency setting, and reports failure instead of success when creation fails.
+- Fixed support-bundle export using GUI-bound detection code in a background runspace; export progress, private helper calls, menu restoration, and worker cleanup now retain the correct execution scope.
+- Application cards now render one per dispatcher turn, cancel superseded builds, and preserve cumulative summaries and queued-action callbacks while keeping input responsive.
+
+- Fixed GUI dialog callback binding and empty user-folder state handling.
+- Moved completed execution-worker cleanup off the WPF dispatcher to reduce long GUI responsiveness stalls.
+- Fixed Windows Terminal configuration validation and classified unavailable PowerShell V2 features as not applicable.
+- Reworked the Take Ownership context-menu registry update to avoid registry-provider timeouts.
+- Added progress reporting while Windows AI removal waits for TrustedInstaller completion, preventing false idle-watchdog aborts.
+- Gaming advanced options keep **Show Options** expanded when options are checked or unchecked, updating selections without rebuilding the panel.
+- Fixed Game Mode execution-context conversion and missing choice parameters for Processor Scheduling.
+- Exported the execution-support reason helper so background runs can explain why a tweak is unavailable.
+- Unsupported GPU scheduling now reports **Not applicable** instead of **Restart pending**.
+- Foreground tabs now render incrementally below input priority, preserving per-build callback state and cancelling obsolete builds when navigation or execution replaces the content.
+- Prevented premature tab construction while restoring the previous GUI session.
+- Missing StartupApproved registry values no longer produce exception traces during startup-entry scans.
+- Application failures retain their underlying exception, and WinGet installation failures include the exit code.
+
+---
+
 ## 1.0.0 | 2026-05-27
 
 ### Added

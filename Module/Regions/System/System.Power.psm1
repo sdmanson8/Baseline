@@ -113,6 +113,24 @@ Applies the Baseline behavior for power plan.
 	Current user
 #>
 
+function Set-BaselineActivePowerScheme {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][guid]$Scheme)
+    if (-not ('Baseline.NativePowerScheme' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace Baseline {
+    public static class NativePowerScheme {
+        [DllImport("powrprof.dll")]
+        public static extern uint PowerSetActiveScheme(IntPtr root, ref Guid scheme);
+    }
+}
+"@ -ErrorAction Stop
+    }
+    return [Baseline.NativePowerScheme]::PowerSetActiveScheme([IntPtr]::Zero, [ref]$Scheme)
+}
+
 function PowerPlan
 {
 	param
@@ -146,100 +164,36 @@ function PowerPlan
 		$CustomPower
 	)
 
-	# Remove all policies in order to make changes visible in UI only if it's possible
-	Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Force -ErrorAction SilentlyContinue | Out-Null
-	Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Type CLEAR | Out-Null
-
-	switch ($PSCmdlet.ParameterSetName)
-	{
-		"High"
-		{
-			Write-ConsoleStatus -Action "Setting power plan to High Performance"
-			LogInfo "Setting power plan to High Performance"
-			POWERCFG /SETACTIVE SCHEME_MIN | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Balanced"
-		{
-			Write-ConsoleStatus -Action "Setting power plan to Balanced"
-			LogInfo "Setting power plan to Balanced"
-			POWERCFG /SETACTIVE SCHEME_BALANCED | Out-Null
-			Write-ConsoleStatus -Status success
-		}
-		"Ultimate"
-		{
-			Write-ConsoleStatus -Action "Setting power plan to Ultimate Performance"
-			LogInfo "Setting power plan to Ultimate Performance"
-			# Ultimate Performance GUID: e9a42b02-d5df-448d-aa00-03f14749eb61
-			$ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
-			$existingPlans = POWERCFG /LIST 2>&1
-			if ($existingPlans -match $ultimateGuid)
-			{
-				POWERCFG /SETACTIVE $ultimateGuid | Out-Null
-				Write-ConsoleStatus -Status success
-			}
-			else
-			{
-				# Attempt to unhide/create Ultimate Performance plan
-				LogInfo "Ultimate Performance plan not found, attempting to create it"
-				$duplicateOutput = POWERCFG /DUPLICATESCHEME $ultimateGuid 2>&1
-				$createdPlans = POWERCFG /LIST 2>&1
-				if ($createdPlans -match $ultimateGuid)
-				{
-					POWERCFG /SETACTIVE $ultimateGuid | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-				else
-				{
-					Write-ConsoleStatus -Status failed
-					LogWarning "Ultimate Performance plan is not available on this system. Falling back to High Performance."
-					POWERCFG /SETACTIVE SCHEME_MIN | Out-Null
-				}
-			}
-		}
-		"CustomPower"
-		{
-			# Custom power plan: duplicate the Ultimate Performance scheme
-			# under a stable, recognisable GUID and rename it.
-			# The GUID `57696e68-616e-6365-506f-776572000000` is used as the
-			# canonical identifier so subsequent toggles can find the plan by
-			# GUID alone.
-			Write-ConsoleStatus -Action "Setting power plan to Custom Power Plan"
-			LogInfo "Creating/activating Custom Power Plan"
-			$ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
-			$customPowerGuid = "57696e68-616e-6365-506f-776572000000"
-			try
-			{
-				$existingPlans = POWERCFG /LIST 2>&1
-				if ($existingPlans -notmatch [regex]::Escape($customPowerGuid))
-				{
-					if ($existingPlans -notmatch [regex]::Escape($ultimateGuid))
-					{
-						POWERCFG /DUPLICATESCHEME $ultimateGuid 2>&1 | Out-Null
-					}
-					POWERCFG /DUPLICATESCHEME $ultimateGuid $customPowerGuid 2>&1 | Out-Null
-					POWERCFG -CHANGENAME $customPowerGuid "Custom Power Plan" "Optimized power plan for gaming and performance" 2>&1 | Out-Null
-				}
-				$verifyPlans = POWERCFG /LIST 2>&1
-				if ($verifyPlans -match [regex]::Escape($customPowerGuid))
-				{
-					POWERCFG /SETACTIVE $customPowerGuid | Out-Null
-					Write-ConsoleStatus -Status success
-				}
-				else
-				{
-					Write-ConsoleStatus -Status failed
-					LogWarning "Failed to create Custom Power Plan; falling back to High Performance."
-					POWERCFG /SETACTIVE SCHEME_MIN | Out-Null
-				}
-			}
-			catch
-			{
-				Write-ConsoleStatus -Status failed
-				LogError "Error creating Custom Power Plan: $($_.Exception.Message)"
-			}
-		}
-	}
+    $scheme = switch ($PSCmdlet.ParameterSetName) {
+        'High' { '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' }
+        'Balanced' { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        'Ultimate' { 'e9a42b02-d5df-448d-aa00-03f14749eb61' }
+        'CustomPower' { '57696e68-616e-6365-506f-776572000000' }
+    }
+    $powercfgPath = Join-Path $env:SystemRoot 'System32/powercfg.exe'
+    # /LIST excludes hidden schemes. Query the requested GUID directly before
+    # creating it, including Ultimate Performance on systems where it is hidden.
+    $existing = Invoke-BaselineProcess -FilePath $powercfgPath -ArgumentList @('/QUERY', $scheme) -CaptureOutput -AllowAnyExitCode
+    if ($existing.ExitCode -ne 0) {
+        $template = if ($Ultimate -or $CustomPower) { 'e9a42b02-d5df-448d-aa00-03f14749eb61' } else { $scheme }
+        # A specified destination prevents powercfg from generating a different GUID.
+        $null = Invoke-BaselineProcess -FilePath $powercfgPath -ArgumentList @('/DUPLICATESCHEME', $template, $scheme) -CaptureOutput
+        if ($CustomPower) {
+            $null = Invoke-BaselineProcess -FilePath $powercfgPath -ArgumentList @('/CHANGENAME', $scheme, 'Custom Power Plan', 'Optimized power plan for gaming and performance') -CaptureOutput
+        }
+    }
+    Remove-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-Policy -Scope Computer -Path SOFTWARE\Policies\Microsoft\Power\PowerSettings -Name ActivePowerScheme -Type CLEAR | Out-Null
+    LogInfo ("Activating requested power scheme: {0}" -f $scheme)
+    $activationStatus = Set-BaselineActivePowerScheme -Scheme $scheme
+    if ($activationStatus -eq 50) {
+        Set-BaselineTweakOutcome -Function 'PowerPlan' -Status 'Not applicable' -Detail 'Windows does not support activating the requested power scheme on this system (ERROR_NOT_SUPPORTED).'
+        return
+    }
+    if ($activationStatus -ne 0) { throw [ComponentModel.Win32Exception]::new([int]$activationStatus) }
+    $active = Invoke-BaselineProcess -FilePath $powercfgPath -ArgumentList @('/GETACTIVESCHEME') -CaptureOutput
+    if ($active.StandardOutput -notmatch [regex]::Escape($scheme)) { throw "Power scheme verification failed: requested $scheme is not active." }
+    Write-ConsoleStatus -Status success
 }
 
 <#
@@ -1352,13 +1306,14 @@ function Set-PowerSchemeNumericRangeSetting
 
 	Write-ConsoleStatus -Action "Setting $DisplayName"
 	LogInfo "Setting $DisplayName"
-	foreach ($candidateValue in @($Value, $ACValue, $DCValue))
+	$candidateValues = if ($PSCmdlet.ParameterSetName -eq 'Channels') { @($ACValue, $DCValue) } else { @($Value) }
+	foreach ($candidateValue in $candidateValues)
 	{
 		if ($null -ne $candidateValue -and (($candidateValue -lt $MinValue) -or ($candidateValue -gt $MaxValue)))
 		{
 			Write-ConsoleStatus -Status failed
 			LogError "Failed to set ${DisplayName}: Value $candidateValue is outside the supported range of $MinValue to $MaxValue."
-			return
+			throw "Value $candidateValue is outside the supported range of $MinValue to $MaxValue."
 		}
 	}
 
@@ -1371,7 +1326,8 @@ function Set-PowerSchemeNumericRangeSetting
 	catch
 	{
 		Write-ConsoleStatus -Status warning
-		LogWarning "Skipped setting ${DisplayName} because Windows rejected the power setting request: $($_.Exception.Message)"
+		LogWarning "Failed to set ${DisplayName}: Windows rejected the power setting request: $($_.Exception.Message)"
+		throw
 	}
 }
 
@@ -1414,7 +1370,8 @@ function Set-PowerSchemeChoiceSetting
 	catch
 	{
 		Write-ConsoleStatus -Status warning
-		LogWarning "Skipped setting ${DisplayName} because Windows rejected the power setting request: $($_.Exception.Message)"
+		LogWarning "Failed to set ${DisplayName}: Windows rejected the power setting request: $($_.Exception.Message)"
+		throw
 	}
 }
 

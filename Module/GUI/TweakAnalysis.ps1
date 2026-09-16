@@ -375,16 +375,8 @@
 			catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakAnalysis.GetGuiToggleDetectedState.GetCachedDetection' }
 		}
 
-		$detectedValue = [bool](Invoke-GuiDetectScriptblock -Detect $Tweak.Detect -DefaultValue $goalState)
-		if (-not [string]::IsNullOrWhiteSpace($functionName) -and (Get-Command -Name 'Set-CachedDetection' -CommandType Function -ErrorAction SilentlyContinue))
-		{
-			try { Set-CachedDetection -Function $functionName -Value $detectedValue } catch { Write-SwallowedException -ErrorRecord $_ -Source 'TweakAnalysis.GetGuiToggleDetectedState.SetCachedDetection' }
-		}
-
-		return [pscustomobject]@{
-			Known = $true
-			Value = $detectedValue
-		}
+		Request-GuiBackgroundDetection -Tweak $Tweak
+		return [pscustomobject]@{ Known = $false; Value = $null }
 	}
 
 	<#
@@ -402,6 +394,17 @@
 		$detected = Get-GuiToggleDetectedState -Tweak $Tweak
 		$isSelected = Test-TweakIsSelected -Tweak $Tweak -StateSource $StateSource
 		$matchesDesired = ([bool]$detected.Known -and [bool]$detected.Value -eq [bool]$goalState)
+		if (-not $detected.Known -and $Script:GuiDetectionWorker -and $Script:GuiDetectionWorker.Pending.ContainsKey([string]$Tweak.Function)) {
+			return [pscustomobject]@{
+				StateLabel = Get-UxLocalizedString -Key 'GuiDetectionPending' -Fallback 'Checking current state...'
+				StateTone = 'Muted'
+				StateDetail = Get-UxLocalizedString -Key 'GuiDetectionPendingDetail' -Fallback 'The current system state is being checked in the background.'
+				MatchesDesired = $false
+				DetectedState = $null
+				GoalState = [bool]$goalState
+				IsSelected = [bool]$isSelected
+			}
+		}
 
 		if ($matchesDesired)
 		{
@@ -533,7 +536,7 @@
 			'Cleanup' { 'It removes clutter or unwanted components.'; break }
 			'Compatibility' { 'It helps keep common workflows, apps, or devices working as expected.'; break }
 			'Performance' { 'It targets responsiveness or latency improvements.'; break }
-			'Hardening' { 'It tightens security defaults.'; break }
+			'Hardening' { 'It changes a security setting; the selected option determines whether protection is enabled or disabled.'; break }
 			'Troubleshooting' { 'It is a targeted fix or troubleshooting aid.'; break }
 			default { 'It fits the current baseline policy.' }
 		}

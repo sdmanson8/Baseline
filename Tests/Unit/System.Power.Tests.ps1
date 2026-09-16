@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
 BeforeAll {
     $filePath = Join-Path $PSScriptRoot '../../Module/Regions/System/System.Power.psm1'
@@ -67,138 +67,47 @@ Describe 'Hibernation' {
     }
 }
 
-Describe 'PowerPlan' {
+Describe 'PowerPlan verified native execution' {
     BeforeEach {
-        $script:consoleStatuses = [System.Collections.Generic.List[string]]::new()
-        $script:warningMessages = [System.Collections.Generic.List[string]]::new()
-        $script:powercfgCalls = [System.Collections.Generic.List[string]]::new()
-        $script:policyCalls = [System.Collections.Generic.List[object]]::new()
-        $script:hasUltimate = $true
-
-        function Write-ConsoleStatus {
-            param([string]$Action, [string]$Status)
-            if (-not [string]::IsNullOrWhiteSpace($Status)) { [void]$script:consoleStatuses.Add($Status) }
-        }
-        function LogInfo { param([string]$Message) }
-        function LogWarning { param([string]$Message) [void]$script:warningMessages.Add($Message) }
-        function LogError { param([string]$Message) }
-        function Remove-ItemProperty {
-            param([string]$Path, [string]$Name, [switch]$Force, [object]$ErrorAction)
-        }
-        function Set-Policy {
-            param([string]$Scope, [string]$Path, [string]$Name, [string]$Type, [object]$Value)
-            [void]$script:policyCalls.Add([pscustomobject]@{ Scope = $Scope; Name = $Name; Type = $Type })
-        }
-        function POWERCFG {
-            $callText = $args -join ' '
-            [void]$script:powercfgCalls.Add($callText)
-            if ($callText -match '/LIST') {
-                if ($script:hasUltimate) { return 'Power Scheme GUID: e9a42b02-d5df-448d-aa00-03f14749eb61  (Ultimate Performance)' }
-                return 'Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced) *'
-            }
-            return ''
+        $script:calls = [System.Collections.Generic.List[object]]::new()
+        $script:active = ''; $script:failCreation = $false; $script:wrongActive = $false
+        function Remove-ItemProperty { param($Path,$Name,[switch]$Force,$ErrorAction) }
+        function Set-Policy { param($Scope,$Path,$Name,$Type) }
+        function LogInfo { param($Message) }
+        function Write-ConsoleStatus { param($Status) }
+        function Set-BaselineActivePowerScheme { param($Scheme) $script:calls.Add(@('/SETACTIVE',[string]$Scheme)); $script:active = [string]$Scheme; return 0 }
+        function Invoke-BaselineProcess {
+            param($FilePath,$ArgumentList,[switch]$CaptureOutput,[switch]$AllowAnyExitCode)
+            $script:calls.Add(@($ArgumentList))
+            if ($ArgumentList[0] -eq '/DUPLICATESCHEME' -and $script:failCreation) { throw 'Scheme unavailable' }
+            if ($ArgumentList[0] -eq '/SETACTIVE') { $script:active = $ArgumentList[1] }
+            $output = if ($ArgumentList[0] -eq '/GETACTIVESCHEME' -and -not $script:wrongActive) { $script:active } else { '' }
+            [pscustomobject]@{ ExitCode = $(if ($ArgumentList[0] -eq '/QUERY') { 1 } else { 0 }); StandardOutput = $output; StandardError = '' }
         }
     }
-
     AfterEach {
-        foreach ($n in @('Write-ConsoleStatus','LogInfo','LogWarning','LogError','Remove-ItemProperty','Set-Policy','POWERCFG')) {
-            Remove-Item Function:\$n -ErrorAction SilentlyContinue
-        }
+        foreach ($name in @('Remove-ItemProperty','Set-Policy','LogInfo','Write-ConsoleStatus','Invoke-BaselineProcess','Set-BaselineActivePowerScheme')) { Remove-Item "Function:\$name" -ErrorAction SilentlyContinue }
     }
-
-    It 'requires one of High/Balanced/Ultimate' {
-        { PowerPlan } | Should -Throw
+    It 'activates and verifies each requested plan' -TestCases @(
+        @{ Option = 'High'; Guid = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' }
+        @{ Option = 'Balanced'; Guid = '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        @{ Option = 'Ultimate'; Guid = 'e9a42b02-d5df-448d-aa00-03f14749eb61' }
+        @{ Option = 'CustomPower'; Guid = '57696e68-616e-6365-506f-776572000000' }
+    ) {
+        param($Option,$Guid)
+        $options = @{ $Option = $true }
+        PowerPlan @options
+        $script:active | Should -Be $Guid
+        $script:calls[-1][0] | Should -Be '/GETACTIVESCHEME'
     }
-
-    It 'sets the SCHEME_MIN active plan for High' {
-        PowerPlan -High
-        ($script:powercfgCalls -join ' ') | Should -Match 'SCHEME_MIN'
-        $script:consoleStatuses[-1] | Should -Be 'success'
+    It 'does not activate another plan if creation fails' {
+        $script:failCreation = $true
+        { PowerPlan -Ultimate } | Should -Throw
+        @($script:calls | Where-Object { $_[0] -eq '/SETACTIVE' }).Count | Should -Be 0
     }
-
-    It 'sets the SCHEME_BALANCED active plan for Balanced' {
-        PowerPlan -Balanced
-        ($script:powercfgCalls -join ' ') | Should -Match 'SCHEME_BALANCED'
-        $script:consoleStatuses[-1] | Should -Be 'success'
-    }
-
-    It 'activates the Ultimate GUID when it is already present' {
-        $script:hasUltimate = $true
-
-        PowerPlan -Ultimate
-
-        $calls = $script:powercfgCalls -join ' '
-        $calls | Should -Match 'e9a42b02-d5df-448d-aa00-03f14749eb61'
-        ($script:powercfgCalls | Where-Object { $_ -match '/SETACTIVE' }).Count | Should -Be 1
-        $script:consoleStatuses[-1] | Should -Be 'success'
-    }
-
-    It 'warns when Ultimate is missing and duplication does not bring it back' {
-        $script:hasUltimate = $false
-
-        PowerPlan -Ultimate
-
-        $script:warningMessages.Count | Should -Be 1
-        $script:warningMessages[0] | Should -Match 'Ultimate Performance'
-    }
-}
-
-Describe 'PowerPlan -CustomPower (custom plan)' {
-    BeforeEach {
-        $script:consoleStatuses = [System.Collections.Generic.List[string]]::new()
-        $script:warningMessages = [System.Collections.Generic.List[string]]::new()
-        $script:powercfgCalls = [System.Collections.Generic.List[string]]::new()
-        $script:hasCustomPowerGuid = $false
-        $script:hasUltimate = $true
-
-        function Write-ConsoleStatus {
-            param([string]$Action, [string]$Status)
-            if (-not [string]::IsNullOrWhiteSpace($Status)) { [void]$script:consoleStatuses.Add($Status) }
-        }
-        function LogInfo { param([string]$Message) }
-        function LogWarning { param([string]$Message) [void]$script:warningMessages.Add($Message) }
-        function LogError { param([string]$Message) }
-        function Remove-ItemProperty { param([string]$Path, [string]$Name, [switch]$Force, [object]$ErrorAction) }
-        function Set-Policy { param([string]$Scope, [string]$Path, [string]$Name, [string]$Type, [object]$Value) }
-        function POWERCFG {
-            $callText = $args -join ' '
-            [void]$script:powercfgCalls.Add($callText)
-            if ($callText -match '/LIST') {
-                $lines = @()
-                if ($script:hasUltimate)        { $lines += 'Power Scheme GUID: e9a42b02-d5df-448d-aa00-03f14749eb61  (Ultimate Performance)' }
-                if ($script:hasCustomPowerGuid) { $lines += 'Power Scheme GUID: 57696e68-616e-6365-506f-776572000000  (Custom Power Plan) *' }
-                return ($lines -join "`n")
-            }
-            if ($callText -match '/DUPLICATESCHEME') {
-                # Once duplication runs, the next /LIST should report the custom plan is present.
-                $script:hasCustomPowerGuid = $true
-            }
-            return ''
-        }
-    }
-
-    AfterEach {
-        foreach ($n in @('Write-ConsoleStatus','LogInfo','LogWarning','LogError','Remove-ItemProperty','Set-Policy','POWERCFG')) {
-            Remove-Item Function:\$n -ErrorAction SilentlyContinue
-        }
-    }
-
-    It 'duplicates the Ultimate scheme into the canonical custom GUID when missing' {
-        PowerPlan -CustomPower
-        $calls = $script:powercfgCalls -join ' | '
-        $calls | Should -Match '/DUPLICATESCHEME e9a42b02-d5df-448d-aa00-03f14749eb61 57696e68-616e-6365-506f-776572000000'
-        $calls | Should -Match '-CHANGENAME 57696e68-616e-6365-506f-776572000000 Custom Power Plan'
-        $calls | Should -Match '/SETACTIVE 57696e68-616e-6365-506f-776572000000'
-        $script:consoleStatuses[-1] | Should -Be 'success'
-    }
-
-    It 'skips duplication and goes straight to /SETACTIVE when the plan already exists' {
-        $script:hasCustomPowerGuid = $true
-        PowerPlan -CustomPower
-        $calls = $script:powercfgCalls -join ' | '
-        $calls | Should -Not -Match '/DUPLICATESCHEME'
-        $calls | Should -Match '/SETACTIVE 57696e68-616e-6365-506f-776572000000'
-        $script:consoleStatuses[-1] | Should -Be 'success'
+    It 'rejects an incorrect final active scheme' {
+        $script:wrongActive = $true
+        { PowerPlan -Ultimate } | Should -Throw
     }
 }
 

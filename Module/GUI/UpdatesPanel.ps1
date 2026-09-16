@@ -455,14 +455,14 @@ function script:Set-GuiWindowsUpdatePresetSelection
 
 	$displayName = switch ($PresetName)
 	{
-		'Default' { 'Default Windows Update Settings' }
+		'Default' { 'Windows Update Defaults' }
 		'Security' { 'Security Windows Update Settings' }
 		'DisableAll' { 'Disable All Windows Updates' }
 	}
 
 	$summary = switch ($PresetName)
 	{
-		'Default' { 'Loads a selection that clears Baseline Windows Update policy controls back to recorded default values.' }
+		'Default' { 'Loads a selection that restores the Windows defaults for the update settings managed here.' }
 		'Security' { 'Loads a selection that delays feature updates, applies a short quality update delay, and blocks update drivers/restarts.' }
 		'DisableAll' { 'Loads a high-risk selection that disables Windows Update policy, services, and scheduled update tasks.' }
 	}
@@ -561,7 +561,7 @@ function script:New-GuiWindowsUpdatePresetCard
 		-Title 'Update Settings Presets' `
 		-Description 'Load a Windows Update policy selection, then review the regular tweak toggles below before running.' `
 		-Bullets @(
-			'Default Settings restores Baseline-controlled update policy values.'
+			'Windows Defaults restores the Windows defaults for the update settings managed here.'
 			'Security Settings delays feature updates and keeps quality updates near current.'
 		) `
 		-BorderColor $theme.CardBorder
@@ -572,7 +572,7 @@ function script:New-GuiWindowsUpdatePresetCard
 	$buttonPanel.Margin = [System.Windows.Thickness]::new(0, 10, 0, 0)
 
 	foreach ($presetButton in @(
-		[pscustomobject]@{ Label = 'Default Settings'; Preset = 'Default'; Variant = 'Secondary' }
+		[pscustomobject]@{ Label = 'Windows Defaults'; Preset = 'Default'; Variant = 'Secondary' }
 		[pscustomobject]@{ Label = 'Security Settings'; Preset = 'Security'; Variant = 'Secondary' }
 	))
 	{

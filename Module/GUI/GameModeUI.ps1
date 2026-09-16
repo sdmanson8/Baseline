@@ -239,10 +239,12 @@
 			PresetTier        = $Tweak.PresetTier
 			Selection         = [string]$ToggleParam
 			ToggleParam       = [string]$ToggleParam
+			Value             = if ([string]$Tweak.Type -eq 'Choice') { [string]$ToggleParam } else { $null }
+			Options           = if ([string]$Tweak.Type -eq 'Choice') { @($Tweak.Options) } else { @() }
 			OnParam           = [string]$Tweak.OnParam
 			OffParam          = [string]$Tweak.OffParam
 			IsChecked         = ([string]$ToggleParam -eq [string]$Tweak.OnParam)
-			DefaultValue      = [bool]$Tweak.Default
+			DefaultValue      = if ([string]$Tweak.Type -eq 'Choice') { $Tweak.Default } else { [bool]$Tweak.Default }
 			CurrentState      = $stateLabel
 			CurrentStateTone  = 'Primary'
 			StateDetail       = $stateDetail
@@ -1036,7 +1038,7 @@
 
 	function New-GameModeAdvancedPanel
 	{
-		param ([string]$ProfileName)
+		param ([string]$ProfileName, [scriptblock]$OnSelectionChanged)
 
 		if ([string]::IsNullOrWhiteSpace($ProfileName)) { return $null }
 
@@ -1134,7 +1136,8 @@
 		[void]($headerGrid.Children.Add($headerStack))
 
 		$toggleButton = New-Object System.Windows.Controls.Button
-		$toggleButton.Content = Get-UxLocalizedString -Key 'GuiShowOptions' -Fallback 'Show options'
+		$showAdvancedOptions = [bool]$Script:GameModeAdvancedOptionsExpanded
+		$toggleButton.Content = if ($showAdvancedOptions) { Get-UxLocalizedString -Key 'GuiHideOptions' -Fallback 'Hide options' } else { Get-UxLocalizedString -Key 'GuiShowOptions' -Fallback 'Show options' }
 		$toggleButton.FontSize = $Script:GuiLayout.FontSizeLabel
 		$toggleButton.Padding = [System.Windows.Thickness]::new(10, 4, 10, 4)
 		$toggleButton.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
@@ -1147,7 +1150,7 @@
 		# Collapsible details panel.
 		$detailsPanel = New-Object System.Windows.Controls.StackPanel
 		$detailsPanel.Orientation = 'Vertical'
-		$detailsPanel.Visibility = [System.Windows.Visibility]::Collapsed
+		$detailsPanel.Visibility = if ($showAdvancedOptions) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
 		$detailsPanel.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
 
 		$noteText = New-Object System.Windows.Controls.TextBlock
@@ -1172,14 +1175,26 @@
 			[void]$groupedEntries[$cat].Add($advEntry)
 		}
 
-		$clearTabContentCacheScript = $Script:ClearTabContentCacheScript
-		$updateCurrentTabContentScript = $Script:UpdateCurrentTabContentScript
+		$updateRunAvailabilityScript = $Script:UpdateRunActionAvailabilityScript
 		$buildAdvancedPlanEntriesScript = $Script:BuildGameModeAdvancedPlanEntriesScript
 		$showGuiRuntimeFailureScript = $Script:ShowGuiRuntimeFailureScript
 		$syncGameModeContextStateScript = $Script:SyncGameModeContextStateScript
 		$syncGameModePlanToGamingControlsScript = $Script:SyncGameModePlanToGamingControlsScript
 		$gameModeAdvancedSelectionsRef = $Script:GameModeAdvancedSelections
 		$gameModeCorePlanRef = $Script:GameModeCorePlan
+
+		$getAdvancedLocalizedText = ${function:Get-UxLocalizedString}
+		$advancedCheckboxLabels = [Collections.Generic.List[object]]::new()
+		$refreshAdvancedSummaryScript = {
+			$activeCount = @($gameModeAdvancedSelectionsRef.Values | Where-Object { $_ }).Count
+			$summaryLine.Text = if ($activeCount -gt 0) { (& $getAdvancedLocalizedText -Key 'GuiGameModeAdvancedCountActive' -Fallback '{0} advanced option(s) available, {1} active.') -f $visibleEntries.Count, $activeCount } else { (& $getAdvancedLocalizedText -Key 'GuiGameModeAdvancedCount' -Fallback '{0} advanced option(s) available.') -f $visibleEntries.Count }
+			foreach ($item in $advancedCheckboxLabels) {
+				$item.Control.Content = $item.Label
+				if ($item.Recommended -and -not $item.Override -and -not $item.Control.IsChecked) {
+					$item.Control.Content += '  ' + (& $getAdvancedLocalizedText -Key 'GuiGameModeRecommendedLabel' -Fallback '(recommended)')
+				}
+			}
+		}.GetNewClosure()
 		# Getter/setter bound to module scope - .GetNewClosure() closures can't
 		# access $Script:GameModePlan directly because $Script: targets the dynamic module.
 		$getGameModePlanScript = { @($Script:GameModePlan) }
@@ -1241,6 +1256,8 @@
 					$label += '  ' + (Get-UxLocalizedString -Key 'GuiGameModeRecommendedLabel' -Fallback '(recommended)')
 				}
 				$chk.Content = $label
+				$baseLabel = if ($isOverride) { $label } else { [string]$advEntry.Label }
+				$advancedCheckboxLabels.Add(@{Control=$chk;Label=$baseLabel;Recommended=$isRecommended;Override=$isOverride})
 				$chk.IsChecked = $isChecked
 
 				$risk = if ((Test-GuiObjectField -Object $advEntry -FieldName 'Risk')) { [string]$advEntry.Risk } else { 'Low' }
@@ -1284,8 +1301,9 @@
 							& $syncGameModeContextStateScript
 							& $syncGameModePlanToGamingControlsScript
 
-						& $clearTabContentCacheScript
-						& $updateCurrentTabContentScript
+						& $refreshAdvancedSummaryScript
+						if ($OnSelectionChanged) { & $OnSelectionChanged }
+						if ($updateRunAvailabilityScript) { & $updateRunAvailabilityScript }
 					}
 					catch
 					{
@@ -1342,8 +1360,9 @@
 							& $syncGameModeContextStateScript
 							& $syncGameModePlanToGamingControlsScript
 
-						& $clearTabContentCacheScript
-						& $updateCurrentTabContentScript
+						& $refreshAdvancedSummaryScript
+						if ($OnSelectionChanged) { & $OnSelectionChanged }
+						if ($updateRunAvailabilityScript) { & $updateRunAvailabilityScript }
 					}
 					catch
 					{
@@ -1379,8 +1398,11 @@
 		}
 
 		$getUxLocalizedStringScript = ${function:Get-UxLocalizedString}
+		# Keep view state in the GUI module, outside the controls recreated on selection changes.
+		$setAdvancedOptionsExpandedScript = { param([bool]$Expanded) $Script:GameModeAdvancedOptionsExpanded = $Expanded }
 		$null = Register-GuiEventHandler -Source $toggleButton -EventName 'Click' -Handler ({
 			$showDetails = ($detailsPanel.Visibility -ne [System.Windows.Visibility]::Visible)
+			& $setAdvancedOptionsExpandedScript $showDetails
 			$detailsPanel.Visibility = if ($showDetails) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
 			$toggleButton.Content = if ($showDetails) { (& $getUxLocalizedStringScript -Key 'GuiHideOptions' -Fallback 'Hide options') } else { (& $getUxLocalizedStringScript -Key 'GuiShowOptions' -Fallback 'Show options') }
 		}.GetNewClosure())
@@ -1394,121 +1416,9 @@
 	    .SYNOPSIS
 	#>
 
-	function New-GameModeLandingPanel
+	function New-GameModePlanPanel
 	{
-		$bc = & $Script:NewSafeBrushConverterScript -Context 'New-GameModeLandingPanel'
-		$rootStack = New-Object System.Windows.Controls.StackPanel
-		$rootStack.Orientation = 'Vertical'
-
-		$stack = New-Object System.Windows.Controls.StackPanel
-		$stack.Orientation = 'Vertical'
-
-		$header = New-Object System.Windows.Controls.TextBlock
-		$header.Text = (Get-UxLocalizedString -Key 'GuiGameModeHeader' -Fallback 'Game Mode')
-		$header.FontSize = $Script:GuiLayout.FontSizeTitle
-		$header.FontWeight = [System.Windows.FontWeights]::Bold
-		$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-		[void]($stack.Children.Add($header))
-		$subheader = New-Object System.Windows.Controls.TextBlock
-		$subheader.Text = (Get-UxLocalizedString -Key 'GuiGameModeIntro' -Fallback 'Choose a gaming profile, answer a few focused prompts, then preview a manifest-backed gaming plan before you run anything.')
-		$subheader.FontSize = $Script:GuiLayout.FontSizeLabel
-		$subheader.TextWrapping = 'Wrap'
-		$subheader.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
-		$subheader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-		[void]($stack.Children.Add($subheader))
-		$scopeNote = New-Object System.Windows.Controls.TextBlock
-		$scopeNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeProfilesNote' -Fallback 'Profiles build a focused plan from core gaming items plus reviewed cross-category entries. Advanced options are available in a separate expander for experienced users.')
-		$scopeNote.FontSize = $Script:GuiLayout.FontSizeSmall
-		$scopeNote.TextWrapping = 'Wrap'
-		$scopeNote.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
-		$scopeNote.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
-		[void]($stack.Children.Add($scopeNote))
-		$recommendationNote = New-Object System.Windows.Controls.TextBlock
-		$recommendationNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeScanNote' -Fallback 'System Scan can highlight Game Mode when it sees gaming-related hardware or software, but those detections only adjust recommendation copy in v1 and never change profile defaults automatically.')
-		$recommendationNote.FontSize = $Script:GuiLayout.FontSizeSmall
-		$recommendationNote.TextWrapping = 'Wrap'
-		$recommendationNote.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
-		$recommendationNote.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
-		[void]($stack.Children.Add($recommendationNote))
-		$profileCards = New-Object System.Windows.Controls.WrapPanel
-		$profileCards.Orientation = 'Horizontal'
-		$profileCards.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0)
-		$setGameModeProfileScript = $Script:SetGameModeProfileScript
-
-		foreach ($profileDefinition in @(Get-GameModeProfileDefinitions))
-		{
-			$card = New-Object System.Windows.Controls.Border
-			$isActiveProfile = ([string]$Script:GameModeProfile -eq [string]$profileDefinition.Name)
-			$card.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
-			$card.BorderBrush = $bc.ConvertFromString($(if ($isActiveProfile) { $Script:CurrentTheme.ActiveTabBorder } else { $Script:CurrentTheme.PresetPanelBorder }))
-			$card.BorderThickness = [System.Windows.Thickness]::new($(if ($isActiveProfile) { 2 } else { 1 }))
-			$card.CornerRadius = [System.Windows.CornerRadius]::new(10)
-			$card.Padding = [System.Windows.Thickness]::new(12, 12, 12, 12)
-			$card.Margin = [System.Windows.Thickness]::new(0, 0, 12, 12)
-			$card.MinWidth = 210
-			$card.MaxWidth = 250
-
-			$cardStack = New-Object System.Windows.Controls.StackPanel
-			$cardStack.Orientation = 'Vertical'
-
-			$title = New-Object System.Windows.Controls.TextBlock
-			$profileLocKeyBase = switch ([string]$profileDefinition.Name) { 'Casual' { 'GuiProfileCasualGaming' } 'Competitive' { 'GuiProfileCompetitiveGaming' } 'Streaming' { 'GuiProfileStreamingContent' } 'Troubleshooting' { 'GuiProfileTroubleshooting' } default { $null } }
-			$title.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key $profileLocKeyBase -Fallback ([string]$profileDefinition.Label) } else { [string]$profileDefinition.Label }
-			$title.FontSize = $Script:GuiLayout.FontSizeSubheading
-			$title.FontWeight = [System.Windows.FontWeights]::SemiBold
-			$title.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
-			[void]($cardStack.Children.Add($title))
-			$summary = New-Object System.Windows.Controls.TextBlock
-			$summary.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key "${profileLocKeyBase}Desc" -Fallback ([string]$profileDefinition.Summary) } else { [string]$profileDefinition.Summary }
-			$summary.TextWrapping = 'Wrap'
-			$summary.FontSize = $Script:GuiLayout.FontSizeSmall
-			$summary.Margin = [System.Windows.Thickness]::new(0, 6, 0, 10)
-			$summary.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
-			[void]($cardStack.Children.Add($summary))
-			$button = New-PresetButton -Label (Get-UxLocalizedString -Key 'GuiBuildProfile' -Fallback 'Build Profile') -Variant $(if ([string]$Script:GameModeProfile -eq [string]$profileDefinition.Name) { 'Primary' } else { 'Secondary' }) -Compact
-			$profileName = [string]$profileDefinition.Name
-			$null = Register-GuiEventHandler -Source $button -EventName 'Click' -Handler ({
-				try
-				{
-					& $setGameModeProfileScript -ProfileName $profileName
-				}
-				catch
-				{
-					$errorLog = Join-Path ([System.IO.Path]::GetTempPath()) 'Baseline_GameMode_Error.log'
-					$logLines = @(
-						"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] GameMode/BuildProfile($profileName)"
-						"Message: $($_.Exception.Message)"
-						"Type: $($_.Exception.GetType().FullName)"
-						"Script stack trace:"
-						$_.ScriptStackTrace
-						"---"
-					)
-					$logLines -join "`r`n" | Out-File -FilePath $errorLog -Encoding utf8 -Force
-					Write-Warning ("Game Mode error logged to: $errorLog")
-					throw
-				}
-			}.GetNewClosure())
-			[void]($cardStack.Children.Add($button))
-			$card.Child = $cardStack
-			[void]($profileCards.Children.Add($card))
-		}
-
-		[void]($stack.Children.Add($profileCards))
-		$profileDisclosure = New-GuiRecommendationDisclosurePanel `
-			-Scope 'GamingProfiles' `
-			-Title (Get-UxLocalizedString -Key 'GuiGameModeProfilesHeading' -Fallback 'Gaming Profiles') `
-			-Body $stack `
-			-BrushConverter $bc `
-			-PrimaryTab 'Gaming' `
-			-InstanceKey 'GamingProfiles' `
-			-DefaultCollapsed $true `
-			-BorderThickness 1 `
-			-CornerRadius 10 `
-			-Margin ([System.Windows.Thickness]::new(8, 6, 8, 6)) `
-			-Padding ([System.Windows.Thickness]::new(10, 7, 10, 7)) `
-			-Compact
-		[void]($rootStack.Children.Add($profileDisclosure))
-
+		$bc = & $Script:NewSafeBrushConverterScript -Context 'New-GameModePlanPanel'
 		$planBorder = New-Object System.Windows.Controls.Border
 		$planBorder.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
 		$planBorder.BorderBrush = $bc.ConvertFromString($Script:CurrentTheme.CardBorder)
@@ -1646,13 +1556,139 @@
 		}
 
 		$planBorder.Child = $planStack
+		return $planBorder
+	}
+
+	function New-GameModeLandingPanel
+	{
+		$bc = & $Script:NewSafeBrushConverterScript -Context 'New-GameModeLandingPanel'
+		$rootStack = New-Object System.Windows.Controls.StackPanel
+		$rootStack.Orientation = 'Vertical'
+
+		$stack = New-Object System.Windows.Controls.StackPanel
+		$stack.Orientation = 'Vertical'
+
+		$header = New-Object System.Windows.Controls.TextBlock
+		$header.Text = (Get-UxLocalizedString -Key 'GuiGameModeHeader' -Fallback 'Game Mode')
+		$header.FontSize = $Script:GuiLayout.FontSizeTitle
+		$header.FontWeight = [System.Windows.FontWeights]::Bold
+		$header.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+		[void]($stack.Children.Add($header))
+		$subheader = New-Object System.Windows.Controls.TextBlock
+		$subheader.Text = (Get-UxLocalizedString -Key 'GuiGameModeIntro' -Fallback 'Choose a gaming profile, answer a few focused prompts, then preview a manifest-backed gaming plan before you run anything.')
+		$subheader.FontSize = $Script:GuiLayout.FontSizeLabel
+		$subheader.TextWrapping = 'Wrap'
+		$subheader.Margin = [System.Windows.Thickness]::new(0, 4, 0, 0)
+		$subheader.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+		[void]($stack.Children.Add($subheader))
+		$scopeNote = New-Object System.Windows.Controls.TextBlock
+		$scopeNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeProfilesNote' -Fallback 'Profiles build a focused plan from core gaming items plus reviewed cross-category entries. Advanced options are available in a separate expander for experienced users.')
+		$scopeNote.FontSize = $Script:GuiLayout.FontSizeSmall
+		$scopeNote.TextWrapping = 'Wrap'
+		$scopeNote.Margin = [System.Windows.Thickness]::new(0, 8, 0, 0)
+		$scopeNote.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
+		[void]($stack.Children.Add($scopeNote))
+		$recommendationNote = New-Object System.Windows.Controls.TextBlock
+		$recommendationNote.Text = (Get-UxLocalizedString -Key 'GuiGameModeScanNote' -Fallback 'System Scan can highlight Game Mode when it sees gaming-related hardware or software, but those detections only adjust recommendation copy in v1 and never change profile defaults automatically.')
+		$recommendationNote.FontSize = $Script:GuiLayout.FontSizeSmall
+		$recommendationNote.TextWrapping = 'Wrap'
+		$recommendationNote.Margin = [System.Windows.Thickness]::new(0, 6, 0, 0)
+		$recommendationNote.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextMuted)
+		[void]($stack.Children.Add($recommendationNote))
+		$profileCards = New-Object System.Windows.Controls.WrapPanel
+		$profileCards.Orientation = 'Horizontal'
+		$profileCards.Margin = [System.Windows.Thickness]::new(0, 12, 0, 0)
+		$setGameModeProfileScript = $Script:SetGameModeProfileScript
+
+		foreach ($profileDefinition in @(Get-GameModeProfileDefinitions))
+		{
+			$card = New-Object System.Windows.Controls.Border
+			$isActiveProfile = ([string]$Script:GameModeProfile -eq [string]$profileDefinition.Name)
+			$card.Background = $bc.ConvertFromString($Script:CurrentTheme.CardBg)
+			$card.BorderBrush = $bc.ConvertFromString($(if ($isActiveProfile) { $Script:CurrentTheme.ActiveTabBorder } else { $Script:CurrentTheme.PresetPanelBorder }))
+			$card.BorderThickness = [System.Windows.Thickness]::new($(if ($isActiveProfile) { 2 } else { 1 }))
+			$card.CornerRadius = [System.Windows.CornerRadius]::new(10)
+			$card.Padding = [System.Windows.Thickness]::new(12, 12, 12, 12)
+			$card.Margin = [System.Windows.Thickness]::new(0, 0, 12, 12)
+			$card.MinWidth = 210
+			$card.MaxWidth = 250
+
+			$cardStack = New-Object System.Windows.Controls.StackPanel
+			$cardStack.Orientation = 'Vertical'
+
+			$title = New-Object System.Windows.Controls.TextBlock
+			$profileLocKeyBase = switch ([string]$profileDefinition.Name) { 'Casual' { 'GuiProfileCasualGaming' } 'Competitive' { 'GuiProfileCompetitiveGaming' } 'Streaming' { 'GuiProfileStreamingContent' } 'Troubleshooting' { 'GuiProfileTroubleshooting' } default { $null } }
+			$title.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key $profileLocKeyBase -Fallback ([string]$profileDefinition.Label) } else { [string]$profileDefinition.Label }
+			$title.FontSize = $Script:GuiLayout.FontSizeSubheading
+			$title.FontWeight = [System.Windows.FontWeights]::SemiBold
+			$title.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextPrimary)
+			[void]($cardStack.Children.Add($title))
+			$summary = New-Object System.Windows.Controls.TextBlock
+			$summary.Text = if ($profileLocKeyBase) { Get-UxLocalizedString -Key "${profileLocKeyBase}Desc" -Fallback ([string]$profileDefinition.Summary) } else { [string]$profileDefinition.Summary }
+			$summary.TextWrapping = 'Wrap'
+			$summary.FontSize = $Script:GuiLayout.FontSizeSmall
+			$summary.Margin = [System.Windows.Thickness]::new(0, 6, 0, 10)
+			$summary.Foreground = $bc.ConvertFromString($Script:CurrentTheme.TextSecondary)
+			[void]($cardStack.Children.Add($summary))
+			$button = New-PresetButton -Label (Get-UxLocalizedString -Key 'GuiBuildProfile' -Fallback 'Build Profile') -Variant $(if ([string]$Script:GameModeProfile -eq [string]$profileDefinition.Name) { 'Primary' } else { 'Secondary' }) -Compact
+			$profileName = [string]$profileDefinition.Name
+			$null = Register-GuiEventHandler -Source $button -EventName 'Click' -Handler ({
+				try
+				{
+					& $setGameModeProfileScript -ProfileName $profileName
+				}
+				catch
+				{
+					$errorLog = Join-Path ([System.IO.Path]::GetTempPath()) 'Baseline_GameMode_Error.log'
+					$logLines = @(
+						"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] GameMode/BuildProfile($profileName)"
+						"Message: $($_.Exception.Message)"
+						"Type: $($_.Exception.GetType().FullName)"
+						"Script stack trace:"
+						$_.ScriptStackTrace
+						"---"
+					)
+					$logLines -join "`r`n" | Out-File -FilePath $errorLog -Encoding utf8 -Force
+					Write-Warning ("Game Mode error logged to: $errorLog")
+					throw
+				}
+			}.GetNewClosure())
+			[void]($cardStack.Children.Add($button))
+			$card.Child = $cardStack
+			[void]($profileCards.Children.Add($card))
+		}
+
+		[void]($stack.Children.Add($profileCards))
+		$profileDisclosure = New-GuiRecommendationDisclosurePanel `
+			-Scope 'GamingProfiles' `
+			-Title (Get-UxLocalizedString -Key 'GuiGameModeProfilesHeading' -Fallback 'Gaming Profiles') `
+			-Body $stack `
+			-BrushConverter $bc `
+			-PrimaryTab 'Gaming' `
+			-InstanceKey 'GamingProfiles' `
+			-DefaultCollapsed $true `
+			-BorderThickness 1 `
+			-CornerRadius 10 `
+			-Margin ([System.Windows.Thickness]::new(8, 6, 8, 6)) `
+			-Padding ([System.Windows.Thickness]::new(10, 7, 10, 7)) `
+			-Compact
+		[void]($rootStack.Children.Add($profileDisclosure))
+
+		# Rollback checkpoint: New-GameModePlanPanel contains the former inline plan summary.
+		$planBorder = New-GameModePlanPanel
 		[void]($rootStack.Children.Add($planBorder))
 
 		# Advanced Options expander - collapsed by default, shown when a profile is selected.
 		# Gated in Safe Mode: expert-only advanced options are hidden for beginners.
 		if (-not (Test-IsSafeModeUX) -and -not [string]::IsNullOrWhiteSpace([string]$Script:GameModeProfile))
 		{
-			$advancedPanel = New-GameModeAdvancedPanel -ProfileName ([string]$Script:GameModeProfile)
+			$newPlanPanelScript = ${function:New-GameModePlanPanel}
+			$refreshPlanPanel = {
+				$replacement = & $newPlanPanelScript
+				$rootStack.Children.RemoveAt(1)
+				$rootStack.Children.Insert(1, $replacement)
+			}.GetNewClosure()
+			$advancedPanel = New-GameModeAdvancedPanel -ProfileName ([string]$Script:GameModeProfile) -OnSelectionChanged $refreshPlanPanel
 			if ($advancedPanel)
 			{
 				$advancedPanel.Margin = [System.Windows.Thickness]::new(8, 12, 8, 0)

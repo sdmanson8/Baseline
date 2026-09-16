@@ -236,7 +236,9 @@ function Request-GuiScheduledTasksSelection
 
 		[Parameter(Mandatory = $false)]
 		[string[]]
-		$SelectedNames = @()
+		$SelectedNames = @(),
+
+		[object[]]$AvailableTasks = @()
 	)
 
 	$queue = Get-Variable -Name 'GUIRunState' -ValueOnly -ErrorAction Ignore
@@ -251,11 +253,21 @@ function Request-GuiScheduledTasksSelection
 		Error = $null
 	})
 
-	$queue.Enqueue([PSCustomObject]@{
+	# User interaction is not execution time. Resume the same budget after the response.
+    $selectionWait = [Diagnostics.Stopwatch]::StartNew()
+    if (Get-Command LogInfo -ErrorAction Ignore) { LogInfo "Scheduled Tasks: waiting for GUI selection (mode: $Mode)." }
+    $clock = Get-Variable -Name BaselineExecutionClock -ValueOnly -ErrorAction Ignore
+    if ($clock) {
+        [Threading.Monitor]::Enter($clock.SyncRoot)
+        try { $clock.Watch.Stop() } finally { [Threading.Monitor]::Exit($clock.SyncRoot) }
+    }
+    try {
+$queue.Enqueue([PSCustomObject]@{
 		Kind = '_InteractiveSelectionRequest'
 		RequestType = 'ScheduledTasks'
 		Mode = $Mode
 		SelectedNames = @($SelectedNames)
+		AvailableTasks = @($AvailableTasks)
 		ResponseState = $responseState
 	})
 
@@ -276,6 +288,14 @@ function Request-GuiScheduledTasksSelection
 	}
 
 	return $responseState['Result']
+    } finally {
+        $selectionWait.Stop()
+        if (Get-Command LogInfo -ErrorAction Ignore) { LogInfo ("Scheduled Tasks: GUI selection wait ended after {0:N1}s (response received: {1})." -f $selectionWait.Elapsed.TotalSeconds, [bool]$responseState['Done']) }
+        if ($clock) {
+            [Threading.Monitor]::Enter($clock.SyncRoot)
+            try { $clock.Watch.Start() } finally { [Threading.Monitor]::Exit($clock.SyncRoot) }
+        }
+    }
 }
 
 <#
@@ -313,7 +333,13 @@ function ScheduledTasks
 
 		[Parameter(Mandatory = $false)]
 		[switch]
-		$NonInteractive
+		$NonInteractive,
+
+		[Parameter(Mandatory = $false)]
+		[object[]]$AvailableTasks,
+
+		[Parameter(Mandatory = $false)]
+		[object]$OwnerWindow
 	)
 
 		. (Join-Path $PSScriptRoot 'TelemetryServices\ScheduledTasks\ModulePathResolution.ps1')
@@ -364,7 +390,13 @@ function ScheduledTasks
 		. (Join-Path $PSScriptRoot 'TelemetryServices\ScheduledTasks\ScheduledTaskOperation.ps1')
 
 	# Getting list of all scheduled tasks according to the conditions
-	$Tasks = Get-ScheduledTask | Where-Object -FilterScript {($_.State -eq $State) -and ($_.TaskName -in $CheckedScheduledTasks)}
+	if ($PSBoundParameters.ContainsKey('AvailableTasks') -and -not $CollectSelectionOnly) {
+		throw 'AvailableTasks is only accepted when collecting a selection.'
+	}
+	# The execution worker supplies the inventory to the picker. Never repeat
+	# the Task Scheduler query on the WPF dispatcher thread.
+	$taskInventory = if ($PSBoundParameters.ContainsKey('AvailableTasks')) { $AvailableTasks } else { @(Get-ScheduledTask -ErrorAction Stop) }
+	$Tasks = @($taskInventory | Where-Object -FilterScript {($_.State -eq $State) -and ($_.TaskName -in $CheckedScheduledTasks)})
 
 	if (-not $Tasks)
 	{
@@ -378,9 +410,14 @@ function ScheduledTasks
 		return
 	}
 
-	if ($Global:GUIMode -and -not $CollectSelectionOnly -and -not $SelectedTaskNamesProvided)
+	if ($Global:GUIMode -and -not $NonInteractive -and -not $CollectSelectionOnly -and -not $SelectedTaskNamesProvided)
 	{
-		$selectionResult = Request-GuiScheduledTasksSelection -Mode $PSCmdlet.ParameterSetName -SelectedNames @($SelectedTaskNames)
+		$selectionResult = Request-GuiScheduledTasksSelection -Mode $PSCmdlet.ParameterSetName -SelectedNames @($SelectedTaskNames) -AvailableTasks $Tasks
+		if ($null -eq $selectionResult)
+		{
+			Set-BaselineTweakOutcome -Function 'ScheduledTasks' -Status 'Skipped' -Detail 'Scheduled task selection was cancelled.'
+			return
+		}
 		if ($null -ne $selectionResult)
 		{
 			$SelectedTaskNames = @($selectionResult.SelectedTaskNames)
@@ -545,6 +582,11 @@ function ScheduledTasks
 	else
 	{
 		# Normalize minimized dialogs before showing without reclaiming foreground focus.
+		if ($OwnerWindow) {
+			$Form.Owner = $OwnerWindow
+			$Form.WindowStartupLocation = 'CenterOwner'
+			$Form.ShowInTaskbar = $false
+		}
 		Initialize-WpfWindowForeground -Window $Form
 		$Form.ShowDialog() | Out-Null
 	}

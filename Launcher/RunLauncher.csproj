@@ -7,9 +7,9 @@
     <AssemblyTitle>Baseline</AssemblyTitle>
     <AssemblyDescription>Baseline launcher</AssemblyDescription>
     <AssemblyProduct>Baseline</AssemblyProduct>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <InformationalVersion>1.0.0</InformationalVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0</AssemblyVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Maintainer note: keep the launcher architecture-neutral so it can run on x64 and ARM64. -->
     <!-- Maintainer note: Windows PowerShell 5.1 is still loaded from the GAC_MSIL assembly path. -->
@@ -26,6 +26,7 @@
     <ApplicationIcon>../Assets/baseline.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="WindowsBase" />
     <Reference Include="System.Management.Automation">
       <HintPath>$(windir)\Microsoft.NET\assembly\GAC_MSIL\System.Management.Automation\v4.0_3.0.0.0__31bf3856ad364e35\System.Management.Automation.dll</HintPath>
       <Private>false</Private>

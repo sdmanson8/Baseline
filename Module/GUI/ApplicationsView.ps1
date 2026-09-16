@@ -108,6 +108,9 @@
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ()
+	$__appsPerf = Start-GuiPerfScope -Name 'Apps.Get-AppsPackageManagerAvailabilityState'
+	try {
+
 
 		$wingetAvailable = $true
 		if (Get-Command -Name 'Test-WinGetAvailable' -CommandType Function -ErrorAction SilentlyContinue)
@@ -156,7 +159,9 @@
 
 		$Script:AppsPackageManagerAvailabilityState = $state
 		return $state
-	}
+
+	} finally { Stop-GuiPerfScope -Scope $__appsPerf }
+}
 
 	<#
 	    .SYNOPSIS
@@ -793,7 +798,7 @@
 
 		Initialize-AppCategoryFilterState
 
-		$catalog = @(Get-BaselineApplicationsCatalog)
+		$catalog = @(Get-BaselineApplicationsCatalog -AllCategories:(-not [string]::IsNullOrWhiteSpace($SearchQuery)))
 		if ($catalog.Count -eq 0)
 		{
 			return @()
@@ -812,7 +817,7 @@
 
 		$selectedCategory = if ([string]::IsNullOrWhiteSpace([string]$Script:AppsCategoryFilter)) { 'All' } else { [string]$Script:AppsCategoryFilter.Trim() }
 		$filteredCatalog = $catalog
-		if ($selectedCategory -ne 'All')
+		if ($searchTerms.Count -eq 0 -and $selectedCategory -ne 'All')
 		{
 			$filteredCatalog = @(
 				$filteredCatalog |
@@ -995,6 +1000,9 @@
 	{
 		[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
 		param ()
+	$__appsPerf = Start-GuiPerfScope -Name 'Apps.Update-AppsCategoryTabCounts'
+	try {
+
 		if (-not $Script:AppsCategoryTabs -or $Script:AppsCategoryTabs.Items.Count -eq 0) { return }
 
 		$activeSearchQuery = if ($Script:AppsModeActive) { [string]$Script:AppsSearchText } else { [string]$Script:SearchText }
@@ -1024,7 +1032,9 @@
 		}
 
 		Update-AppsCategoryTabVisuals
-	}
+
+	} finally { Stop-GuiPerfScope -Scope $__appsPerf }
+}
 
 	<#
 	    .SYNOPSIS

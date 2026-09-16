@@ -43,7 +43,9 @@ $Script:ClearTabContentCacheScript = ${function:Clear-TabContentCache}
 
 		$null = $_
 	}
+	& $traceGuiStartup 'Initial theme preference application started'
 	Apply-BaselineThemePreference -Preference $initialThemePreference -SkipContentRebuild
+	& $traceGuiStartup 'Initial theme preference applied; static button styling started'
 	Set-StaticButtonStyle
 	& $traceGuiStartup 'Initial theme applied'
 

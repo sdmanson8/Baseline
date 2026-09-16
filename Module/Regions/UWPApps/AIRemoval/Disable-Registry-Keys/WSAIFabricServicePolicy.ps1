@@ -25,7 +25,9 @@ if ($revert) {
         Write-Status -msg 'Removing WSAIFabricSvc - '
         LogInfo 'Removing WSAIFabricSvc'
         #delete the service
-        $null = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('delete', 'WSAIFabricSvc') -TimeoutSeconds 60
+        $serviceDelete = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('delete', 'WSAIFabricSvc') -TimeoutSeconds 60 -AllowAnyExitCode -CaptureOutput
+        if ($serviceDelete.ExitCode -eq 1060) { LogInfo 'WSAIFabricSvc is already absent.' }
+        elseif ($serviceDelete.ExitCode -ne 0) { throw "WSAIFabricSvc deletion failed with exit code $($serviceDelete.ExitCode): $($serviceDelete.StandardOutput) $($serviceDelete.StandardError)" }
         Write-ConsoleStatus -Status success
 }
     if (!$revert) {
@@ -74,7 +76,9 @@ if ($revert) {
 
             }
 
-            $null = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('delete', 'AarSvc') -TimeoutSeconds 60
+            $serviceDelete = Invoke-BaselineProcess -FilePath 'sc.exe' -ArgumentList @('delete', 'AarSvc') -TimeoutSeconds 60 -AllowAnyExitCode -CaptureOutput
+            if ($serviceDelete.ExitCode -eq 1060) { LogInfo 'AarSvc is already absent.' }
+            elseif ($serviceDelete.ExitCode -ne 0) { throw "AarSvc deletion failed with exit code $($serviceDelete.ExitCode): $($serviceDelete.StandardOutput) $($serviceDelete.StandardError)" }
             Write-ConsoleStatus -Status success
 }
     }
@@ -113,7 +117,10 @@ if ($revert) {
         }
         Write-Status -msg 'Removing .copilot File Extension - '
         LogInfo 'Removing .copilot File Extension'
-        Reg.exe delete 'HKCU\Software\Classes\.copilot' /f *>$null
-        Reg.exe delete 'HKCR\.copilot' /f *>$null
+        foreach ($associationPath in @('Registry::HKEY_CURRENT_USER\Software\Classes\.copilot', 'Registry::HKEY_CLASSES_ROOT\.copilot')) {
+            if (Test-Path -LiteralPath $associationPath -ErrorAction Stop) {
+                Remove-Item -LiteralPath $associationPath -Recurse -Force -ErrorAction Stop
+            }
+        }
         Write-ConsoleStatus -Status success
 }

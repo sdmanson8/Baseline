@@ -779,17 +779,6 @@
 		    .SYNOPSIS
 		#>
 
-		function Test-ExecutionSkipMessage
-		{
-			param(
-				[string]$Message
-			)
-
-			if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
-
-			return ($Message -match '(?i)\bskipping\b|\bskipped\b|\bnot applicable\b|\bnot supported\b|\bunsupported\b')
-		}
-
 	function Show-GuiFileSaveDialog
 	{
 		param (

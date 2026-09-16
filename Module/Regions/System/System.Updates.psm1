@@ -1443,6 +1443,7 @@ function StoreSearchResults
 
 	if (-not (Test-Path -LiteralPath $storeDbPath))
 	{
+		Set-BaselineTweakOutcome -Function $MyInvocation.MyCommand.Name -Status 'Skipped' -Detail ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		LogWarning ($Localization.Skipped -f (Get-TweakSkipLabel $MyInvocation))
 		return
 	}

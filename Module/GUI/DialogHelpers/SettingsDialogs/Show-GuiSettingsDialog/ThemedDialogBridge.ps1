@@ -1,3 +1,9 @@
+$settingsApplyButtonChrome = $Script:SetButtonChromeScript
+if ($settingsApplyButtonChrome -isnot [scriptblock])
+{
+	throw 'Set-ButtonChrome proxy is not initialized.'
+}
+
 $settingsShowThemedDialog = {
 			param(
 				[string]$Title,
@@ -9,7 +15,7 @@ $settingsShowThemedDialog = {
 
 			return (GUICommon\Show-GuiCommonThemedDialog `
 				-Theme $theme `
-				-ApplyButtonChrome ${function:Set-ButtonChrome} `
+				-ApplyButtonChrome $settingsApplyButtonChrome `
 				-OwnerWindow $dlg `
 				-Title $Title `
 				-Message $Message `

@@ -834,8 +834,8 @@ function Test-BaselinePowerSchemeSettingAvailable
 
 	try
 	{
-		& powercfg /QUERY SCHEME_CURRENT $SubgroupGuid $SettingGuid 2>$null | Out-Null
-		return ($LASTEXITCODE -eq 0)
+        $probe = Invoke-BaselineProcess -FilePath (Join-Path $env:SystemRoot 'System32/powercfg.exe') -ArgumentList @('/QUERY', 'SCHEME_CURRENT', $SubgroupGuid, $SettingGuid) -CaptureOutput -AllowAnyExitCode
+        return ($probe.ExitCode -eq 0)
 	}
 	catch
 	{
